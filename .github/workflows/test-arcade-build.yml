@@ -36,14 +36,21 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build static MakeCode Arcade editor
+        id: build
+        continue-on-error: true
         working-directory: _pxt_arcade
+        shell: bash
         run: |
+          set -o pipefail
           node node_modules/pxt-core/built/pxt.js staticpkg \
             --route arcade-uploader \
             --output "$RUNNER_TEMP/pxt-static" \
-            --minify
+            --minify 2>&1 | tee "$GITHUB_WORKSPACE/test-build.log"
 
       - name: Validate generated editor
+        id: validate
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -54,17 +61,17 @@ jobs:
           elif [ -f "$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader/index.html" ]; then
             SRC="$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader"
           else
-            echo "Generated editor index.html not found"
-            find "$RUNNER_TEMP" "$GITHUB_WORKSPACE/_pxt_arcade/built" -name index.html -print || true
+            echo "Generated editor index.html not found" | tee -a "$GITHUB_WORKSPACE/test-build.log"
+            find "$RUNNER_TEMP" "$GITHUB_WORKSPACE/_pxt_arcade/built" -name index.html -print | tee -a "$GITHUB_WORKSPACE/test-build.log" || true
             exit 1
           fi
 
           test -s "$SRC/index.html"
           count=$(find "$SRC" -type f | wc -l)
           bytes=$(wc -c < "$SRC/index.html")
-          echo "Generated source: $SRC"
-          echo "Generated files: $count"
-          echo "index.html bytes: $bytes"
+          echo "Generated source: $SRC" | tee -a "$GITHUB_WORKSPACE/test-build.log"
+          echo "Generated files: $count" | tee -a "$GITHUB_WORKSPACE/test-build.log"
+          echo "index.html bytes: $bytes" | tee -a "$GITHUB_WORKSPACE/test-build.log"
           test "$count" -ge 20
           test "$bytes" -ge 1000
 
@@ -72,9 +79,18 @@ jobs:
           cp -a "$SRC"/. "$GITHUB_WORKSPACE/test-output/"
           printf '{"status":"success","files":%s,"indexBytes":%s}\n' "$count" "$bytes" > "$GITHUB_WORKSPACE/test-output/build-info.json"
 
-      - name: Upload smoke-test artifact
+      - name: Upload smoke-test files and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: makecode-arcade-static-editor
-          path: test-output
-          if-no-files-found: error
+          name: makecode-arcade-build-diagnostics
+          path: |
+            test-build.log
+            test-output
+          if-no-files-found: warn
+
+      - name: Require successful build and validation
+        if: steps.build.outcome != 'success' || steps.validate.outcome != 'success'
+        run: |
+          echo "MakeCode Arcade static build or validation failed."
+          exit 1
