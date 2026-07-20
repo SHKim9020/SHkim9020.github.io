@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#182033">
+  <title>OneMakerLab Arcade Studio</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">OM</span>
+      <div>
+        <strong>OneMakerLab Arcade Studio</strong>
+        <span id="status">편집기 준비 중…</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="selectDrive" class="secondary">① MICROBIT 드라이브 선택</button>
+      <button id="pairUsb" class="secondary">USB 페어링</button>
+      <button id="upload" class="primary">② 게임기에 업로드</button>
+      <button id="restart" class="icon" title="시뮬레이터 다시 시작">↻</button>
+      <button id="newProject" class="icon" title="새 프로젝트">＋</button>
+      <button id="fullscreen" class="icon" title="전체화면">⛶</button>
+    </div>
+  </header>
+
+  <main>
+    <iframe
+      id="editor"
+      title="MakeCode Arcade 편집기"
+      src="editor/?controller=1&lang=ko&light=1"
+      allow="usb; hid; serial; clipboard-read; clipboard-write; fullscreen"
+      allowfullscreen></iframe>
+
+    <section id="notice" class="notice" hidden>
+      <strong id="noticeTitle"></strong>
+      <span id="noticeText"></span>
+      <button id="noticeClose" type="button">닫기</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
