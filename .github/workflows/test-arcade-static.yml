@@ -34,22 +34,32 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build static editor
+        id: static_build
+        continue-on-error: true
         working-directory: ${{ runner.temp }}/pxt-arcade
         env:
           CI: "true"
         shell: bash
         run: |
-          set +e
           pxt staticpkg \
             --route arcade-uploader \
             --output "$RUNNER_TEMP/pxt-static" \
             --minify > "$RUNNER_TEMP/staticpkg.log" 2>&1
-          STATUS=$?
-          echo "===== staticpkg error summary ====="
-          grep -iE "error|failed|exception|fatal|missing|not found|cannot|ENOENT|EACCES|unhandled" "$RUNNER_TEMP/staticpkg.log" | tail -60 || true
-          echo "===== staticpkg final 35 lines ====="
-          tail -35 "$RUNNER_TEMP/staticpkg.log" || true
-          exit $STATUS
+
+      - name: Upload static build diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staticpkg-log
+          path: ${{ runner.temp }}/staticpkg.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Stop after failed static build
+        if: steps.static_build.outcome != 'success'
+        run: |
+          echo "MakeCode Arcade staticpkg failed. Diagnostic log was uploaded."
+          exit 1
 
       - name: Verify generated package
         shell: bash
