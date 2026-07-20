@@ -78,8 +78,7 @@ jobs:
         run: |
           pxt staticpkg \
             --route arcade-uploader \
-            --output "$RUNNER_TEMP/pxt-static" \
-            --minify > "$RUNNER_TEMP/staticpkg.log" 2>&1
+            --output "$RUNNER_TEMP/pxt-static" > "$RUNNER_TEMP/staticpkg.log" 2>&1
 
       - name: Upload static build diagnostic log
         if: always() && steps.target_build.outcome == 'success'
