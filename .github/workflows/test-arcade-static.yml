@@ -33,11 +33,6 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm install --no-audit --no-fund
 
-      - name: Ensure Arcade simulator dependency
-        run: |
-          rm -rf "$RUNNER_TEMP/pxt-arcade/node_modules/pxt-arcade-sim"
-          git clone --depth 1 --branch v0.12.3 https://github.com/microsoft/pxt-arcade-sim.git "$RUNNER_TEMP/pxt-arcade/node_modules/pxt-arcade-sim"
-
       - name: Build static editor
         working-directory: ${{ runner.temp }}/pxt-arcade
         env:
