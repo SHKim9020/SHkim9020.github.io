@@ -45,8 +45,7 @@ jobs:
           mkdir -p public
           node node_modules/pxt-core/built/pxt.js staticpkg \
             --route arcade-uploader \
-            --output "$RUNNER_TEMP/pxt-static" \
-            --minify 2>&1 | tee "$GITHUB_WORKSPACE/test-build.log"
+            --output "$RUNNER_TEMP/pxt-static" 2>&1 | tee "$GITHUB_WORKSPACE/test-build.log"
 
       - name: Validate generated editor
         id: validate
