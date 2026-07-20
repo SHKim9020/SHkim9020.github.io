@@ -3,16 +3,18 @@ name: Build and Deploy MakeCode Arcade
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "arcade-deployment-status.json"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 concurrency:
   group: arcade-pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -126,3 +128,82 @@ jobs:
       - name: Deploy verified website
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify the live public website
+        id: smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          URL="https://shkim9020.github.io/arcade-uploader/"
+          INFO_URL="${URL}build-info.json"
+          LOG="$GITHUB_WORKSPACE/arcade-smoke-test.log"
+          HTML="$RUNNER_TEMP/live-index.html"
+          INFO="$RUNNER_TEMP/live-build-info.json"
+          : > "$LOG"
+          success=0
+
+          for attempt in $(seq 1 30); do
+            echo "Attempt $attempt at $(date -u +%FT%TZ)" | tee -a "$LOG"
+
+            response=$(curl -L -sS --max-time 90 -o "$HTML" -w '%{http_code}|%{url_effective}' "$URL" 2>>"$LOG" || true)
+            code=${response%%|*}
+            effective=${response#*|}
+            echo "HTTP=$code EFFECTIVE=$effective" | tee -a "$LOG"
+
+            if [ "$code" = "200" ] \
+              && [ "$effective" = "$URL" ] \
+              && grep -q 'Microsoft MakeCode Arcade' "$HTML" \
+              && grep -q '/arcade-uploader/' "$HTML" \
+              && ! grep -Eqi '<meta[^>]+http-equiv=["'"']?refresh|location\.(replace|href).*arcade\.makecode\.com' "$HTML" \
+              && curl -fsS --max-time 90 "${URL}target.js" -o "$RUNNER_TEMP/live-target.js" \
+              && curl -fsS --max-time 90 "${URL}pxtapp.js" -o "$RUNNER_TEMP/live-pxtapp.js" \
+              && test -s "$RUNNER_TEMP/live-target.js" \
+              && test -s "$RUNNER_TEMP/live-pxtapp.js" \
+              && curl -fsS --max-time 90 "$INFO_URL" -o "$INFO" \
+              && grep -q '"status": "success"' "$INFO" \
+              && grep -q "\"websiteCommit\": \"$GITHUB_SHA\"" "$INFO"; then
+                echo "LIVE_SMOKE_TEST=SUCCESS" | tee -a "$LOG"
+                success=1
+                break
+            fi
+
+            echo "The newest deployment is not live yet; retrying." | tee -a "$LOG"
+            sleep 20
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "LIVE_SMOKE_TEST=FAILED" | tee -a "$LOG"
+            exit 1
+          fi
+
+      - name: Record deployment verification result
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.smoke.outcome }}" = "success" ]; then
+            RESULT="success"
+          else
+            RESULT="failure"
+          fi
+
+          cat > arcade-deployment-status.json <<EOF
+          {
+            "status": "$RESULT",
+            "checkedAt": "$(date -u +%FT%TZ)",
+            "sourceCommit": "$GITHUB_SHA",
+            "publicUrl": "https://shkim9020.github.io/arcade-uploader/"
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add arcade-deployment-status.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record Arcade deployment verification [skip ci]"
+            git push
+          fi
+
+      - name: Fail when the public website verification failed
+        if: steps.smoke.outcome != 'success'
+        run: exit 1
