@@ -1,6 +1,17 @@
 {
   "status": "failure",
-  "checkedAt": "2026-07-20T15:01:00Z",
-  "sourceCommit": "e7d7976d38f03448732ae655f110e623e176f551",
-  "publicUrl": "https://shkim9020.github.io/arcade-uploader/"
+  "checkedAt": "2026-07-20T15:12:28Z",
+  "sourceCommit": "ae63fa9c354de6d5b898dbbd345ec36554f35713",
+  "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
+  "httpCode": "",
+  "effectiveUrl": "",
+  "hasMakeCodeTitle": "",
+  "hasArcadeRoute": "",
+  "redirectDetected": "",
+  "targetJsHttp": "",
+  "pxtAppJsHttp": "",
+  "mainJsHttp": "",
+  "buildInfoHttp": "",
+  "buildInfoStatus": "",
+  "buildInfoCommitMatches": ""
 }
