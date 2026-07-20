@@ -20,9 +20,81 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
     steps:
-      - name: Checkout
+      - name: Checkout website
         uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Install PXT CLI
+        run: npm install -g pxt
+
+      - name: Clone MakeCode Arcade
+        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git "$RUNNER_TEMP/pxt-arcade"
+
+      - name: Install target dependencies
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm install --no-audit --no-fund
+
+      - name: Build MakeCode Arcade target
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          CI: "true"
+        run: pxt buildtarget
+
+      - name: Prepare PXT public assets
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf public
+          cp -a node_modules/pxt-core/webapp/public public
+          test -d public
+          test "$(find public -type f | wc -l)" -gt 10
+
+      - name: Build static MakeCode Arcade editor
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          CI: "true"
+        run: |
+          pxt staticpkg \
+            --route arcade-uploader \
+            --output "$RUNNER_TEMP/pxt-static"
+
+      - name: Install generated editor into website
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
+          elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static"
+          elif [ -f "$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader"
+          else
+            echo "Generated MakeCode Arcade index.html was not found."
+            find "$RUNNER_TEMP" -name index.html -print | sed -n '1,100p'
+            exit 1
+          fi
+
+          rm -rf "$GITHUB_WORKSPACE/arcade-uploader"
+          mkdir -p "$GITHUB_WORKSPACE/arcade-uploader"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/arcade-uploader/"
+          touch "$GITHUB_WORKSPACE/.nojekyll"
+
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/target.js"
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/pxtapp.js"
+          grep -q '/arcade-uploader/' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+          echo "Verified self-hosted MakeCode Arcade editor for /arcade-uploader/."
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
