@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>MakeCode Arcade micro:bit 업로더</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #eef2f7; }
+    body { display: grid; grid-template-rows: 64px 1fr; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #d9e0ea; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 260px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #6bcb77; box-shadow: 0 0 0 5px rgba(107,203,119,.18); }
+    .brand strong { font-size: 18px; }
+    #status { color: #687386; font-size: 13px; white-space: nowrap; }
+    .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    button, a.action { appearance: none; border: 1px solid #d7deea; background: #fff; color: #243047; font: inherit; font-weight: 700; padding: 10px 15px; border-radius: 11px; cursor: pointer; text-decoration: none; }
+    button.primary { background: #5865e9; border-color: #5865e9; color: #fff; }
+    button:disabled { opacity: .5; cursor: wait; }
+    main { position: relative; min-height: 0; }
+    iframe { width: 100%; height: 100%; border: 0; background: #9aa4a8; }
+    .notice { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(640px, calc(100% - 32px)); background: rgba(255,255,255,.97); border: 1px solid #d9e0ea; border-radius: 18px; padding: 24px; box-shadow: 0 18px 60px rgba(28,39,58,.2); display: none; z-index: 5; }
+    .notice.show { display: block; }
+    .notice h2 { margin: 0 0 12px; }
+    .notice p { line-height: 1.6; color: #536078; }
+    .notice .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    @media (max-width: 820px) {
+      body { grid-template-rows: auto 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+      .actions { width: 100%; justify-content: flex-start; }
+      .brand { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot" id="dot"></span>
+      <strong>MakeCode Arcade</strong>
+      <span id="status">편집기 불러오는 중</span>
+    </div>
+    <div class="actions">
+      <button id="pairBtn">🔌 micro:bit 연결</button>
+      <button id="uploadBtn" class="primary">⬆ 게임기에 업로드</button>
+      <button id="restartBtn">⟳ 게임 다시 실행</button>
+      <button id="fullBtn">⛶ 전체화면</button>
+      <a class="action" href="https://arcade.makecode.com/" target="_blank" rel="noopener">공식 편집기 열기</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <iframe
+      id="editor"
+      title="Microsoft MakeCode Arcade"
+      src="https://arcade.makecode.com/?lang=ko&controller=1&embed=1"
+      allow="usb; hid; serial; fullscreen; clipboard-read; clipboard-write"
+      allowfullscreen
+      referrerpolicy="strict-origin-when-cross-origin"></iframe>
+
+    <section id="notice" class="notice" role="dialog" aria-live="polite">
+      <h2>편집기 연결이 지연되고 있습니다</h2>
+      <p>네트워크 또는 브라우저의 iframe 정책으로 MakeCode가 열리지 않을 수 있습니다. 아래 버튼으로 공식 편집기를 새 탭에서 열면 편집과 micro:bit WebUSB 업로드를 가장 안정적으로 사용할 수 있습니다.</p>
+      <div class="row">
+        <a class="action" href="https://arcade.makecode.com/" target="_blank" rel="noopener">공식 MakeCode Arcade 열기</a>
+        <button id="retryBtn">다시 불러오기</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const MAKECODE_ORIGIN = "https://arcade.makecode.com";
+    const frame = document.getElementById("editor");
+    const statusEl = document.getElementById("status");
+    const notice = document.getElementById("notice");
+    const dot = document.getElementById("dot");
+    let ready = false;
+    let seq = 0;
+    const pending = new Map();
+
+    function setStatus(text, ok = false) {
+      statusEl.textContent = text;
+      dot.style.background = ok ? "#32b768" : "#f0a23b";
+    }
+
+    function send(action, extra = {}) {
+      if (!frame.contentWindow) throw new Error("편집기 창을 찾지 못했습니다.");
+      const id = `host-${Date.now()}-${++seq}`;
+      frame.contentWindow.postMessage({
+        type: "pxteditor",
+        id,
+        action,
+        response: true,
+        ...extra
+      }, MAKECODE_ORIGIN);
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`${action} 응답 시간이 초과되었습니다.`));
+        }, 25000);
+        pending.set(id, { resolve, reject, timer });
+      });
+    }
+
+    async function runAction(button, busyText, action, doneText) {
+      button.disabled = true;
+      setStatus(busyText);
+      try {
+        await send(action);
+        setStatus(doneText, true);
+      } catch (err) {
+        console.error(err);
+        setStatus(err.message || "명령 실행 실패");
+        notice.classList.add("show");
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    window.addEventListener("message", event => {
+      if (event.origin !== MAKECODE_ORIGIN) return;
+      const data = event.data || {};
+
+      if (data.type === "pxthost" && data.id && pending.has(data.id)) {
+        const p = pending.get(data.id);
+        clearTimeout(p.timer);
+        pending.delete(data.id);
+        if (data.success === false) p.reject(new Error(data.error?.message || data.error || "MakeCode 명령 실패"));
+        else p.resolve(data.resp);
+        return;
+      }
+
+      if (data.source === "makecode" || data.type === "pxthost" || data.type === "pxteditor") {
+        ready = true;
+        notice.classList.remove("show");
+        setStatus("편집기 준비됨", true);
+      }
+    });
+
+    frame.addEventListener("load", () => {
+      setStatus("편집기 초기화 중");
+      setTimeout(async () => {
+        try {
+          await send("info");
+          ready = true;
+          notice.classList.remove("show");
+          setStatus("편집기 준비됨", true);
+        } catch (_) {
+          if (!ready) {
+            setStatus("편집기 연결 확인 필요");
+            notice.classList.add("show");
+          }
+        }
+      }, 5000);
+    });
+
+    document.getElementById("pairBtn").addEventListener("click", e =>
+      runAction(e.currentTarget, "micro:bit 연결 창 여는 중", "pair", "연결 절차 완료")
+    );
+
+    document.getElementById("uploadBtn").addEventListener("click", e =>
+      runAction(e.currentTarget, "게임 컴파일 및 업로드 중", "compile", "업로드 명령 완료")
+    );
+
+    document.getElementById("restartBtn").addEventListener("click", e =>
+      runAction(e.currentTarget, "시뮬레이터 다시 실행 중", "restartsimulator", "게임 다시 실행됨")
+    );
+
+    document.getElementById("fullBtn").addEventListener("click", async () => {
+      try {
+        if (!document.fullscreenElement) await document.getElementById("main").requestFullscreen();
+        else await document.exitFullscreen();
+      } catch (err) {
+        setStatus("전체화면을 사용할 수 없습니다.");
+      }
+    });
+
+    document.getElementById("retryBtn").addEventListener("click", () => {
+      notice.classList.remove("show");
+      setStatus("편집기 다시 불러오는 중");
+      frame.src = `https://arcade.makecode.com/?lang=ko&controller=1&embed=1&t=${Date.now()}`;
+    });
+
+    setTimeout(() => {
+      if (!ready) notice.classList.add("show");
+    }, 15000);
+  </script>
+</body>
+</html>
