@@ -22,58 +22,50 @@ jobs:
     timeout-minutes: 90
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - name: Checkout website
+        id: checkout_site
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Use Node.js
+      - name: Checkout Microsoft MakeCode Arcade
+        id: checkout_arcade
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/pxt-arcade
+          path: _pxt_arcade
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        id: node
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
 
-      - name: Install PXT CLI
-        run: npm install -g pxt
-
-      - name: Clone MakeCode Arcade
-        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git "$RUNNER_TEMP/pxt-arcade"
-
-      - name: Install target dependencies
-        working-directory: ${{ runner.temp }}/pxt-arcade
+      - name: Install MakeCode Arcade dependencies
+        id: install
+        working-directory: _pxt_arcade
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
         run: npm install --no-audit --no-fund
 
-      - name: Build MakeCode Arcade target
-        working-directory: ${{ runner.temp }}/pxt-arcade
-        env:
-          CI: "true"
-        run: pxt buildtarget
-
-      - name: Prepare PXT public assets
-        working-directory: ${{ runner.temp }}/pxt-arcade
+      - name: Build static MakeCode Arcade editor
+        id: build
+        working-directory: _pxt_arcade
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf public
-          cp -a node_modules/pxt-core/webapp/public public
-          test -d public
-          test "$(find public -type f | wc -l)" -gt 10
-
-      - name: Build static MakeCode Arcade editor
-        working-directory: ${{ runner.temp }}/pxt-arcade
-        env:
-          CI: "true"
-        run: |
-          pxt staticpkg \
+          mkdir -p public
+          node node_modules/pxt-core/built/pxt.js staticpkg \
             --route arcade-uploader \
             --output "$RUNNER_TEMP/pxt-static"
 
-      - name: Install and verify generated editor
+      - name: Prepare and verify Pages website
+        id: stage
         shell: bash
         run: |
           set -euo pipefail
@@ -82,34 +74,48 @@ jobs:
             SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
           elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
             SRC="$RUNNER_TEMP/pxt-static"
-          elif [ -f "$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader/index.html" ]; then
-            SRC="$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader"
+          elif [ -f "$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader/index.html" ]; then
+            SRC="$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader"
           else
             echo "Generated MakeCode Arcade index.html was not found."
-            find "$RUNNER_TEMP" -name index.html -print | sed -n '1,100p'
+            find "$RUNNER_TEMP" "$GITHUB_WORKSPACE/_pxt_arcade/built" -name index.html -print | head -100 || true
             exit 1
           fi
 
-          rm -rf "$GITHUB_WORKSPACE/arcade-uploader"
-          mkdir -p "$GITHUB_WORKSPACE/arcade-uploader"
-          cp -a "$SRC"/. "$GITHUB_WORKSPACE/arcade-uploader/"
-          touch "$GITHUB_WORKSPACE/.nojekyll"
+          rm -rf "$GITHUB_WORKSPACE/_site"
+          mkdir -p "$GITHUB_WORKSPACE/_site"
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='_site/' \
+            --exclude='_pxt_arcade/' \
+            --exclude='arcade-uploader/' \
+            "$GITHUB_WORKSPACE/" "$GITHUB_WORKSPACE/_site/"
 
-          test -s "$GITHUB_WORKSPACE/arcade-uploader/index.html"
-          test -s "$GITHUB_WORKSPACE/arcade-uploader/target.js"
-          test -s "$GITHUB_WORKSPACE/arcade-uploader/pxtapp.js"
-          test -s "$GITHUB_WORKSPACE/arcade-uploader/main.js"
-          grep -q '/arcade-uploader/' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
-          grep -q 'Microsoft MakeCode Arcade' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+          mkdir -p "$GITHUB_WORKSPACE/_site/arcade-uploader"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/_site/arcade-uploader/"
+          touch "$GITHUB_WORKSPACE/_site/.nojekyll"
 
-          file_count=$(find "$GITHUB_WORKSPACE/arcade-uploader" -type f | wc -l)
-          index_size=$(wc -c < "$GITHUB_WORKSPACE/arcade-uploader/index.html")
+          INDEX="$GITHUB_WORKSPACE/_site/arcade-uploader/index.html"
+          test -s "$INDEX"
+          test -s "$GITHUB_WORKSPACE/_site/arcade-uploader/target.js"
+          test -s "$GITHUB_WORKSPACE/_site/arcade-uploader/pxtapp.js"
+          test -s "$GITHUB_WORKSPACE/_site/arcade-uploader/main.js"
+          grep -q 'Microsoft MakeCode Arcade' "$INDEX"
+          grep -q '/arcade-uploader/' "$INDEX"
+          ! grep -Eqi '<meta[^>]+http-equiv=["'"']?refresh|location\.(replace|href).*arcade\.makecode\.com' "$INDEX"
+
+          file_count=$(find "$GITHUB_WORKSPACE/_site/arcade-uploader" -type f | wc -l)
+          index_size=$(wc -c < "$INDEX")
+          target_size=$(wc -c < "$GITHUB_WORKSPACE/_site/arcade-uploader/target.js")
           echo "Generated files: $file_count"
           echo "index.html bytes: $index_size"
-          test "$file_count" -gt 1000
-          test "$index_size" -gt 5000
+          echo "target.js bytes: $target_size"
+          test "$file_count" -gt 5000
+          test "$index_size" -gt 10000
+          test "$target_size" -gt 1000000
 
-          cat > "$GITHUB_WORKSPACE/arcade-uploader/build-info.json" <<EOF
+          cat > "$GITHUB_WORKSPACE/_site/arcade-uploader/build-info.json" <<EOF
           {
             "status": "success",
             "builtAt": "$(date -u +%FT%TZ)",
@@ -117,24 +123,29 @@ jobs:
             "route": "/arcade-uploader/",
             "websiteCommit": "$GITHUB_SHA",
             "generatedFiles": $file_count,
-            "indexBytes": $index_size
+            "indexBytes": $index_size,
+            "targetBytes": $target_size
           }
           EOF
 
-          rm -rf "$RUNNER_TEMP/pxt-arcade"
+          echo "file_count=$file_count" >> "$GITHUB_OUTPUT"
+          echo "index_size=$index_size" >> "$GITHUB_OUTPUT"
+          echo "target_size=$target_size" >> "$GITHUB_OUTPUT"
 
       - name: Configure GitHub Pages
+        id: configure
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
       - name: Upload verified website
+        id: upload
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - name: Deploy verified website
-        id: deployment
+        id: deploy
         uses: actions/deploy-pages@v4
 
       - name: Verify live public website
@@ -204,8 +215,8 @@ jobs:
               && test -s "$RUNNER_TEMP/live-target.js" \
               && test -s "$RUNNER_TEMP/live-pxtapp.js" \
               && test -s "$RUNNER_TEMP/live-main.js"; then
-                echo "LIVE_SMOKE_TEST=SUCCESS" | tee -a "$LOG"
                 success=1
+                echo "LIVE_SMOKE_TEST=SUCCESS" | tee -a "$LOG"
                 break
             fi
 
@@ -247,6 +258,13 @@ jobs:
             "checkedAt": "$(date -u +%FT%TZ)",
             "sourceCommit": "$GITHUB_SHA",
             "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
+            "checkoutArcade": "${{ steps.checkout_arcade.outcome }}",
+            "install": "${{ steps.install.outcome }}",
+            "build": "${{ steps.build.outcome }}",
+            "stage": "${{ steps.stage.outcome }}",
+            "configurePages": "${{ steps.configure.outcome }}",
+            "uploadPages": "${{ steps.upload.outcome }}",
+            "deployPages": "${{ steps.deploy.outcome }}",
             "httpCode": "${{ steps.smoke.outputs.http_code }}",
             "effectiveUrl": "${{ steps.smoke.outputs.effective }}",
             "hasMakeCodeTitle": "${{ steps.smoke.outputs.has_title }}",
@@ -257,7 +275,10 @@ jobs:
             "mainJsHttp": "${{ steps.smoke.outputs.main_code }}",
             "buildInfoHttp": "${{ steps.smoke.outputs.info_code }}",
             "buildInfoStatus": "${{ steps.smoke.outputs.info_status }}",
-            "buildInfoCommitMatches": "${{ steps.smoke.outputs.info_commit }}"
+            "buildInfoCommitMatches": "${{ steps.smoke.outputs.info_commit }}",
+            "generatedFiles": "${{ steps.stage.outputs.file_count }}",
+            "indexBytes": "${{ steps.stage.outputs.index_size }}",
+            "targetBytes": "${{ steps.stage.outputs.target_size }}"
           }
           EOF
 
