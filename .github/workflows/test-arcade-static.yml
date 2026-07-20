@@ -45,8 +45,10 @@ jobs:
             --output "$RUNNER_TEMP/pxt-static" \
             --minify > "$RUNNER_TEMP/staticpkg.log" 2>&1
           STATUS=$?
-          echo "===== staticpkg last 220 lines ====="
-          tail -220 "$RUNNER_TEMP/staticpkg.log" || true
+          echo "===== staticpkg error summary ====="
+          grep -iE "error|failed|exception|fatal|missing|not found|cannot|ENOENT|EACCES|unhandled" "$RUNNER_TEMP/staticpkg.log" | tail -60 || true
+          echo "===== staticpkg final 35 lines ====="
+          tail -35 "$RUNNER_TEMP/staticpkg.log" || true
           exit $STATUS
 
       - name: Verify generated package
