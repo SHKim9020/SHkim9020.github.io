@@ -1,8 +1,15 @@
 {
   "status": "failure",
-  "checkedAt": "2026-07-20T15:12:28Z",
-  "sourceCommit": "ae63fa9c354de6d5b898dbbd345ec36554f35713",
+  "checkedAt": "2026-07-20T15:20:34Z",
+  "sourceCommit": "ae4f5ce2f7469136b62bc34534b88887e8203577",
   "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
+  "checkoutArcade": "success",
+  "install": "success",
+  "build": "success",
+  "stage": "failure",
+  "configurePages": "skipped",
+  "uploadPages": "skipped",
+  "deployPages": "skipped",
   "httpCode": "",
   "effectiveUrl": "",
   "hasMakeCodeTitle": "",
@@ -13,5 +20,8 @@
   "mainJsHttp": "",
   "buildInfoHttp": "",
   "buildInfoStatus": "",
-  "buildInfoCommitMatches": ""
+  "buildInfoCommitMatches": "",
+  "generatedFiles": "",
+  "indexBytes": "",
+  "targetBytes": ""
 }
