@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -23,91 +23,87 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout website repository
+      - name: Checkout website
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Checkout Microsoft MakeCode Arcade
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/pxt-arcade
-          path: _pxt_arcade
-          fetch-depth: 1
-
-      - name: Set up Node.js
+      - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.x
 
-      - name: Build and validate static editor
-        id: arcade_build
-        continue-on-error: true
-        shell: bash
+      - name: Install PXT CLI
+        run: npm install -g pxt
+
+      - name: Clone MakeCode Arcade
+        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git "$RUNNER_TEMP/pxt-arcade"
+
+      - name: Install target dependencies
+        working-directory: ${{ runner.temp }}/pxt-arcade
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+        run: npm install --no-audit --no-fund
+
+      - name: Build MakeCode Arcade target
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          CI: "true"
+        run: pxt buildtarget
+
+      - name: Prepare PXT public assets
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        shell: bash
         run: |
-          set +e
-          LOG="$GITHUB_WORKSPACE/arcade-build-log.txt"
-          STATUS="$GITHUB_WORKSPACE/arcade-build-status.txt"
-          : > "$LOG"
+          set -euo pipefail
+          rm -rf public
+          cp -a node_modules/pxt-core/webapp/public public
+          test -d public
+          test "$(find public -type f | wc -l)" -gt 10
 
-          echo "MakeCode Arcade static build started: $(date -u +%FT%TZ)" | tee "$STATUS"
-          echo "Website commit: $GITHUB_SHA" | tee -a "$STATUS"
+      - name: Build static MakeCode Arcade editor
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          CI: "true"
+        run: |
+          pxt staticpkg \
+            --route arcade-uploader \
+            --output "$RUNNER_TEMP/pxt-static"
 
-          cd "$GITHUB_WORKSPACE/_pxt_arcade"
-          echo "== npm install ==" >> "$LOG"
-          npm install --no-audit --no-fund >> "$LOG" 2>&1
-          rc=$?
+      - name: Install and verify generated editor
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          if [ $rc -eq 0 ]; then
-            echo "== pxt staticpkg ==" >> "$LOG"
-            node node_modules/pxt-core/built/pxt.js staticpkg \
-              --route arcade-uploader \
-              --output "$RUNNER_TEMP/pxt-static" \
-              --minify >> "$LOG" 2>&1
-            rc=$?
+          if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
+          elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static"
+          elif [ -f "$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader"
+          else
+            echo "Generated MakeCode Arcade index.html was not found."
+            find "$RUNNER_TEMP" -name index.html -print | sed -n '1,100p'
+            exit 1
           fi
 
-          if [ $rc -eq 0 ]; then
-            if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
-              SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
-            elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
-              SRC="$RUNNER_TEMP/pxt-static"
-            elif [ -f "$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader/index.html" ]; then
-              SRC="$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader"
-            else
-              echo "Generated index.html was not found." >> "$LOG"
-              find "$RUNNER_TEMP/pxt-static" "$GITHUB_WORKSPACE/_pxt_arcade/built" -name index.html -print >> "$LOG" 2>&1
-              rc=20
-            fi
-          fi
+          rm -rf "$GITHUB_WORKSPACE/arcade-uploader"
+          mkdir -p "$GITHUB_WORKSPACE/arcade-uploader"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/arcade-uploader/"
+          touch "$GITHUB_WORKSPACE/.nojekyll"
 
-          if [ $rc -eq 0 ]; then
-            rm -rf "$GITHUB_WORKSPACE/arcade-uploader"
-            mkdir -p "$GITHUB_WORKSPACE/arcade-uploader"
-            cp -a "$SRC"/. "$GITHUB_WORKSPACE/arcade-uploader/"
-            touch "$GITHUB_WORKSPACE/.nojekyll"
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/target.js"
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/pxtapp.js"
+          grep -q '/arcade-uploader/' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+          grep -q 'Microsoft MakeCode Arcade' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
 
-            file_count=$(find "$GITHUB_WORKSPACE/arcade-uploader" -type f | wc -l)
-            index_size=$(wc -c < "$GITHUB_WORKSPACE/arcade-uploader/index.html")
-            echo "Generated files: $file_count" | tee -a "$STATUS"
-            echo "index.html bytes: $index_size" | tee -a "$STATUS"
+          file_count=$(find "$GITHUB_WORKSPACE/arcade-uploader" -type f | wc -l)
+          index_size=$(wc -c < "$GITHUB_WORKSPACE/arcade-uploader/index.html")
+          echo "Generated files: $file_count"
+          echo "index.html bytes: $index_size"
+          test "$file_count" -gt 1000
+          test "$index_size" -gt 5000
 
-            if [ "$file_count" -lt 20 ] || [ "$index_size" -lt 1000 ]; then
-              echo "Static editor validation failed: output is incomplete." >> "$LOG"
-              rc=21
-            fi
-
-            if grep -Eqi '<meta[^>]+http-equiv=["'"']?refresh|location\.(replace|href)[[:space:]]*=[[:space:]]*["'"']https://arcade\.makecode\.com' "$GITHUB_WORKSPACE/arcade-uploader/index.html"; then
-              echo "Static editor validation failed: redirect page detected." >> "$LOG"
-              rc=22
-            fi
-          fi
-
-          if [ $rc -eq 0 ]; then
-            cat > "$GITHUB_WORKSPACE/arcade-uploader/build-info.json" <<EOF
+          cat > "$GITHUB_WORKSPACE/arcade-uploader/build-info.json" <<EOF
           {
             "status": "success",
             "builtAt": "$(date -u +%FT%TZ)",
@@ -116,34 +112,6 @@ jobs:
             "websiteCommit": "$GITHUB_SHA"
           }
           EOF
-            echo "RESULT: SUCCESS" | tee -a "$STATUS"
-            echo "result=success" >> "$GITHUB_OUTPUT"
-          else
-            echo "RESULT: FAILED ($rc)" | tee -a "$STATUS"
-            echo "result=failure" >> "$GITHUB_OUTPUT"
-          fi
-
-          tail -n 300 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
-          exit $rc
-
-      - name: Commit build output and diagnostics
-        if: always()
-        shell: bash
-        run: |
-          rm -rf _pxt_arcade
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A arcade-uploader arcade-build-status.txt arcade-build-log.txt .nojekyll
-          if ! git diff --cached --quiet; then
-            git commit -m "Publish verified MakeCode Arcade web app [skip ci]"
-            git push
-          fi
-
-      - name: Stop when the editor build failed
-        if: steps.arcade_build.outputs.result != 'success'
-        run: |
-          echo "The MakeCode Arcade build failed. See arcade-build-status.txt and arcade-build-log.txt in the repository."
-          exit 1
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
