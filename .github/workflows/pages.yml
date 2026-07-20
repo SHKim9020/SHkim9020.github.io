@@ -20,17 +20,69 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
     steps:
-      - name: Checkout
+      - name: Checkout website
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download MakeCode Arcade source
+        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git "$RUNNER_TEMP/pxt-arcade"
+
+      - name: Install MakeCode Arcade dependencies
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm install --no-audit --no-fund
+
+      - name: Build MakeCode Arcade static editor
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        run: |
+          node node_modules/pxt-core/built/pxt.js staticpkg \
+            --route arcade-uploader \
+            --output "$RUNNER_TEMP/pxt-static" \
+            --minify
+
+      - name: Install generated editor into website
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
+          elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static"
+          elif [ -f "$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader"
+          else
+            echo "MakeCode Arcade static editor was not generated."
+            find "$RUNNER_TEMP" -path '*index.html' -print | head -100 || true
+            exit 1
+          fi
+
+          rm -rf "$GITHUB_WORKSPACE/arcade-uploader"
+          mkdir -p "$GITHUB_WORKSPACE/arcade-uploader"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/arcade-uploader/"
+          touch "$GITHUB_WORKSPACE/.nojekyll"
+
+          test -f "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+          echo "MakeCode Arcade editor prepared successfully."
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Upload artifact
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
-      - name: Deploy
+
+      - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4
