@@ -42,6 +42,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          mkdir -p public
           node node_modules/pxt-core/built/pxt.js staticpkg \
             --route arcade-uploader \
             --output "$RUNNER_TEMP/pxt-static" \
