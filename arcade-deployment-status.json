@@ -1,13 +1,14 @@
 {
   "status": "success",
-  "checkedAt": "2026-07-20T16:27:17Z",
-  "sourceCommit": "08d0cd0b64daba1c2dcd5c6ff03e5202d0347b2b",
-  "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
+  "checkedAt": "2026-07-20T23:03:12Z",
+  "sourceCommit": "7ecf8971a2fa0284633c83ec9e6dc19964b66410",
+  "publicUrl": "https://shkim9020.github.io/onemaker-arcade-studio/",
   "build": "success",
   "stage": "success",
   "deployPages": "success",
-  "httpCode": "200",
+  "shellHttp": "200",
   "customShell": "true",
+  "uploadButton": "true",
   "editorHttp": "200",
   "editorLoaded": "true",
   "appJsHttp": "200",
@@ -17,7 +18,6 @@
   "redirectDetected": "false",
   "buildInfoCommitMatches": "true",
   "editorFiles": "5665",
-  "shellIndexBytes": "1583",
-  "editorIndexBytes": "17740",
-  "targetBytes": "12118176"
+  "shellIndexBytes": "1809",
+  "targetBytes": "12118351"
 }
