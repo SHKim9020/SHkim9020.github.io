@@ -99,7 +99,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find "$RUNNER_TEMP/pxt-static" -maxdepth 3 -type f | head -100
+          find "$RUNNER_TEMP/pxt-static" -maxdepth 3 -type f | sed -n '1,100p'
 
           if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
             SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
@@ -109,7 +109,7 @@ jobs:
             SRC="$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader"
           else
             echo "Generated index.html was not found"
-            find "$RUNNER_TEMP/pxt-arcade/built" -name index.html -print | head -100 || true
+            find "$RUNNER_TEMP/pxt-arcade/built" -name index.html -print | sed -n '1,100p' || true
             exit 1
           fi
 
