@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout website repository
@@ -20,19 +20,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download MakeCode Arcade source
+        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git pxt-arcade
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: pxt-arcade/package-lock.json
-
-      - name: Download MakeCode Arcade source
-        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git pxt-arcade
 
       - name: Install MakeCode Arcade dependencies
         working-directory: pxt-arcade
-        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm install --no-audit --no-fund
 
       - name: Build static MakeCode Arcade package
         working-directory: pxt-arcade
@@ -45,7 +45,11 @@ jobs:
       - name: Locate and publish built editor
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
+          echo "Generated index files:"
+          find "$GITHUB_WORKSPACE/pxt-static" -name index.html -print || true
+
           if [ -f "$GITHUB_WORKSPACE/pxt-static/arcade-uploader/index.html" ]; then
             SRC="$GITHUB_WORKSPACE/pxt-static/arcade-uploader"
           elif [ -f "$GITHUB_WORKSPACE/pxt-static/index.html" ]; then
@@ -54,7 +58,7 @@ jobs:
             SRC="$GITHUB_WORKSPACE/pxt-arcade/built/packaged/arcade-uploader"
           else
             echo "Static package index.html was not found."
-            find "$GITHUB_WORKSPACE" -path '*index.html' | head -50
+            find "$GITHUB_WORKSPACE/pxt-arcade/built" -name index.html -print | head -100 || true
             exit 1
           fi
 
@@ -67,7 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add arcade-uploader
+          git add -A arcade-uploader
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
           else
