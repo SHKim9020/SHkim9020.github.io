@@ -1,0 +1,81 @@
+name: Test MakeCode Arcade Static Build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/test-arcade-static.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Install PXT CLI
+        run: npm install -g pxt
+
+      - name: Clone MakeCode Arcade
+        run: git clone --depth 1 https://github.com/microsoft/pxt-arcade.git "$RUNNER_TEMP/pxt-arcade"
+
+      - name: Install target dependencies
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm install --no-audit --no-fund
+
+      - name: Ensure Arcade simulator dependency
+        run: |
+          rm -rf "$RUNNER_TEMP/pxt-arcade/node_modules/pxt-arcade-sim"
+          git clone --depth 1 --branch v0.12.3 https://github.com/microsoft/pxt-arcade-sim.git "$RUNNER_TEMP/pxt-arcade/node_modules/pxt-arcade-sim"
+
+      - name: Build static editor
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        env:
+          CI: "true"
+        run: |
+          pxt staticpkg \
+            --route arcade-uploader \
+            --output "$RUNNER_TEMP/pxt-static" \
+            --minify
+
+      - name: Verify generated package
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$RUNNER_TEMP/pxt-static" -maxdepth 3 -type f | head -100
+
+          if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
+          elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static"
+          elif [ -f "$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-arcade/built/packaged/arcade-uploader"
+          else
+            echo "Generated index.html was not found"
+            find "$RUNNER_TEMP/pxt-arcade/built" -name index.html -print | head -100 || true
+            exit 1
+          fi
+
+          test -s "$SRC/index.html"
+          grep -q "pxt" "$SRC/index.html" || grep -q "MakeCode" "$SRC/index.html"
+          mkdir -p "$GITHUB_WORKSPACE/verified-arcade-uploader"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/verified-arcade-uploader/"
+          touch "$GITHUB_WORKSPACE/verified-arcade-uploader/.nojekyll"
+
+      - name: Upload verified static editor
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-arcade-uploader
+          path: verified-arcade-uploader
+          if-no-files-found: error
+          retention-days: 3
