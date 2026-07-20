@@ -37,11 +37,17 @@ jobs:
         working-directory: ${{ runner.temp }}/pxt-arcade
         env:
           CI: "true"
+        shell: bash
         run: |
+          set +e
           pxt staticpkg \
             --route arcade-uploader \
             --output "$RUNNER_TEMP/pxt-static" \
-            --minify
+            --minify > "$RUNNER_TEMP/staticpkg.log" 2>&1
+          STATUS=$?
+          echo "===== staticpkg last 220 lines ====="
+          tail -220 "$RUNNER_TEMP/staticpkg.log" || true
+          exit $STATUS
 
       - name: Verify generated package
         shell: bash
