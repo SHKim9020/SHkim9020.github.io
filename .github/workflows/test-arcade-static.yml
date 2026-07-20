@@ -57,6 +57,17 @@ jobs:
           echo "MakeCode Arcade buildtarget failed. Diagnostic log was uploaded."
           exit 1
 
+      - name: Prepare PXT public assets
+        working-directory: ${{ runner.temp }}/pxt-arcade
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf public
+          cp -a node_modules/pxt-core/webapp/public public
+          test -d public
+          test "$(find public -type f | wc -l)" -gt 10
+          echo "Prepared $(find public -type f | wc -l) public asset files."
+
       - name: Build static editor
         id: static_build
         continue-on-error: true
