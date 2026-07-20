@@ -1,4 +1,4 @@
-name: Build and Deploy Arcade Studio
+name: Build and Deploy OneMakerLab Arcade Studio
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: arcade-pages
+  group: onemaker-arcade-pages
   cancel-in-progress: true
 
 jobs:
@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           mkdir -p public
           node node_modules/pxt-core/built/pxt.js staticpkg \
-            --route arcade-uploader/editor \
+            --route onemaker-arcade-studio/editor \
             --output "$RUNNER_TEMP/pxt-static"
 
       - name: Assemble and verify custom web app
@@ -71,12 +71,12 @@ jobs:
           exec > >(tee "$GITHUB_WORKSPACE/arcade-stage.log") 2>&1
           set -euxo pipefail
 
-          if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/editor/index.html" ]; then
-            SRC="$RUNNER_TEMP/pxt-static/arcade-uploader/editor"
+          if [ -f "$RUNNER_TEMP/pxt-static/onemaker-arcade-studio/editor/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static/onemaker-arcade-studio/editor"
           elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
             SRC="$RUNNER_TEMP/pxt-static"
-          elif [ -f "$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader/editor/index.html" ]; then
-            SRC="$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader/editor"
+          elif [ -f "$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/onemaker-arcade-studio/editor/index.html" ]; then
+            SRC="$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/onemaker-arcade-studio/editor"
           else
             echo "Generated MakeCode Arcade editor was not found."
             find "$RUNNER_TEMP" "$GITHUB_WORKSPACE/_pxt_arcade/built" -name index.html -print | head -100 || true
@@ -87,40 +87,37 @@ jobs:
           test -s "$GITHUB_WORKSPACE/arcade-uploader-shell/style.css"
           test -s "$GITHUB_WORKSPACE/arcade-uploader-shell/app.js"
 
-          rm -rf "$GITHUB_WORKSPACE/arcade-uploader"
-          mkdir -p "$GITHUB_WORKSPACE/arcade-uploader/editor"
-          cp -a "$GITHUB_WORKSPACE/arcade-uploader-shell"/. "$GITHUB_WORKSPACE/arcade-uploader/"
-          cp -a "$SRC"/. "$GITHUB_WORKSPACE/arcade-uploader/editor/"
+          rm -rf "$GITHUB_WORKSPACE/onemaker-arcade-studio"
+          mkdir -p "$GITHUB_WORKSPACE/onemaker-arcade-studio/editor"
+          cp -a "$GITHUB_WORKSPACE/arcade-uploader-shell"/. "$GITHUB_WORKSPACE/onemaker-arcade-studio/"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/onemaker-arcade-studio/editor/"
           touch "$GITHUB_WORKSPACE/.nojekyll"
 
-          SHELL_INDEX="$GITHUB_WORKSPACE/arcade-uploader/index.html"
-          EDITOR_INDEX="$GITHUB_WORKSPACE/arcade-uploader/editor/index.html"
-          TARGET="$GITHUB_WORKSPACE/arcade-uploader/editor/target.js"
-          PXTAPP="$GITHUB_WORKSPACE/arcade-uploader/editor/pxtapp.js"
-          MAIN="$GITHUB_WORKSPACE/arcade-uploader/editor/main.js"
+          SHELL_INDEX="$GITHUB_WORKSPACE/onemaker-arcade-studio/index.html"
+          EDITOR_INDEX="$GITHUB_WORKSPACE/onemaker-arcade-studio/editor/index.html"
+          TARGET="$GITHUB_WORKSPACE/onemaker-arcade-studio/editor/target.js"
+          PXTAPP="$GITHUB_WORKSPACE/onemaker-arcade-studio/editor/pxtapp.js"
+          MAIN="$GITHUB_WORKSPACE/onemaker-arcade-studio/editor/main.js"
 
           test -s "$SHELL_INDEX"
-          test -s "$GITHUB_WORKSPACE/arcade-uploader/style.css"
-          test -s "$GITHUB_WORKSPACE/arcade-uploader/app.js"
+          test -s "$GITHUB_WORKSPACE/onemaker-arcade-studio/style.css"
+          test -s "$GITHUB_WORKSPACE/onemaker-arcade-studio/app.js"
           test -s "$EDITOR_INDEX"
           test -s "$TARGET"
           test -s "$PXTAPP"
           test -s "$MAIN"
 
           grep -Fq 'OneMakerLab Arcade Studio' "$SHELL_INDEX"
+          grep -Fq '게임기에 바로 업로드' "$SHELL_INDEX"
           grep -Fq 'editor/?controller=1' "$SHELL_INDEX"
-          grep -Fq 'MICROBIT 드라이브 선택' "$SHELL_INDEX"
+          grep -Fq 'sandbox=' "$SHELL_INDEX"
           grep -Fq 'Microsoft MakeCode Arcade' "$EDITOR_INDEX"
-          grep -Fq '/arcade-uploader/editor/' "$EDITOR_INDEX"
+          grep -Fq '/onemaker-arcade-studio/editor/' "$EDITOR_INDEX"
 
-          editor_files=$(find "$GITHUB_WORKSPACE/arcade-uploader/editor" -type f | wc -l)
+          editor_files=$(find "$GITHUB_WORKSPACE/onemaker-arcade-studio/editor" -type f | wc -l)
+          shell_size=$(wc -c < "$SHELL_INDEX")
           editor_index_size=$(wc -c < "$EDITOR_INDEX")
           target_size=$(wc -c < "$TARGET")
-          shell_size=$(wc -c < "$SHELL_INDEX")
-          echo "Editor files: $editor_files"
-          echo "Shell index bytes: $shell_size"
-          echo "Editor index bytes: $editor_index_size"
-          echo "target.js bytes: $target_size"
           test "$editor_files" -ge 20
           test "$shell_size" -ge 1000
           test "$editor_index_size" -ge 1000
@@ -132,18 +129,17 @@ jobs:
             "  \"builtAt\": \"$(date -u +%FT%TZ)\"," \
             '  "app": "OneMakerLab Arcade Studio",' \
             '  "editor": "Microsoft MakeCode Arcade",' \
-            '  "route": "/arcade-uploader/",' \
-            '  "editorRoute": "/arcade-uploader/editor/",' \
+            '  "route": "/onemaker-arcade-studio/",' \
+            '  "editorRoute": "/onemaker-arcade-studio/editor/",' \
             "  \"websiteCommit\": \"$GITHUB_SHA\"," \
             "  \"editorFiles\": $editor_files," \
             "  \"shellIndexBytes\": $shell_size," \
             "  \"editorIndexBytes\": $editor_index_size," \
             "  \"targetBytes\": $target_size" \
-            '}' > "$GITHUB_WORKSPACE/arcade-uploader/build-info.json"
+            '}' > "$GITHUB_WORKSPACE/onemaker-arcade-studio/build-info.json"
 
           echo "editor_files=$editor_files" >> "$GITHUB_OUTPUT"
           echo "shell_size=$shell_size" >> "$GITHUB_OUTPUT"
-          echo "editor_index_size=$editor_index_size" >> "$GITHUB_OUTPUT"
           echo "target_size=$target_size" >> "$GITHUB_OUTPUT"
           rm -rf "$GITHUB_WORKSPACE/_pxt_arcade"
           echo "STAGE_SUCCESS"
@@ -152,9 +148,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: arcade-stage-diagnostics
+          name: onemaker-arcade-stage-diagnostics
           path: arcade-stage.log
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Configure GitHub Pages
         id: configure
@@ -182,17 +178,17 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          BASE="https://shkim9020.github.io/arcade-uploader/"
+          BASE="https://shkim9020.github.io/onemaker-arcade-studio/"
           CACHE="v=$GITHUB_SHA"
           SHELL_HTML="$RUNNER_TEMP/live-shell.html"
           EDITOR_HTML="$RUNNER_TEMP/live-editor.html"
           INFO="$RUNNER_TEMP/live-build-info.json"
           success=0
-          http_code="000"; editor_code="000"; app_code="000"; css_code="000"; target_code="000"; info_code="000"
-          custom_shell=false; editor_loaded=false; redirect_detected=true; info_commit=false
+          shell_code=000; editor_code=000; app_code=000; css_code=000; target_code=000; info_code=000
+          custom_shell=false; upload_button=false; editor_loaded=false; redirect_detected=true; info_commit=false
 
-          for attempt in $(seq 1 50); do
-            http_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$SHELL_HTML" -w '%{http_code}' "${BASE}?${CACHE}&attempt=${attempt}" || true)
+          for attempt in $(seq 1 60); do
+            shell_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$SHELL_HTML" -w '%{http_code}' "${BASE}?${CACHE}&attempt=${attempt}" || true)
             editor_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$EDITOR_HTML" -w '%{http_code}' "${BASE}editor/?${CACHE}" || true)
             app_code=$(curl -L -sS --max-time 90 -o "$RUNNER_TEMP/live-app.js" -w '%{http_code}' "${BASE}app.js?${CACHE}" || true)
             css_code=$(curl -L -sS --max-time 90 -o "$RUNNER_TEMP/live-style.css" -w '%{http_code}' "${BASE}style.css?${CACHE}" || true)
@@ -200,13 +196,14 @@ jobs:
             info_code=$(curl -L -sS --max-time 90 -o "$INFO" -w '%{http_code}' "${BASE}build-info.json?${CACHE}" || true)
 
             grep -Fq 'OneMakerLab Arcade Studio' "$SHELL_HTML" 2>/dev/null && custom_shell=true || custom_shell=false
+            grep -Fq '게임기에 바로 업로드' "$SHELL_HTML" 2>/dev/null && upload_button=true || upload_button=false
             grep -Fq 'Microsoft MakeCode Arcade' "$EDITOR_HTML" 2>/dev/null && editor_loaded=true || editor_loaded=false
             if grep -Fq 'location.replace(target)' "$SHELL_HTML" 2>/dev/null || grep -Fqi 'http-equiv="refresh"' "$SHELL_HTML" 2>/dev/null; then redirect_detected=true; else redirect_detected=false; fi
             grep -Fq "\"websiteCommit\": \"$GITHUB_SHA\"" "$INFO" 2>/dev/null && info_commit=true || info_commit=false
 
-            echo "attempt=$attempt shell=$http_code custom=$custom_shell editor=$editor_code editorLoaded=$editor_loaded app=$app_code css=$css_code target=$target_code info=$info_code redirect=$redirect_detected commit=$info_commit"
+            echo "attempt=$attempt shell=$shell_code custom=$custom_shell upload=$upload_button editor=$editor_code loaded=$editor_loaded app=$app_code css=$css_code target=$target_code info=$info_code redirect=$redirect_detected commit=$info_commit"
 
-            if [ "$http_code" = 200 ] && [ "$custom_shell" = true ] && [ "$editor_code" = 200 ] && [ "$editor_loaded" = true ] && [ "$app_code" = 200 ] && [ "$css_code" = 200 ] && [ "$target_code" = 200 ] && [ "$info_code" = 200 ] && [ "$redirect_detected" = false ] && [ "$info_commit" = true ]; then
+            if [ "$shell_code" = 200 ] && [ "$custom_shell" = true ] && [ "$upload_button" = true ] && [ "$editor_code" = 200 ] && [ "$editor_loaded" = true ] && [ "$app_code" = 200 ] && [ "$css_code" = 200 ] && [ "$target_code" = 200 ] && [ "$info_code" = 200 ] && [ "$redirect_detected" = false ] && [ "$info_commit" = true ]; then
               success=1
               break
             fi
@@ -214,9 +211,10 @@ jobs:
           done
 
           echo "status=$([ "$success" -eq 1 ] && echo success || echo failure)" >> "$GITHUB_OUTPUT"
-          echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
-          echo "editor_code=$editor_code" >> "$GITHUB_OUTPUT"
+          echo "shell_code=$shell_code" >> "$GITHUB_OUTPUT"
           echo "custom_shell=$custom_shell" >> "$GITHUB_OUTPUT"
+          echo "upload_button=$upload_button" >> "$GITHUB_OUTPUT"
+          echo "editor_code=$editor_code" >> "$GITHUB_OUTPUT"
           echo "editor_loaded=$editor_loaded" >> "$GITHUB_OUTPUT"
           echo "app_code=$app_code" >> "$GITHUB_OUTPUT"
           echo "css_code=$css_code" >> "$GITHUB_OUTPUT"
@@ -235,12 +233,13 @@ jobs:
             "status": "${{ steps.smoke.outputs.status || 'failure' }}",
             "checkedAt": "$(date -u +%FT%TZ)",
             "sourceCommit": "$GITHUB_SHA",
-            "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
+            "publicUrl": "https://shkim9020.github.io/onemaker-arcade-studio/",
             "build": "${{ steps.build.outcome }}",
             "stage": "${{ steps.stage.outcome }}",
             "deployPages": "${{ steps.deploy.outcome }}",
-            "httpCode": "${{ steps.smoke.outputs.http_code }}",
+            "shellHttp": "${{ steps.smoke.outputs.shell_code }}",
             "customShell": "${{ steps.smoke.outputs.custom_shell }}",
+            "uploadButton": "${{ steps.smoke.outputs.upload_button }}",
             "editorHttp": "${{ steps.smoke.outputs.editor_code }}",
             "editorLoaded": "${{ steps.smoke.outputs.editor_loaded }}",
             "appJsHttp": "${{ steps.smoke.outputs.app_code }}",
@@ -251,7 +250,6 @@ jobs:
             "buildInfoCommitMatches": "${{ steps.smoke.outputs.info_commit }}",
             "editorFiles": "${{ steps.stage.outputs.editor_files }}",
             "shellIndexBytes": "${{ steps.stage.outputs.shell_size }}",
-            "editorIndexBytes": "${{ steps.stage.outputs.editor_index_size }}",
             "targetBytes": "${{ steps.stage.outputs.target_size }}"
           }
           EOF
@@ -259,7 +257,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add arcade-deployment-status.json
           if [ "${{ steps.stage.outcome }}" != "success" ] && [ -f arcade-stage.log ]; then git add arcade-stage.log; fi
-          if ! git diff --cached --quiet; then git commit -m "Record Arcade Studio deployment verification [skip ci]"; git push; fi
+          if ! git diff --cached --quiet; then git commit -m "Record OneMakerLab Arcade Studio verification [skip ci]"; git push; fi
 
       - name: Require successful deployment
         if: steps.stage.outcome != 'success' || steps.deploy.outcome != 'success' || steps.smoke.outcome != 'success'
