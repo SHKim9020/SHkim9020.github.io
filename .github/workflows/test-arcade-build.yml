@@ -1,1 +1,80 @@
-placeholder
+name: Test MakeCode Arcade Static Build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout website
+        uses: actions/checkout@v4
+
+      - name: Checkout Microsoft MakeCode Arcade
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/pxt-arcade
+          path: _pxt_arcade
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: _pxt_arcade
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+        run: npm install --no-audit --no-fund
+
+      - name: Build static MakeCode Arcade editor
+        working-directory: _pxt_arcade
+        run: |
+          node node_modules/pxt-core/built/pxt.js staticpkg \
+            --route arcade-uploader \
+            --output "$RUNNER_TEMP/pxt-static" \
+            --minify
+
+      - name: Validate generated editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/pxt-static/arcade-uploader/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static/arcade-uploader"
+          elif [ -f "$RUNNER_TEMP/pxt-static/index.html" ]; then
+            SRC="$RUNNER_TEMP/pxt-static"
+          elif [ -f "$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader/index.html" ]; then
+            SRC="$GITHUB_WORKSPACE/_pxt_arcade/built/packaged/arcade-uploader"
+          else
+            echo "Generated editor index.html not found"
+            find "$RUNNER_TEMP" "$GITHUB_WORKSPACE/_pxt_arcade/built" -name index.html -print || true
+            exit 1
+          fi
+
+          test -s "$SRC/index.html"
+          count=$(find "$SRC" -type f | wc -l)
+          bytes=$(wc -c < "$SRC/index.html")
+          echo "Generated source: $SRC"
+          echo "Generated files: $count"
+          echo "index.html bytes: $bytes"
+          test "$count" -ge 20
+          test "$bytes" -ge 1000
+
+          mkdir -p "$GITHUB_WORKSPACE/test-output"
+          cp -a "$SRC"/. "$GITHUB_WORKSPACE/test-output/"
+          printf '{"status":"success","files":%s,"indexBytes":%s}\n' "$count" "$bytes" > "$GITHUB_WORKSPACE/test-output/build-info.json"
+
+      - name: Upload smoke-test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: makecode-arcade-static-editor
+          path: test-output
+          if-no-files-found: error
