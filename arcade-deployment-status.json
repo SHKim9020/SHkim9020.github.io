@@ -1,7 +1,7 @@
 {
   "status": "success",
-  "checkedAt": "2026-07-20T15:41:49Z",
-  "sourceCommit": "c5ae8a7641a73c681c6a59739b9c8a7b907c7ca5",
+  "checkedAt": "2026-07-20T15:50:42Z",
+  "sourceCommit": "528780ebddf2d678005b88520d3c80e90a4009a7",
   "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
   "checkoutArcade": "success",
   "install": "success",
@@ -11,7 +11,7 @@
   "uploadPages": "success",
   "deployPages": "success",
   "httpCode": "200",
-  "effectiveUrl": "https://shkim9020.github.io/arcade-uploader/?v=c5ae8a7641a73c681c6a59739b9c8a7b907c7ca5&attempt=4",
+  "effectiveUrl": "https://shkim9020.github.io/arcade-uploader/?v=528780ebddf2d678005b88520d3c80e90a4009a7&attempt=2",
   "hasMakeCodeTitle": "true",
   "hasArcadeRoute": "true",
   "redirectDetected": "false",
