@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout website
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -43,6 +45,7 @@ jobs:
         working-directory: ${{ runner.temp }}/pxt-arcade
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
         run: npm install --no-audit --no-fund
 
       - name: Build MakeCode Arcade target
@@ -95,6 +98,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/arcade-uploader/index.html"
           test -s "$GITHUB_WORKSPACE/arcade-uploader/target.js"
           test -s "$GITHUB_WORKSPACE/arcade-uploader/pxtapp.js"
+          test -s "$GITHUB_WORKSPACE/arcade-uploader/main.js"
           grep -q '/arcade-uploader/' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
           grep -q 'Microsoft MakeCode Arcade' "$GITHUB_WORKSPACE/arcade-uploader/index.html"
 
@@ -111,9 +115,13 @@ jobs:
             "builtAt": "$(date -u +%FT%TZ)",
             "source": "microsoft/pxt-arcade",
             "route": "/arcade-uploader/",
-            "websiteCommit": "$GITHUB_SHA"
+            "websiteCommit": "$GITHUB_SHA",
+            "generatedFiles": $file_count,
+            "indexBytes": $index_size
           }
           EOF
+
+          rm -rf "$RUNNER_TEMP/pxt-arcade"
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -129,70 +137,127 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify the live public website
+      - name: Verify live public website
         id: smoke
         continue-on-error: true
         shell: bash
         run: |
           set -uo pipefail
-          URL="https://shkim9020.github.io/arcade-uploader/"
-          INFO_URL="${URL}build-info.json"
+          BASE="https://shkim9020.github.io/arcade-uploader/"
+          CACHE="v=$GITHUB_SHA"
           LOG="$GITHUB_WORKSPACE/arcade-smoke-test.log"
           HTML="$RUNNER_TEMP/live-index.html"
           INFO="$RUNNER_TEMP/live-build-info.json"
           : > "$LOG"
-          success=0
 
-          for attempt in $(seq 1 30); do
+          success=0
+          http_code="000"
+          effective=""
+          has_title=false
+          has_route=false
+          redirect_detected=true
+          target_code="000"
+          pxtapp_code="000"
+          main_code="000"
+          info_code="000"
+          info_status=false
+          info_commit=false
+
+          for attempt in $(seq 1 60); do
             echo "Attempt $attempt at $(date -u +%FT%TZ)" | tee -a "$LOG"
 
-            response=$(curl -L -sS --max-time 90 -o "$HTML" -w '%{http_code}|%{url_effective}' "$URL" 2>>"$LOG" || true)
-            code=${response%%|*}
+            response=$(curl -L -sS --max-time 90 \
+              -H 'Cache-Control: no-cache' \
+              -H 'Pragma: no-cache' \
+              -o "$HTML" -w '%{http_code}|%{url_effective}' "${BASE}?${CACHE}&attempt=${attempt}" 2>>"$LOG" || true)
+            http_code=${response%%|*}
             effective=${response#*|}
-            echo "HTTP=$code EFFECTIVE=$effective" | tee -a "$LOG"
 
-            if [ "$code" = "200" ] \
-              && [ "$effective" = "$URL" ] \
-              && grep -q 'Microsoft MakeCode Arcade' "$HTML" \
-              && grep -q '/arcade-uploader/' "$HTML" \
-              && ! grep -Eqi '<meta[^>]+http-equiv=["'"']?refresh|location\.(replace|href).*arcade\.makecode\.com' "$HTML" \
-              && curl -fsS --max-time 90 "${URL}target.js" -o "$RUNNER_TEMP/live-target.js" \
-              && curl -fsS --max-time 90 "${URL}pxtapp.js" -o "$RUNNER_TEMP/live-pxtapp.js" \
+            grep -q 'Microsoft MakeCode Arcade' "$HTML" 2>/dev/null && has_title=true || has_title=false
+            grep -q '/arcade-uploader/' "$HTML" 2>/dev/null && has_route=true || has_route=false
+            if grep -Eqi '<meta[^>]+http-equiv=["'"']?refresh|location\.(replace|href).*arcade\.makecode\.com' "$HTML" 2>/dev/null; then
+              redirect_detected=true
+            else
+              redirect_detected=false
+            fi
+
+            target_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$RUNNER_TEMP/live-target.js" -w '%{http_code}' "${BASE}target.js?${CACHE}" 2>>"$LOG" || true)
+            pxtapp_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$RUNNER_TEMP/live-pxtapp.js" -w '%{http_code}' "${BASE}pxtapp.js?${CACHE}" 2>>"$LOG" || true)
+            main_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$RUNNER_TEMP/live-main.js" -w '%{http_code}' "${BASE}main.js?${CACHE}" 2>>"$LOG" || true)
+            info_code=$(curl -L -sS --max-time 90 -H 'Cache-Control: no-cache' -o "$INFO" -w '%{http_code}' "${BASE}build-info.json?${CACHE}" 2>>"$LOG" || true)
+
+            grep -q '"status": "success"' "$INFO" 2>/dev/null && info_status=true || info_status=false
+            grep -q "\"websiteCommit\": \"$GITHUB_SHA\"" "$INFO" 2>/dev/null && info_commit=true || info_commit=false
+
+            echo "HTTP=$http_code EFFECTIVE=$effective TITLE=$has_title ROUTE=$has_route REDIRECT=$redirect_detected TARGET=$target_code PXTAPP=$pxtapp_code MAIN=$main_code INFO=$info_code INFO_STATUS=$info_status INFO_COMMIT=$info_commit" | tee -a "$LOG"
+
+            if [ "$http_code" = "200" ] \
+              && [ "$has_title" = "true" ] \
+              && [ "$has_route" = "true" ] \
+              && [ "$redirect_detected" = "false" ] \
+              && [ "$target_code" = "200" ] \
+              && [ "$pxtapp_code" = "200" ] \
+              && [ "$main_code" = "200" ] \
+              && [ "$info_code" = "200" ] \
+              && [ "$info_status" = "true" ] \
+              && [ "$info_commit" = "true" ] \
               && test -s "$RUNNER_TEMP/live-target.js" \
               && test -s "$RUNNER_TEMP/live-pxtapp.js" \
-              && curl -fsS --max-time 90 "$INFO_URL" -o "$INFO" \
-              && grep -q '"status": "success"' "$INFO" \
-              && grep -q "\"websiteCommit\": \"$GITHUB_SHA\"" "$INFO"; then
+              && test -s "$RUNNER_TEMP/live-main.js"; then
                 echo "LIVE_SMOKE_TEST=SUCCESS" | tee -a "$LOG"
                 success=1
                 break
             fi
 
-            echo "The newest deployment is not live yet; retrying." | tee -a "$LOG"
-            sleep 20
+            sleep 15
           done
 
-          if [ "$success" -ne 1 ]; then
-            echo "LIVE_SMOKE_TEST=FAILED" | tee -a "$LOG"
-            exit 1
-          fi
+          {
+            echo "status=$([ "$success" -eq 1 ] && echo success || echo failure)"
+            echo "http_code=$http_code"
+            echo "effective=$effective"
+            echo "has_title=$has_title"
+            echo "has_route=$has_route"
+            echo "redirect_detected=$redirect_detected"
+            echo "target_code=$target_code"
+            echo "pxtapp_code=$pxtapp_code"
+            echo "main_code=$main_code"
+            echo "info_code=$info_code"
+            echo "info_status=$info_status"
+            echo "info_commit=$info_commit"
+          } >> "$GITHUB_OUTPUT"
+
+          [ "$success" -eq 1 ]
+
+      - name: Upload live verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arcade-live-smoke-test
+          path: arcade-smoke-test.log
+          if-no-files-found: warn
 
       - name: Record deployment verification result
         if: always()
         shell: bash
         run: |
-          if [ "${{ steps.smoke.outcome }}" = "success" ]; then
-            RESULT="success"
-          else
-            RESULT="failure"
-          fi
-
           cat > arcade-deployment-status.json <<EOF
           {
-            "status": "$RESULT",
+            "status": "${{ steps.smoke.outputs.status || 'failure' }}",
             "checkedAt": "$(date -u +%FT%TZ)",
             "sourceCommit": "$GITHUB_SHA",
-            "publicUrl": "https://shkim9020.github.io/arcade-uploader/"
+            "publicUrl": "https://shkim9020.github.io/arcade-uploader/",
+            "httpCode": "${{ steps.smoke.outputs.http_code }}",
+            "effectiveUrl": "${{ steps.smoke.outputs.effective }}",
+            "hasMakeCodeTitle": "${{ steps.smoke.outputs.has_title }}",
+            "hasArcadeRoute": "${{ steps.smoke.outputs.has_route }}",
+            "redirectDetected": "${{ steps.smoke.outputs.redirect_detected }}",
+            "targetJsHttp": "${{ steps.smoke.outputs.target_code }}",
+            "pxtAppJsHttp": "${{ steps.smoke.outputs.pxtapp_code }}",
+            "mainJsHttp": "${{ steps.smoke.outputs.main_code }}",
+            "buildInfoHttp": "${{ steps.smoke.outputs.info_code }}",
+            "buildInfoStatus": "${{ steps.smoke.outputs.info_status }}",
+            "buildInfoCommitMatches": "${{ steps.smoke.outputs.info_commit }}"
           }
           EOF
 
@@ -204,6 +269,6 @@ jobs:
             git push
           fi
 
-      - name: Fail when the public website verification failed
+      - name: Require successful public verification
         if: steps.smoke.outcome != 'success'
         run: exit 1
