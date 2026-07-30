@@ -1,6 +1,6 @@
 {
   "name": "OneMaker ESP32-C3 Boat Runtime",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "home_assistant_domain": "onemaker_boat",
   "new_install_prompt_erase": true,
   "builds": [
