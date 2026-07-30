@@ -40,7 +40,7 @@ jobs:
         run: |
           mkdir -p /tmp/onemaker-c3-build
           arduino-cli compile \
-            --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=qio,FlashSize=4M" \
+            --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=qio,FlashSize=4M,PartitionScheme=huge_app" \
             --output-dir /tmp/onemaker-c3-build \
             esp32-c3-boat/firmware/boat_runtime
           cp /tmp/onemaker-c3-build/boat_runtime.ino.merged.bin \
