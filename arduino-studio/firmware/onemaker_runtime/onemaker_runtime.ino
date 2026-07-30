@@ -9,14 +9,14 @@
 // OneMaker Arduino UNO/Nano Runtime 1.0.0
 static const char *RUNTIME_VERSION = "1.0.0";
 static const uint8_t MAX_LINE = 180;
-static const uint8_t MAX_SERVOS = 4;
+static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
 
 char inputLine[MAX_LINE];
 uint8_t inputLength = 0;
 
-Servo servos[MAX_SERVOS];
-int8_t servoPins[MAX_SERVOS] = {-1, -1, -1, -1};
+Servo servos[ONEMAKER_MAX_SERVOS];
+int8_t servoPins[ONEMAKER_MAX_SERVOS] = {-1, -1, -1, -1};
 uint8_t motorPins[MAX_TRACKED_MOTORS] = {255, 255, 255, 255};
 uint8_t motorPinCount = 0;
 int8_t lastTonePin = -1;
@@ -123,10 +123,10 @@ void setMotor(uint8_t pin1, uint8_t pin2, int speedValue) {
 }
 
 Servo *servoForPin(uint8_t pin) {
-  for (uint8_t index = 0; index < MAX_SERVOS; index++) {
+  for (uint8_t index = 0; index < ONEMAKER_MAX_SERVOS; index++) {
     if (servoPins[index] == pin) return &servos[index];
   }
-  for (uint8_t index = 0; index < MAX_SERVOS; index++) {
+  for (uint8_t index = 0; index < ONEMAKER_MAX_SERVOS; index++) {
     if (servoPins[index] < 0) {
       servoPins[index] = pin;
       servos[index].attach(pin);
