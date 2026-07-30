@@ -1,0 +1,51 @@
+name: Build ESP32-C3 Boat firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "esp32-c3-boat/firmware/boat_runtime/**"
+      - ".github/workflows/build-esp32-c3-boat-firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: ${{ !contains(github.event.head_commit.message, '[skip firmware]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core and ArduinoJson
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install ArduinoJson
+
+      - name: Compile ESP32-C3 runtime
+        run: |
+          mkdir -p /tmp/onemaker-c3-build
+          arduino-cli compile \
+            --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=qio,FlashSize=4M" \
+            --output-dir /tmp/onemaker-c3-build \
+            esp32-c3-boat/firmware/boat_runtime
+          cp /tmp/onemaker-c3-build/boat_runtime.ino.merged.bin \
+            esp32-c3-boat/firmware/boat_runtime.merged.bin
+
+      - name: Commit generated firmware
+        run: |
+          if git diff --quiet -- esp32-c3-boat/firmware/boat_runtime.merged.bin; then
+            echo "Firmware is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add esp32-c3-boat/firmware/boat_runtime.merged.bin
+          git commit -m "Build ESP32-C3 Boat firmware [skip firmware]"
+          git push
