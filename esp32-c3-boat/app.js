@@ -203,10 +203,64 @@
       previousStatement: null,
       nextStatement: null,
       colour: 290
+    },
+    {
+      type: "my_function_def",
+      message0: "🧩 내 블록 %1 정의",
+      args0: [{ type: "field_input", name: "NAME", text: "새 동작" }],
+      message1: "%1",
+      args1: [{ type: "input_statement", name: "DO" }],
+      colour: 290,
+      tooltip: "여러 번 사용할 동작을 하나의 내 블록으로 정의합니다."
+    },
+    {
+      type: "my_function_def_value",
+      message0: "🧩 값 내 블록 %1 정의",
+      args0: [{ type: "field_input", name: "NAME", text: "새 값" }],
+      message1: "실행 %1",
+      args1: [{ type: "input_statement", name: "DO" }],
+      message2: "결과 %1",
+      args2: [{ type: "input_value", name: "RETURN" }],
+      colour: 290,
+      tooltip: "동작을 실행한 뒤 숫자나 센서 값을 돌려주는 내 블록입니다."
     }
   ];
 
   Blockly.defineBlocksWithJsonArray(blockJson);
+
+  function functionOptions(wantsValue) {
+    const targetWorkspace = workspace || Blockly.getMainWorkspace?.();
+    const type = wantsValue ? "my_function_def_value" : "my_function_def";
+    const names = targetWorkspace?.getAllBlocks(false)
+      .filter(block => block.type === type)
+      .map(block => block.getFieldValue("NAME")?.trim())
+      .filter(Boolean) || [];
+    return names.length ? [...new Set(names)].map(name => [name, name]) : [["먼저 정의하세요", "__none__"]];
+  }
+
+  Blockly.Blocks.my_function_call = {
+    init() {
+      this.appendDummyInput()
+        .appendField("내 블록")
+        .appendField(new Blockly.FieldDropdown(() => functionOptions(false)), "NAME")
+        .appendField("실행");
+      this.setPreviousStatement(true);
+      this.setNextStatement(true);
+      this.setColour(290);
+      this.setTooltip("정의한 내 블록의 동작을 실행합니다.");
+    }
+  };
+
+  Blockly.Blocks.my_function_call_value = {
+    init() {
+      this.appendDummyInput()
+        .appendField("값 내 블록")
+        .appendField(new Blockly.FieldDropdown(() => functionOptions(true)), "NAME");
+      this.setOutput(true);
+      this.setColour(290);
+      this.setTooltip("정의한 값 내 블록을 실행하고 결과를 가져옵니다.");
+    }
+  };
 
   const toolbox = {
     kind: "categoryToolbox",
@@ -270,6 +324,14 @@
         ]
       },
       { kind: "category", name: "변수", colour: "330", custom: "VARIABLE" },
+      {
+        kind: "category", name: "내 블록", colour: "290", contents: [
+          { kind: "block", type: "my_function_def" },
+          { kind: "block", type: "my_function_call" },
+          { kind: "block", type: "my_function_def_value", inputs: { RETURN: { shadow: { type: "math_number", fields: { NUM: 0 } } } } },
+          { kind: "block", type: "my_function_call_value" }
+        ]
+      },
       {
         kind: "category", name: "출력", colour: "290", contents: [
           { kind: "block", type: "serial_print", inputs: { VALUE: { shadow: { type: "text", fields: { TEXT: "안녕하세요!" } } } } }
@@ -427,7 +489,8 @@
       config: config(),
       workspace: Blockly.serialization.workspaces.save(workspace),
       program: compileRuntimeProgram(),
-      handlers: compileRuntimeHandlers()
+      handlers: compileRuntimeHandlers(),
+      functions: compileRuntimeFunctions()
     };
   }
 
@@ -551,7 +614,7 @@
   function topProgramBlock() {
     const topBlocks = workspace.getTopBlocks(true);
     return topBlocks.find(block => block.type === "boat_start")
-      || topBlocks.find(block => block.type !== "remote_when")
+      || topBlocks.find(block => block.type !== "remote_when" && !block.type.startsWith("my_function_def"))
       || null;
   }
 
@@ -573,6 +636,27 @@
         handlers[button] = [...(handlers[button] || []), ...compileStatementChain(block.getNextBlock())];
       });
     return handlers;
+  }
+
+  function functionName(block) {
+    return block.getFieldValue("NAME") || "내 블록";
+  }
+
+  function compileRuntimeFunctions() {
+    const functions = {};
+    workspace.getTopBlocks(true)
+      .filter(block => block.type === "my_function_def" || block.type === "my_function_def_value")
+      .forEach(block => {
+        const name = functionName(block);
+        functions[name] = {
+          params: [],
+          steps: compileStatementChain(block.getInputTargetBlock("DO")),
+          returns: block.type === "my_function_def_value"
+            ? expressionAst(block.getInputTargetBlock("RETURN"))
+            : null
+        };
+      });
+    return functions;
   }
 
   function compileStatementChain(firstBlock) {
@@ -620,6 +704,8 @@
         return { op: "setVar", name: variableName(block), value: expressionAst(block.getInputTargetBlock("VALUE")) };
       case "math_change":
         return { op: "changeVar", name: variableName(block), value: expressionAst(block.getInputTargetBlock("DELTA")) };
+      case "my_function_call":
+        return { op: "call", name: functionName(block), args: [] };
       case "serial_print": return { op: "print", value: expressionAst(block.getInputTargetBlock("VALUE")) };
       default:
         return null;
@@ -645,6 +731,8 @@
       case "husky_seen": return { type: "huskySeen", id: expressionAst(block.getInputTargetBlock("ID")) };
       case "husky_value":
         return { type: "huskyValue", id: expressionAst(block.getInputTargetBlock("ID")), field: block.getFieldValue("FIELD") };
+      case "my_function_call_value":
+        return { type: "functionCall", name: functionName(block), args: [] };
       case "math_arithmetic":
         return { type: "math", op: block.getFieldValue("OP"), a: expressionAst(block.getInputTargetBlock("A")), b: expressionAst(block.getInputTargetBlock("B")) };
       case "logic_compare":
@@ -669,6 +757,8 @@
       case "remote_speed": return "remoteSpeed";
       case "husky_seen": return `huskySeen(${cppExpression(block.getInputTargetBlock("ID"))})`;
       case "husky_value": return `huskyValue(${cppExpression(block.getInputTargetBlock("ID"))}, "${block.getFieldValue("FIELD")}")`;
+      case "my_function_call_value":
+        return `${cppFunction(functionName(block))}()`;
       case "math_arithmetic": {
         const ops = { ADD: "+", MINUS: "-", MULTIPLY: "*", DIVIDE: "/", POWER: "" };
         const op = block.getFieldValue("OP");
@@ -743,6 +833,9 @@
         case "math_change":
           code += `${indent}${cppVariable(variableName(block))} += ${cppExpression(block.getInputTargetBlock("DELTA"))};\n`;
           break;
+        case "my_function_call":
+          code += `${indent}${cppFunction(functionName(block))}();\n`;
+          break;
         case "serial_print":
           code += `${indent}Serial.println(${cppExpression(block.getInputTargetBlock("VALUE"))});\n`;
           break;
@@ -756,6 +849,20 @@
     const cfg = config();
     const variables = workspace.getVariableMap().getAllVariables().map(variable => `double ${cppVariable(variable.name)} = 0;`).join("\n");
     const body = cppStatements(firstStatementBlock(), 1) || "  // 왼쪽에서 블록을 가져와 프로그램을 만드세요.\n";
+    const procedureBlocks = workspace.getTopBlocks(true)
+      .filter(block => block.type === "my_function_def" || block.type === "my_function_def_value");
+    const procedureDeclarations = procedureBlocks.map(block => {
+      const returnType = block.type === "my_function_def_value" ? "double" : "void";
+      return `${returnType} ${cppFunction(functionName(block))}();`;
+    }).join("\n");
+    const procedureDefinitions = procedureBlocks.map(block => {
+      const returnType = block.type === "my_function_def_value" ? "double" : "void";
+      const statements = cppStatements(block.getInputTargetBlock("DO"), 1);
+      const returnLine = block.type === "my_function_def_value"
+        ? `  return ${cppExpression(block.getInputTargetBlock("RETURN"))};\n`
+        : "";
+      return `${returnType} ${cppFunction(functionName(block))}() {\n${statements}${returnLine}}\n`;
+    }).join("\n");
     const usesHusky = workspace.getAllBlocks(false).some(block => block.type.startsWith("husky_"));
     const huskyInclude = usesHusky ? "\n#include <Wire.h>\n#include <HUSKYLENS.h>" : "";
     const huskyGlobals = usesHusky ? `
@@ -813,6 +920,7 @@ const bool INVERT_LEFT = ${cfg.invertLeft ? "true" : "false"};
 const bool INVERT_RIGHT = ${cfg.invertRight ? "true" : "false"};
 
 ${variables || "// 사용자가 만든 변수 없음"}${huskyGlobals}
+${procedureDeclarations || "// 사용자가 만든 내 블록 없음"}
 
 void setChannel(int pinA, int pinB, int speed) {
   speed = constrain(speed, -255, 255);
@@ -868,6 +976,7 @@ long readSonarCm(int trigPin, int echoPin) {
   return duration ? duration / 58 : 0;
 }
 
+${procedureDefinitions}
 void setup() {
   Serial.begin(115200);
   pinMode(IN1, OUTPUT);
@@ -1028,12 +1137,13 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       if (!serialWriter && !bleRxCharacteristic) return;
       const program = compileRuntimeProgram();
       const handlers = compileRuntimeHandlers();
+      const functions = compileRuntimeFunctions();
       if (!program.length && !Object.keys(handlers).length) throw new Error("실행할 시작 또는 리모컨 이벤트 블록이 없습니다.");
       showProgress("보드에 저장 중", "블록 프로그램을 ESP32-C3로 보내고 있습니다.", 25);
       const stopPromise = waitForMessage(message => message.type === "stopped", 2500).catch(() => null);
       await writeLine(JSON.stringify({ cmd: "stop" }));
       await stopPromise;
-      const payload = { cmd: "load", config: config(), program, handlers };
+      const payload = { cmd: "load", config: config(), program, handlers, functions };
       const ackPromise = waitForMessage(message => message.type === "loaded", 8000);
       await writeLine(JSON.stringify(payload));
       await ackPromise;
@@ -1074,6 +1184,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
   }
 
   async function remoteDrive(button) {
+    setRemoteVisual(button);
     try {
       if (!serialWriter && !bleRxCharacteristic) return toast("먼저 Bluetooth 또는 USB로 보트를 연결하세요.");
       await writeLine(JSON.stringify({
@@ -1085,6 +1196,21 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     } catch (error) {
       toast(error.message);
     }
+  }
+
+  function setRemoteVisual(direction) {
+    const controller = $(".remote-controller");
+    if (!controller) return;
+    controller.dataset.direction = direction;
+    $$(".remote-pad button").forEach(button => button.classList.toggle("active", button.dataset.remote === direction));
+    const labels = {
+      forward: "전진 중",
+      backward: "후진 중",
+      left: "좌회전 중",
+      right: "우회전 중",
+      stop: "정지"
+    };
+    $("#boatMotionLabel").textContent = labels[direction] || "조종 대기";
   }
 
   async function sendSerialText() {
@@ -1159,6 +1285,11 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
   function cppVariable(value) {
     const normalized = String(value || "variable").normalize("NFKD").replace(/[^\w\u3131-\uD79D]/g, "_");
     return `var_${normalized || "value"}`;
+  }
+
+  function cppFunction(value) {
+    const normalized = String(value || "my_block").normalize("NFKD").replace(/[^\w\u3131-\uD79D]/g, "_");
+    return `my_${normalized || "block"}`;
   }
 
   function escapeCpp(value) {
