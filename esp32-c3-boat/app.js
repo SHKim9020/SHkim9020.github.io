@@ -369,6 +369,11 @@
         DEFAULT_PINS.huskySda, DEFAULT_PINS.huskyScl
       ][index];
     });
+    $("#boatNumber").innerHTML = Array.from(
+      { length: 16 },
+      (_, index) => `<option value="${index + 1}">${String(index + 1).padStart(2, "0")}</option>`
+    ).join("");
+    $("#boatNumber").value = "1";
   }
 
   function bindEvents() {
@@ -384,6 +389,8 @@
     $("#firmwareBtn").addEventListener("click", () => $("#firmwareDialog").showModal());
     $("#connectBtn").addEventListener("click", connectSerial);
     $("#bleConnectBtn").addEventListener("click", connectBluetooth);
+    $("#bleDisconnectBtn").addEventListener("click", disconnectBluetooth);
+    $("#saveBoatNumberBtn").addEventListener("click", saveBoatNumber);
     $("#uploadBtn").addEventListener("click", uploadAndRun);
     $("#stopBtn").addEventListener("click", emergencyStop);
     $("#exampleBtn").addEventListener("click", () => loadExample(true));
@@ -430,7 +437,7 @@
         button.addEventListener("pointerleave", event => { if (event.buttons) remoteDrive("stop"); });
       }
     });
-    ["pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight", "huskyEnabled", "huskySda", "huskyScl"].forEach(id => {
+    ["boatNumber", "pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight", "huskyEnabled", "huskySda", "huskyScl"].forEach(id => {
       $(`#${id}`).addEventListener("change", () => {
         codeManuallyEdited = false;
         refreshGeneratedCode();
@@ -442,6 +449,14 @@
       if (serialReader) serialReader.cancel().catch(() => {});
       if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
     });
+    if ("serial" in navigator) {
+      navigator.serial.addEventListener("disconnect", () => {
+        serialWriter = undefined;
+        serialPort = undefined;
+        readLoopActive = false;
+        setConnected(false);
+      });
+    }
   }
 
   function activateTab(tabName) {
@@ -451,6 +466,7 @@
 
   function config() {
     return {
+      boatNumber: Number($("#boatNumber").value),
       pins: {
         in1: Number($("#pinIn1").value),
         in2: Number($("#pinIn2").value),
@@ -538,6 +554,7 @@
     Blockly.serialization.workspaces.load(data.workspace, workspace);
     $("#projectName").value = data.name || "나의 스마트선박";
     const cfg = data.config || {};
+    $("#boatNumber").value = String(Math.min(16, Math.max(1, Number(cfg.boatNumber) || 1)));
     const pins = cfg.pins || DEFAULT_PINS;
     $("#pinIn1").value = pins.in1 ?? DEFAULT_PINS.in1;
     $("#pinIn2").value = pins.in2 ?? DEFAULT_PINS.in2;
@@ -1058,6 +1075,48 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
   }
 
+  async function disconnectBluetooth() {
+    if (!bleDevice?.gatt?.connected) {
+      setBluetoothConnected(false);
+      return toast("연결된 Bluetooth 보트가 없습니다.");
+    }
+    try {
+      await writeLine(JSON.stringify({
+        cmd: "remote",
+        button: "stop",
+        speed: 0,
+        config: config()
+      }), "ble").catch(() => {});
+      bleDevice.gatt.disconnect();
+      setRemoteVisual("stop");
+      setBluetoothConnected(false);
+      toast("Bluetooth 연결을 끊었습니다.");
+    } catch (error) {
+      toast(`Bluetooth 연결 해제 실패: ${error.message}`);
+    }
+  }
+
+  async function saveBoatNumber() {
+    if (!serialWriter) return toast("선박 번호 저장 전에 USB를 연결하세요.");
+    const boatNumber = Number($("#boatNumber").value);
+    if (!Number.isInteger(boatNumber) || boatNumber < 1 || boatNumber > 16) {
+      return toast("선박 번호는 01~16 중에서 선택하세요.");
+    }
+    try {
+      const response = await sendCommandAndWait(
+        { cmd: "setBoatNumber", boatNumber },
+        ["numberSaved"],
+        5000
+      );
+      const name = response.name || `OneMaker Boat ${String(boatNumber).padStart(2, "0")}`;
+      $("#boatNumberStatus").textContent = `${name} 저장 완료 · 보드 재시작 중`;
+      toast(`${name}으로 저장했습니다. 잠시 후 USB를 다시 연결하세요.`);
+      scheduleAutosave();
+    } catch (error) {
+      toast(error.message || "선박 번호를 저장하지 못했습니다.");
+    }
+  }
+
   async function startReadLoop() {
     if (!serialPort?.readable || readLoopActive) return;
     readLoopActive = true;
@@ -1096,6 +1155,11 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         if (message.type === "hello") {
           boardRuntime = String(message.runtime || "");
           boardUploadProtocol = String(message.uploadProtocol || "");
+          const connectedBoatNumber = Number(message.boatNumber);
+          if (connectedBoatNumber >= 1 && connectedBoatNumber <= 16) {
+            $("#boatNumber").value = String(connectedBoatNumber);
+            $("#boatNumberStatus").textContent = `현재 보드: ${message.bluetoothName || `OneMaker Boat ${String(connectedBoatNumber).padStart(2, "0")}`}`;
+          }
         }
         for (let index = messageWaiters.length - 1; index >= 0; index--) {
           const waiter = messageWaiters[index];
@@ -1315,6 +1379,8 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     $("#bleStatus").className = `status ${connected ? "connected" : "disconnected"}`;
     $("#bleConnectBtn").textContent = connected ? "Bluetooth 연결됨" : "Bluetooth 보트 연결";
     $("#bleConnectBtn").classList.toggle("connected", connected);
+    $("#bleConnectBtn").disabled = connected || !navigator.bluetooth;
+    $("#bleDisconnectBtn").disabled = !connected;
     if (!connected) {
       bleRxCharacteristic = null;
       bleTxCharacteristic = null;
@@ -1390,6 +1456,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
     if (!navigator.bluetooth) {
       $("#bleConnectBtn").disabled = true;
+      $("#bleDisconnectBtn").disabled = true;
       $("#bleConnectBtn").title = "Android 또는 PC의 Chrome/Edge가 필요합니다.";
     }
   }

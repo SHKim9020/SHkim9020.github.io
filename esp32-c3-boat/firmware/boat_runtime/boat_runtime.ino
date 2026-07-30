@@ -10,10 +10,10 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <mbedtls/base64.h>
+#include <Preferences.h>
 
-// OneMaker Boat Runtime 1.3.0: reliable acknowledged program transfer.
+// OneMaker Boat Runtime 1.4.0: numbered classroom boats and BLE disconnect support.
 static const char *PROGRAM_PATH = "/boat-program.json";
-static const char *WIFI_SSID = "OneMaker-Boat";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
 static const char *BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
@@ -65,6 +65,7 @@ String blePendingData;
 String uploadBuffer;
 size_t uploadExpectedSize = 0;
 int uploadNextIndex = 0;
+int boatNumber = 1;
 
 static const char REMOTE_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
@@ -97,6 +98,37 @@ bool parseIncomingLine(const String &line, bool allowCommands);
 bool executeSteps(JsonArrayConst steps);
 double callUserFunction(const String &name, JsonArrayConst args);
 void handleRemote(const String &button, int speed);
+
+String twoDigitBoatNumber() {
+  char value[3];
+  snprintf(value, sizeof(value), "%02d", boatNumber);
+  return String(value);
+}
+
+String bluetoothName() {
+  return String("OneMaker Boat ") + twoDigitBoatNumber();
+}
+
+String wifiName() {
+  return String("OneMaker-Boat-") + twoDigitBoatNumber();
+}
+
+void loadBoatNumber() {
+  Preferences preferences;
+  preferences.begin("onemaker-boat", true);
+  boatNumber = preferences.getUChar("number", 1);
+  preferences.end();
+  if (boatNumber < 1 || boatNumber > 16) boatNumber = 1;
+}
+
+bool persistBoatNumber(int number) {
+  if (number < 1 || number > 16) return false;
+  Preferences preferences;
+  if (!preferences.begin("onemaker-boat", false)) return false;
+  size_t written = preferences.putUChar("number", number);
+  preferences.end();
+  return written == sizeof(uint8_t);
+}
 
 void sendBleLine(const String &line) {
   if (!bleConnected || !bleTx) return;
@@ -134,7 +166,8 @@ class BoatRxCallbacks : public BLECharacteristicCallbacks {
 };
 
 void startBluetooth() {
-  BLEDevice::init("OneMaker Boat C3");
+  String deviceName = bluetoothName();
+  BLEDevice::init(deviceName.c_str());
   BLEServer *server = BLEDevice::createServer();
   server->setCallbacks(new BoatServerCallbacks());
   BLEService *service = server->createService(BLE_SERVICE_UUID);
@@ -598,9 +631,11 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.3.0";
+    response["runtime"] = "OneMaker Boat 1.4.0";
     response["uploadProtocol"] = "chunked-v1";
-    response["wifi"] = WIFI_SSID;
+    response["boatNumber"] = boatNumber;
+    response["bluetoothName"] = bluetoothName();
+    response["wifi"] = wifiName();
     String output;
     serializeJson(response, output);
     Serial.println(output);
@@ -615,6 +650,30 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     stored["functions"] = document["functions"];
     if (saveProgram(stored) && loadActiveProgram()) emit("loaded");
     else emit("error", "프로그램을 저장하지 못했습니다.");
+    return true;
+  }
+  if (strcmp(command, "setBoatNumber") == 0) {
+    int requestedNumber = document["boatNumber"] | 0;
+    if (requestedNumber < 1 || requestedNumber > 16) {
+      emit("error", "선박 번호는 01~16만 사용할 수 있습니다.");
+      return false;
+    }
+    if (!persistBoatNumber(requestedNumber)) {
+      emit("error", "선박 번호를 보드에 저장하지 못했습니다.");
+      return false;
+    }
+    boatNumber = requestedNumber;
+    JsonDocument response;
+    response["type"] = "numberSaved";
+    response["boatNumber"] = boatNumber;
+    response["name"] = bluetoothName();
+    String output;
+    serializeJson(response, output);
+    Serial.println(output);
+    sendBleLine(output);
+    Serial.flush();
+    delay(350);
+    ESP.restart();
     return true;
   }
   if (strcmp(command, "loadBegin") == 0) {
@@ -693,7 +752,8 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
 
 void startWebRemote() {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
+  String ssid = wifiName();
+  WiFi.softAP(ssid.c_str(), WIFI_PASSWORD);
   webServer.on("/", HTTP_GET, []() {
     webServer.send_P(200, "text/html; charset=utf-8", REMOTE_PAGE);
   });
@@ -704,7 +764,15 @@ void startWebRemote() {
     webServer.send(200, "application/json", "{\"ok\":true}");
   });
   webServer.on("/api/status", HTTP_GET, []() {
-    webServer.send(200, "application/json", "{\"board\":\"ESP32-C3 Super Mini\",\"runtime\":\"1.3.0\"}");
+    JsonDocument status;
+    status["board"] = "ESP32-C3 Super Mini";
+    status["runtime"] = "1.4.0";
+    status["boatNumber"] = boatNumber;
+    status["bluetoothName"] = bluetoothName();
+    status["wifi"] = wifiName();
+    String output;
+    serializeJson(status, output);
+    webServer.send(200, "application/json", output);
   });
   webServer.onNotFound([]() {
     webServer.send(404, "text/plain; charset=utf-8", "Not found");
@@ -716,6 +784,7 @@ void setup() {
   Serial.begin(115200);
   delay(250);
   LittleFS.begin(true);
+  loadBoatNumber();
   JsonDocument defaults;
   JsonObject pins = defaults["pins"].to<JsonObject>();
   pins["in1"] = DEFAULT_IN1;
@@ -732,7 +801,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", "OneMaker ESP32-C3 Boat Runtime 1.3.0");
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.0 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }
