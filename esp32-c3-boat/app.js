@@ -20,6 +20,8 @@
   let bleTxCharacteristic;
   let readLoopActive = false;
   let receiveBuffer = "";
+  let boardRuntime = "";
+  let boardUploadProtocol = "";
   let selectedBlockId = null;
   let copiedBlockState = null;
   let codeManuallyEdited = false;
@@ -1009,6 +1011,8 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       return;
     }
     try {
+      boardRuntime = "";
+      boardUploadProtocol = "";
       serialPort = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] });
       await serialPort.open({ baudRate: Number($("#baudRate").value) });
       serialWriter = serialPort.writable.getWriter();
@@ -1028,6 +1032,8 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     if (!navigator.bluetooth) return toast("Android 또는 PC의 Chrome/Edge에서 Bluetooth 연결을 사용하세요.");
     if (bleDevice?.gatt?.connected && bleRxCharacteristic) return toast("이미 Bluetooth로 연결되어 있습니다.");
     try {
+      boardRuntime = "";
+      boardUploadProtocol = "";
       bleDevice = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: "OneMaker Boat" }],
         optionalServices: [BLE_SERVICE_UUID]
@@ -1087,6 +1093,10 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       appendSerial(line);
       try {
         const message = JSON.parse(line);
+        if (message.type === "hello") {
+          boardRuntime = String(message.runtime || "");
+          boardUploadProtocol = String(message.uploadProtocol || "");
+        }
         for (let index = messageWaiters.length - 1; index >= 0; index--) {
           const waiter = messageWaiters[index];
           if (waiter.predicate(message)) {
@@ -1117,7 +1127,10 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
   async function writeLine(text, preferredTransport = null) {
     const bytes = new TextEncoder().encode(`${text}\n`);
     if (preferredTransport !== "ble" && serialWriter) {
-      await serialWriter.write(bytes);
+      for (let offset = 0; offset < bytes.length; offset += 64) {
+        await serialWriter.write(bytes.slice(offset, offset + 64));
+        if (offset + 64 < bytes.length) await sleep(5);
+      }
       return;
     }
     if (bleRxCharacteristic && bleDevice?.gatt?.connected) {
@@ -1125,10 +1138,77 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         const chunk = bytes.slice(offset, offset + 180);
         if (bleRxCharacteristic.writeValueWithoutResponse) await bleRxCharacteristic.writeValueWithoutResponse(chunk);
         else await bleRxCharacteristic.writeValue(chunk);
+        if (offset + 180 < bytes.length) await sleep(8);
       }
       return;
     }
     throw new Error("먼저 USB 또는 Bluetooth로 보드와 연결하세요.");
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    for (let index = 0; index < bytes.length; index++) binary += String.fromCharCode(bytes[index]);
+    return btoa(binary);
+  }
+
+  async function sendCommandAndWait(command, successTypes, timeout = 5000) {
+    const responsePromise = waitForMessage(
+      message => successTypes.includes(message.type) || message.type === "error",
+      timeout
+    );
+    await writeLine(JSON.stringify(command));
+    const response = await responsePromise;
+    if (response.type === "error") {
+      const error = new Error(`보드 오류: ${response.message || "명령을 처리하지 못했습니다."}`);
+      error.boardMessage = response.message || "";
+      throw error;
+    }
+    return response;
+  }
+
+  async function sendLegacyProgram(payload) {
+    showProgress("보드에 저장 중", "호환 전송 방식으로 프로그램을 보내고 있습니다.", 45);
+    await sendCommandAndWait({ cmd: "load", ...payload }, ["loaded"], 15000);
+  }
+
+  async function sendChunkedProgram(payload) {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    if (bytes.length > 65536) throw new Error("프로그램이 64KB를 초과했습니다. 블록 수를 줄여주세요.");
+
+    await sendCommandAndWait({ cmd: "loadBegin", size: bytes.length }, ["uploadReady"], 5000);
+    const chunkSize = 96;
+    const chunkCount = Math.ceil(bytes.length / chunkSize);
+    for (let index = 0; index < chunkCount; index++) {
+      const chunk = bytes.slice(index * chunkSize, (index + 1) * chunkSize);
+      const response = await sendCommandAndWait(
+        { cmd: "loadChunk", index, data: bytesToBase64(chunk) },
+        ["chunk"],
+        5000
+      );
+      if (String(response.message) !== String(index)) {
+        throw new Error(`전송 조각 ${index + 1}의 확인 번호가 맞지 않습니다.`);
+      }
+      const progress = 30 + Math.round(((index + 1) / chunkCount) * 45);
+      showProgress("보드에 저장 중", `프로그램 조각 ${index + 1}/${chunkCount} 전송 중`, progress);
+    }
+    await sendCommandAndWait({ cmd: "loadEnd" }, ["loaded"], 15000);
+  }
+
+  async function sendProgram(payload) {
+    if (boardUploadProtocol === "chunked-v1") {
+      await sendChunkedProgram(payload);
+      return;
+    }
+    if (boardRuntime) {
+      await sendLegacyProgram(payload);
+      return;
+    }
+    try {
+      await sendChunkedProgram(payload);
+    } catch (error) {
+      if (error.boardMessage !== "알 수 없는 명령입니다.") throw error;
+      await sendLegacyProgram(payload);
+    }
   }
 
   async function uploadAndRun() {
@@ -1143,14 +1223,11 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       const stopPromise = waitForMessage(message => message.type === "stopped", 2500).catch(() => null);
       await writeLine(JSON.stringify({ cmd: "stop" }));
       await stopPromise;
-      const payload = { cmd: "load", config: config(), program, handlers, functions };
-      const ackPromise = waitForMessage(message => message.type === "loaded", 8000);
-      await writeLine(JSON.stringify(payload));
-      await ackPromise;
+      await sleep(200);
+      const payload = { config: config(), program, handlers, functions };
+      await sendProgram(payload);
       showProgress("실행 준비 완료", "프로그램을 시작합니다.", 80);
-      const runPromise = waitForMessage(message => message.type === "started", 5000);
-      await writeLine(JSON.stringify({ cmd: "run" }));
-      await runPromise;
+      await sendCommandAndWait({ cmd: "run" }, ["started"], 5000);
       showProgress("전송 완료", "USB를 뽑아도 저장한 프로그램이 다시 실행됩니다.", 100, true);
       toast("보드에 저장하고 실행했습니다.");
     } catch (error) {
