@@ -9,8 +9,9 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <mbedtls/base64.h>
 
-// OneMaker Boat Runtime 1.2.0: custom blocks and controller UI.
+// OneMaker Boat Runtime 1.3.0: reliable acknowledged program transfer.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_SSID = "OneMaker-Boat";
 static const char *WIFI_PASSWORD = "onemaker1";
@@ -25,6 +26,7 @@ static const int DEFAULT_LED = 8;
 static const int DEFAULT_HUSKY_SDA = 6;
 static const int DEFAULT_HUSKY_SCL = 7;
 static const int MAX_VARS = 20;
+static const size_t MAX_UPLOAD_SIZE = 65536;
 
 struct BoatConfig {
   int in1 = DEFAULT_IN1;
@@ -60,6 +62,9 @@ int functionDepth = 0;
 String serialInputLine;
 String bleInputLine;
 String blePendingData;
+String uploadBuffer;
+size_t uploadExpectedSize = 0;
+int uploadNextIndex = 0;
 
 static const char REMOTE_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
@@ -573,7 +578,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
   JsonDocument document;
   DeserializationError error = deserializeJson(document, line);
   if (error) {
-    if (allowCommands) emit("error", "JSON 명령을 해석할 수 없습니다.");
+    if (allowCommands) emit("error", String("JSON 명령 오류: ") + error.c_str());
     return false;
   }
   const char *command = document["cmd"] | "";
@@ -593,7 +598,8 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.2.0";
+    response["runtime"] = "OneMaker Boat 1.3.0";
+    response["uploadProtocol"] = "chunked-v1";
     response["wifi"] = WIFI_SSID;
     String output;
     serializeJson(response, output);
@@ -607,6 +613,66 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     stored["program"] = document["program"];
     stored["handlers"] = document["handlers"];
     stored["functions"] = document["functions"];
+    if (saveProgram(stored) && loadActiveProgram()) emit("loaded");
+    else emit("error", "프로그램을 저장하지 못했습니다.");
+    return true;
+  }
+  if (strcmp(command, "loadBegin") == 0) {
+    size_t expectedSize = document["size"] | 0;
+    uploadBuffer = "";
+    uploadExpectedSize = 0;
+    uploadNextIndex = 0;
+    if (!expectedSize || expectedSize > MAX_UPLOAD_SIZE) {
+      emit("error", "프로그램 크기는 1~65536바이트여야 합니다.");
+      return false;
+    }
+    if (!uploadBuffer.reserve(expectedSize + 1)) {
+      emit("error", "프로그램 수신 메모리가 부족합니다.");
+      return false;
+    }
+    uploadExpectedSize = expectedSize;
+    emit("uploadReady", String(expectedSize));
+    return true;
+  }
+  if (strcmp(command, "loadChunk") == 0) {
+    int index = document["index"] | -1;
+    const char *encoded = document["data"] | "";
+    if (!uploadExpectedSize || index != uploadNextIndex) {
+      emit("error", "프로그램 조각 순서가 맞지 않습니다.");
+      return false;
+    }
+    unsigned char decoded[128];
+    size_t decodedLength = 0;
+    int status = mbedtls_base64_decode(
+      decoded,
+      sizeof(decoded),
+      &decodedLength,
+      reinterpret_cast<const unsigned char *>(encoded),
+      strlen(encoded)
+    );
+    if (status != 0 || !decodedLength || uploadBuffer.length() + decodedLength > uploadExpectedSize) {
+      emit("error", "프로그램 조각을 해석하지 못했습니다.");
+      return false;
+    }
+    for (size_t offset = 0; offset < decodedLength; offset++) uploadBuffer += (char)decoded[offset];
+    uploadNextIndex++;
+    emit("chunk", String(index));
+    return true;
+  }
+  if (strcmp(command, "loadEnd") == 0) {
+    if (!uploadExpectedSize || uploadBuffer.length() != uploadExpectedSize) {
+      emit("error", "프로그램 데이터가 일부 누락되었습니다.");
+      return false;
+    }
+    JsonDocument stored;
+    DeserializationError uploadError = deserializeJson(stored, uploadBuffer);
+    uploadBuffer = "";
+    uploadExpectedSize = 0;
+    uploadNextIndex = 0;
+    if (uploadError) {
+      emit("error", String("프로그램 JSON 오류: ") + uploadError.c_str());
+      return false;
+    }
     if (saveProgram(stored) && loadActiveProgram()) emit("loaded");
     else emit("error", "프로그램을 저장하지 못했습니다.");
     return true;
@@ -638,7 +704,7 @@ void startWebRemote() {
     webServer.send(200, "application/json", "{\"ok\":true}");
   });
   webServer.on("/api/status", HTTP_GET, []() {
-    webServer.send(200, "application/json", "{\"board\":\"ESP32-C3 Super Mini\",\"runtime\":\"1.2.0\"}");
+    webServer.send(200, "application/json", "{\"board\":\"ESP32-C3 Super Mini\",\"runtime\":\"1.3.0\"}");
   });
   webServer.onNotFound([]() {
     webServer.send(404, "text/plain; charset=utf-8", "Not found");
@@ -666,7 +732,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", "OneMaker ESP32-C3 Boat Runtime 1.2.0");
+  emit("ready", "OneMaker ESP32-C3 Boat Runtime 1.3.0");
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }
