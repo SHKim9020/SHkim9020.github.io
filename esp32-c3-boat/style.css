@@ -64,6 +64,7 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .settings-card,.test-card{padding:11px 12px}.card-head{display:flex;align-items:center;justify-content:space-between}.card-head h3,.test-card h3{font-size:13px;margin:0 0 9px}.card-head button{padding:4px 7px;font-size:10px}
 .future-badge{font-size:9px;font-weight:800;color:#6b3da3;background:#f0e4ff;padding:4px 7px;border-radius:20px}
 .enable-row{display:block;font-size:11px;font-weight:750;margin-bottom:8px}
+.boat-number-row{display:grid;grid-template-columns:minmax(110px,1fr) minmax(150px,1.4fr);gap:8px;align-items:end}.boat-number-row label{display:grid;gap:5px;font-size:10px;font-weight:800}.boat-number-row select{width:100%}
 .pin-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.pin-grid label{display:flex;align-items:center;justify-content:space-between;font-size:11px;background:#f4f7f9;padding:6px 7px;border-radius:6px}.pin-grid select{border:1px solid var(--line);border-radius:5px;padding:3px}
 .wiring-note{display:flex;justify-content:space-between;font-size:9px;color:#69757f;margin:7px 2px}
 .switch-row{display:grid;gap:5px;border-top:1px dashed var(--line);padding-top:7px}.switch-row label{font-size:10px}
@@ -75,6 +76,7 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .test-card>p{font-size:9px;color:var(--muted);margin:3px 0 0;text-align:center}
 .remote-panel{padding:13px}.remote-hero{display:flex;gap:10px;align-items:center;margin:3px 0 12px}.remote-icon{font-size:30px}.remote-hero h3{font-size:16px;margin:0 0 3px}.remote-hero p{font-size:10px;color:var(--muted);margin:0;line-height:1.4}
 .remote-status-row{display:flex;justify-content:space-between;align-items:center;margin:9px 0;font-size:9px;color:var(--muted)}
+.ble-action-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:8px}.ble-action-row button{width:100%}
 .remote-card,.wifi-card{border:1px solid var(--line);border-radius:11px;padding:13px;margin-top:10px;background:#fff}
 .remote-card{border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbfd);box-shadow:0 8px 22px #12314a12}
 .remote-speed-control{display:grid;grid-template-columns:32px 1fr 38px;align-items:center;gap:9px}.remote-speed-control label{font-size:12px;font-weight:850}.remote-speed-control input{width:100%;accent-color:#087ff5}.remote-speed-control output{font:900 18px ui-monospace,monospace;color:#0875da;text-align:right}
