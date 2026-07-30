@@ -153,17 +153,49 @@
           <span id="bleStatus" class="status disconnected">Bluetooth 연결 안 됨</span>
           <span>Android · Chrome 권장</span>
         </div>
-        <div class="remote-card">
-          <div class="speed-row">
-            <label>조종 속도 <input id="remoteSpeed" type="range" min="0" max="255" value="180"></label>
+        <div class="remote-card remote-controller" data-direction="stop">
+          <div class="remote-speed-control">
+            <label for="remoteSpeed">속도</label>
+            <input id="remoteSpeed" type="range" min="0" max="255" value="180">
             <output id="remoteSpeedValue">180</output>
           </div>
+          <div class="boat-stage" aria-label="스마트선박 진행 방향 표시">
+            <span id="boatMotionLabel">정지</span>
+            <svg class="boat-illustration" viewBox="0 0 240 150" role="img" aria-label="ESP32-C3 스마트선박 위에서 본 모습">
+              <defs>
+                <linearGradient id="boatHullGradient" x1="0" x2="1" y1="0" y2="1">
+                  <stop offset="0" stop-color="#28a9cc"/>
+                  <stop offset="1" stop-color="#1767b7"/>
+                </linearGradient>
+                <filter id="boatShadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#12314a" flood-opacity=".2"/>
+                </filter>
+              </defs>
+              <g class="water-lines">
+                <path d="M12 42c18-8 34-8 52 0s34 8 52 0 34-8 52 0 34 8 60 0"/>
+                <path d="M12 113c18-8 34-8 52 0s34 8 52 0 34-8 52 0 34 8 60 0"/>
+              </g>
+              <g class="motion-arrow">
+                <path d="M120 4v24"/>
+                <path d="m110 16 10-12 10 12"/>
+              </g>
+              <g class="boat-vector" filter="url(#boatShadow)">
+                <circle class="prop-guard" cx="84" cy="113" r="24"/>
+                <circle class="prop-guard" cx="156" cy="113" r="24"/>
+                <path class="propeller" d="M72 113h24M84 101v24M144 113h24M156 101v24"/>
+                <path class="hull" d="M120 24c-28 15-43 48-38 91 2 15 14 24 38 28 24-4 36-13 38-28 5-43-10-76-38-91Z"/>
+                <path class="deck" d="M120 43c-16 12-23 32-22 60h44c1-28-6-48-22-60Z"/>
+                <rect class="board-chip" x="106" y="66" width="28" height="22" rx="5"/>
+                <circle class="sensor-eye" cx="120" cy="50" r="5"/>
+              </g>
+            </svg>
+          </div>
           <div class="drive-pad remote-pad">
-            <button data-remote="forward">▲<small>전진</small></button>
-            <button data-remote="left">◀<small>좌회전</small></button>
-            <button data-remote="stop" class="stop">■<small>정지</small></button>
-            <button data-remote="right">▶<small>우회전</small></button>
-            <button data-remote="backward">▼<small>후진</small></button>
+            <button data-remote="forward" aria-label="전진"><b>▲</b><small>전진</small></button>
+            <button data-remote="left" aria-label="좌회전"><b>◀</b><small>좌회전</small></button>
+            <button data-remote="stop" class="stop" aria-label="정지"><b>■</b><small>정지</small></button>
+            <button data-remote="right" aria-label="우회전"><b>▶</b><small>우회전</small></button>
+            <button data-remote="backward" aria-label="후진"><b>▼</b><small>후진</small></button>
           </div>
           <p class="hold-note">방향 버튼을 누르는 동안 동작하고, 손을 떼면 정지 이벤트를 보냅니다.</p>
         </div>
