@@ -8,7 +8,7 @@
       "chipFamily": "ESP32-C3",
       "parts": [
         {
-          "path": "boat_runtime.merged.bin",
+          "path": "boat_runtime.merged.bin?v=1.4.0-numbered-boats",
           "offset": 0
         }
       ]

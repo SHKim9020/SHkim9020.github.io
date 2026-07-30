@@ -10,6 +10,7 @@
   const BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
   const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
+  const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
 
   let workspace;
   let serialPort;
@@ -22,6 +23,7 @@
   let receiveBuffer = "";
   let boardRuntime = "";
   let boardUploadProtocol = "";
+  let boardBluetoothName = "";
   let selectedBlockId = null;
   let copiedBlockState = null;
   let codeManuallyEdited = false;
@@ -483,6 +485,34 @@
         scl: Number($("#huskyScl").value)
       }
     };
+  }
+
+  function runtimeVersion(runtime = boardRuntime) {
+    const match = String(runtime).match(/(\d+)\.(\d+)\.(\d+)/);
+    return match ? match.slice(1, 4).map(Number) : null;
+  }
+
+  function runtimeVersionText(runtime = boardRuntime) {
+    const version = runtimeVersion(runtime);
+    return version ? version.join(".") : "확인되지 않음";
+  }
+
+  function supportsNumberedBoats(runtime = boardRuntime) {
+    const version = runtimeVersion(runtime);
+    if (!version) return false;
+    for (let index = 0; index < NUMBERED_FIRMWARE_MIN.length; index++) {
+      if (version[index] > NUMBERED_FIRMWARE_MIN[index]) return true;
+      if (version[index] < NUMBERED_FIRMWARE_MIN[index]) return false;
+    }
+    return true;
+  }
+
+  function showFirmwareUpdateRequired() {
+    const version = runtimeVersionText();
+    $("#boatNumberStatus").textContent =
+      `현재 펌웨어 ${version} · 번호 기능은 1.4.0 이상에서 사용할 수 있습니다.`;
+    toast(`현재 펌웨어 ${version}에서는 번호를 저장할 수 없습니다. 1.4.0 펌웨어를 다시 설치하세요.`);
+    if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
   }
 
   function resetPins() {
@@ -1030,14 +1060,21 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     try {
       boardRuntime = "";
       boardUploadProtocol = "";
+      boardBluetoothName = "";
       serialPort = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] });
       await serialPort.open({ baudRate: Number($("#baudRate").value) });
       serialWriter = serialPort.writable.getWriter();
       setConnected(true);
       startReadLoop();
       await sleep(350);
-      await writeLine(JSON.stringify({ cmd: "hello" }));
-      toast("ESP32-C3 USB 연결이 완료되었습니다.");
+      await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "serial");
+      if (supportsNumberedBoats()) {
+        toast(`ESP32-C3 USB 연결 완료 · 펌웨어 ${runtimeVersionText()}`);
+      } else {
+        $("#boatNumberStatus").textContent =
+          `현재 펌웨어 ${runtimeVersionText()} · 번호 기능을 사용하려면 1.4.0을 다시 설치하세요.`;
+        toast(`USB 연결 완료 · 펌웨어 ${runtimeVersionText()}은 번호 저장을 지원하지 않습니다.`);
+      }
     } catch (error) {
       console.error(error);
       setConnected(false);
@@ -1051,6 +1088,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     try {
       boardRuntime = "";
       boardUploadProtocol = "";
+      boardBluetoothName = "";
       bleDevice = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: "OneMaker Boat" }],
         optionalServices: [BLE_SERVICE_UUID]
@@ -1066,8 +1104,9 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         consumeSerialLines();
       });
       setBluetoothConnected(true);
-      await writeLine(JSON.stringify({ cmd: "hello" }), "ble");
-      toast("Bluetooth 리모컨 연결이 완료되었습니다.");
+      await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "ble");
+      setBluetoothConnected(true);
+      toast(`${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결 완료`);
     } catch (error) {
       console.error(error);
       setBluetoothConnected(false);
@@ -1103,10 +1142,18 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       return toast("선박 번호는 01~16 중에서 선택하세요.");
     }
     try {
+      if (!boardRuntime) {
+        await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "serial");
+      }
+      if (!supportsNumberedBoats()) {
+        showFirmwareUpdateRequired();
+        return;
+      }
       const response = await sendCommandAndWait(
         { cmd: "setBoatNumber", boatNumber },
         ["numberSaved"],
-        5000
+        5000,
+        "serial"
       );
       const name = response.name || `OneMaker Boat ${String(boatNumber).padStart(2, "0")}`;
       $("#boatNumberStatus").textContent = `${name} 저장 완료 · 보드 재시작 중`;
@@ -1155,11 +1202,16 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         if (message.type === "hello") {
           boardRuntime = String(message.runtime || "");
           boardUploadProtocol = String(message.uploadProtocol || "");
+          boardBluetoothName = String(message.bluetoothName || "");
           const connectedBoatNumber = Number(message.boatNumber);
           if (connectedBoatNumber >= 1 && connectedBoatNumber <= 16) {
             $("#boatNumber").value = String(connectedBoatNumber);
             $("#boatNumberStatus").textContent = `현재 보드: ${message.bluetoothName || `OneMaker Boat ${String(connectedBoatNumber).padStart(2, "0")}`}`;
+          } else if (!supportsNumberedBoats(boardRuntime)) {
+            $("#boatNumberStatus").textContent =
+              `현재 펌웨어 ${runtimeVersionText(boardRuntime)} · 번호 기능을 사용하려면 1.4.0을 다시 설치하세요.`;
           }
+          if (bleDevice?.gatt?.connected) setBluetoothConnected(true);
         }
         for (let index = messageWaiters.length - 1; index >= 0; index--) {
           const waiter = messageWaiters[index];
@@ -1215,12 +1267,12 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     return btoa(binary);
   }
 
-  async function sendCommandAndWait(command, successTypes, timeout = 5000) {
+  async function sendCommandAndWait(command, successTypes, timeout = 5000, preferredTransport = null) {
     const responsePromise = waitForMessage(
       message => successTypes.includes(message.type) || message.type === "error",
       timeout
     );
-    await writeLine(JSON.stringify(command));
+    await writeLine(JSON.stringify(command), preferredTransport);
     const response = await responsePromise;
     if (response.type === "error") {
       const error = new Error(`보드 오류: ${response.message || "명령을 처리하지 못했습니다."}`);
@@ -1375,7 +1427,9 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
   }
 
   function setBluetoothConnected(connected) {
-    $("#bleStatus").textContent = connected ? `${bleDevice?.name || "OneMaker Boat"} 연결됨` : "Bluetooth 연결 안 됨";
+    $("#bleStatus").textContent = connected
+      ? `${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결됨`
+      : "Bluetooth 연결 안 됨";
     $("#bleStatus").className = `status ${connected ? "connected" : "disconnected"}`;
     $("#bleConnectBtn").textContent = connected ? "Bluetooth 연결됨" : "Bluetooth 보트 연결";
     $("#bleConnectBtn").classList.toggle("connected", connected);
