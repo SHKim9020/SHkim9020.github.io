@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#12314a">
+  <title>OneMaker ESP32-C3 Boat Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="OneMaker ESP32-C3 Boat Studio">
+      <span class="brand-mark">OM</span>
+      <span><b>OneMaker</b><small>ESP32-C3 BOAT STUDIO</small></span>
+    </a>
+    <label class="project-name">
+      <span>프로젝트</span>
+      <input id="projectName" value="나의 스마트선박" maxlength="40">
+    </label>
+    <div class="top-actions">
+      <button id="exampleBtn" class="ghost">예제 불러오기</button>
+      <button id="saveBtn" class="ghost">저장</button>
+      <button id="openBtn" class="ghost">열기</button>
+      <input id="openFile" type="file" accept=".json,.omc3" hidden>
+      <button id="firmwareBtn" class="outline">① 펌웨어 설치</button>
+      <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
+      <button id="uploadBtn" class="primary">③ 보드에 저장·실행</button>
+      <button id="stopBtn" class="danger" title="모터 긴급 정지">■ 정지</button>
+    </div>
+  </header>
+
+  <section class="class-strip">
+    <div><b>수업 순서</b><span>펌웨어 설치는 보드당 처음 1번만 합니다.</span></div>
+    <ol>
+      <li class="active">블록 만들기</li>
+      <li>USB 연결</li>
+      <li>보드에 저장·실행</li>
+    </ol>
+    <span id="connectionStatus" class="status disconnected">연결 안 됨</span>
+  </section>
+
+  <main class="app-shell">
+    <section class="editor-pane">
+      <div class="editor-toolbar">
+        <div class="toolbar-group">
+          <button id="undoBtn" title="실행 취소">↶</button>
+          <button id="redoBtn" title="다시 실행">↷</button>
+          <button id="copyBtn" title="선택 블록 복사">복사</button>
+          <button id="pasteBtn" title="복사한 블록 붙여넣기">붙여넣기</button>
+          <button id="deleteBtn" title="선택 블록 삭제">삭제</button>
+        </div>
+        <div class="toolbar-hint">블록을 끌어 연결하세요. 숫자·센서 블록은 둥근 칸 안에 넣을 수 있습니다.</div>
+        <div class="toolbar-group">
+          <button id="zoomOutBtn">−</button>
+          <button id="zoomResetBtn">100%</button>
+          <button id="zoomInBtn">＋</button>
+          <button id="centerBtn">블록 찾기</button>
+          <button id="clearBtn">모두 지우기</button>
+        </div>
+      </div>
+      <div id="blocklyDiv" aria-label="블록 코딩 작업 공간"></div>
+    </section>
+
+    <aside class="side-pane">
+      <nav class="side-tabs" aria-label="오른쪽 패널">
+        <button class="active" data-tab="board">보드</button>
+        <button data-tab="code">텍스트 코드</button>
+        <button data-tab="serial">시리얼 모니터</button>
+      </nav>
+
+      <section class="tab-panel active" data-panel="board">
+        <div class="board-card">
+          <div class="board-title">
+            <div>
+              <small>선택 보드</small>
+              <h2>ESP32-C3 Super Mini</h2>
+            </div>
+            <span class="board-badge">USB CDC</span>
+          </div>
+          <div class="board-visual" aria-label="ESP32-C3 Super Mini 핀 안내">
+            <div class="pin-column left">
+              <span>5V</span><span>GND</span><span class="used">GPIO1</span><span>GPIO2</span>
+              <span class="used">GPIO3</span><span class="used">GPIO4</span><span class="used">GPIO5</span>
+            </div>
+            <div class="chip">
+              <div class="usb-port"></div>
+              <b>ESP32-C3</b>
+              <small>SUPER MINI</small>
+              <i class="led"></i>
+            </div>
+            <div class="pin-column right">
+              <span>3V3</span><span>GND</span><span>GPIO10</span><span>GPIO9</span>
+              <span class="warn">GPIO8 LED</span><span>GPIO7</span><span>GPIO6</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="card-head"><h3>DRV8833 기본 배선</h3><button id="resetPinsBtn">기본값</button></div>
+          <div class="pin-grid">
+            <label>IN1 <select id="pinIn1"></select></label>
+            <label>IN2 <select id="pinIn2"></select></label>
+            <label>IN3 <select id="pinIn3"></select></label>
+            <label>IN4 <select id="pinIn4"></select></label>
+          </div>
+          <div class="wiring-note">
+            <span><b>왼쪽 모터</b> OUT1·OUT2</span>
+            <span><b>오른쪽 모터</b> OUT3·OUT4</span>
+          </div>
+          <div class="switch-row">
+            <label><input id="invertLeft" type="checkbox"> 왼쪽 모터 방향 반전</label>
+            <label><input id="invertRight" type="checkbox" checked> 오른쪽 모터 방향 반전</label>
+          </div>
+          <p class="safety">GPIO2·8·9는 부팅과 내장 LED에 관계되어 기본 모터 핀에서 제외했습니다.</p>
+        </div>
+
+        <div class="test-card">
+          <h3>빠른 모터 테스트</h3>
+          <div class="speed-row">
+            <label>속도 <input id="testSpeed" type="range" min="0" max="255" value="150"></label>
+            <output id="testSpeedValue">150</output>
+          </div>
+          <div class="drive-pad">
+            <button data-drive="forward">▲<small>전진</small></button>
+            <button data-drive="left">◀<small>좌회전</small></button>
+            <button data-drive="stop" class="stop">■<small>정지</small></button>
+            <button data-drive="right">▶<small>우회전</small></button>
+            <button data-drive="backward">▼<small>후진</small></button>
+          </div>
+          <p>프로펠러를 분리하거나 선체를 들어 올린 상태에서 먼저 시험하세요.</p>
+        </div>
+      </section>
+
+      <section class="tab-panel code-panel" data-panel="code">
+        <div class="panel-head">
+          <div><h3>Arduino C++</h3><p>블록이 바뀌면 자동 생성됩니다. 직접 수정한 코드는 INO 다운로드에 반영됩니다.</p></div>
+          <div><button id="copyCodeBtn">복사</button><button id="downloadInoBtn">INO 다운로드</button></div>
+        </div>
+        <textarea id="codeView" spellcheck="false" aria-label="Arduino C++ 코드"></textarea>
+      </section>
+
+      <section class="tab-panel serial-panel" data-panel="serial">
+        <div class="panel-head">
+          <div><h3>시리얼 모니터</h3><p>보드 메시지와 센서값을 확인합니다.</p></div>
+          <div>
+            <select id="baudRate" aria-label="통신 속도">
+              <option>9600</option><option>57600</option><option selected>115200</option>
+            </select>
+            <button id="clearSerialBtn">지우기</button>
+          </div>
+        </div>
+        <pre id="serialOutput" aria-live="polite"></pre>
+        <div class="serial-send">
+          <input id="serialInput" placeholder="보드로 보낼 내용">
+          <button id="serialSendBtn">전송</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="firmwareDialog">
+    <form method="dialog" class="dialog-card">
+      <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+      <span class="step-chip">처음 1번</span>
+      <h2>수업용 펌웨어 설치</h2>
+      <p>ESP32-C3의 <b>BOOT</b> 버튼을 누른 채 <b>RESET</b>을 한 번 누르고, 아래 설치 버튼을 선택하세요.</p>
+      <div class="install-box">
+        <esp-web-install-button manifest="./firmware/manifest.json">
+          <button slot="activate" class="primary install-activate">ESP32-C3 펌웨어 설치</button>
+          <span slot="unsupported">이 기능은 PC·크롬북의 Chrome/Edge에서 사용할 수 있습니다.</span>
+        </esp-web-install-button>
+      </div>
+      <ol class="mini-steps">
+        <li>USB 케이블은 데이터 통신용을 사용합니다.</li>
+        <li>설치 완료 후 RESET을 한 번 누릅니다.</li>
+        <li>창을 닫고 상단의 ‘USB 연결’을 누릅니다.</li>
+      </ol>
+      <button class="outline wide" value="done">설치를 마쳤습니다</button>
+    </form>
+  </dialog>
+
+  <dialog id="progressDialog">
+    <div class="dialog-card progress-card">
+      <div class="spinner"></div>
+      <h2 id="progressTitle">보드에 전송 중</h2>
+      <p id="progressText">잠시만 기다려 주세요.</p>
+      <progress id="progressBar" max="100" value="20"></progress>
+      <button id="progressCloseBtn" class="outline wide" hidden>닫기</button>
+    </div>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
