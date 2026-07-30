@@ -32,6 +32,7 @@ jobs:
           arduino-cli core install esp32:esp32
           arduino-cli lib install ArduinoJson
           git clone --depth 1 https://github.com/HuskyLens/HUSKYLENSArduino.git /tmp/HUSKYLENSArduino
+          sed -i 's/return &send_buffer;/return send_buffer;/' /tmp/HUSKYLENSArduino/HUSKYLENS/HuskyLensProtocolCore.c
           mkdir -p "$HOME/Arduino/libraries"
           cp -R /tmp/HUSKYLENSArduino/HUSKYLENS "$HOME/Arduino/libraries/HUSKYLENS"
 
