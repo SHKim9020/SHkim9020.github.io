@@ -1,0 +1,62 @@
+name: Build Arduino Studio runtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "arduino-studio/firmware/onemaker_runtime/**"
+      - ".github/workflows/build-arduino-studio-firmware.yml"
+  pull_request:
+    paths:
+      - "arduino-studio/firmware/onemaker_runtime/**"
+      - ".github/workflows/build-arduino-studio-firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: ${{ !contains(github.event.head_commit.message, '[skip arduino firmware]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install AVR core and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+          arduino-cli lib install "DHT sensor library"
+          arduino-cli lib install "Adafruit NeoPixel"
+          arduino-cli lib install "LiquidCrystal I2C"
+
+      - name: Compile UNO/Nano runtime
+        run: |
+          mkdir -p "$RUNNER_TEMP/onemaker-arduino-build"
+          arduino-cli compile \
+            --fqbn "arduino:avr:uno" \
+            --output-dir "$RUNNER_TEMP/onemaker-arduino-build" \
+            arduino-studio/firmware/onemaker_runtime
+          cp "$RUNNER_TEMP/onemaker-arduino-build/onemaker_runtime.ino.hex" \
+            arduino-studio/firmware/onemaker_runtime.hex
+
+      - name: Verify runtime image
+        run: |
+          test -s arduino-studio/firmware/onemaker_runtime.hex
+          grep -q '^:' arduino-studio/firmware/onemaker_runtime.hex
+
+      - name: Commit generated firmware
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          git add arduino-studio/firmware/onemaker_runtime.hex
+          if git diff --cached --quiet; then
+            echo "Arduino runtime is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Build Arduino Studio runtime [skip arduino firmware]"
+          git push
