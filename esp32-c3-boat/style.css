@@ -47,7 +47,7 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .blocklyTreeLabel{font-family:inherit!important;font-size:13px!important;font-weight:700!important}
 .blocklyFlyoutBackground{fill:#fff!important;fill-opacity:.97!important}
 .side-pane{display:flex;flex-direction:column}
-.side-tabs{height:44px;display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line);background:#f6f8fa}
+.side-tabs{height:44px;display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line);background:#f6f8fa}
 .side-tabs button{border-radius:0;background:transparent;color:#77828d;border-bottom:3px solid transparent}
 .side-tabs button.active{color:var(--navy);background:#fff;border-bottom-color:var(--yellow)}
 .tab-panel{display:none;overflow:auto;min-height:0;flex:1;padding:11px}.tab-panel.active{display:block}
@@ -62,6 +62,8 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .chip:before,.chip:after{content:"";position:absolute;top:9px;bottom:9px;width:5px;background:repeating-linear-gradient(#c7a54d 0 4px,transparent 4px 9px)}.chip:before{left:-9px}.chip:after{right:-9px}
 .chip b{font-size:13px}.chip small{font-size:8px;letter-spacing:1.2px;color:#83bbc4}.usb-port{position:absolute;width:38px;height:12px;background:#bbc5c8;border-radius:0 0 4px 4px;top:-5px}.led{position:absolute;width:6px;height:6px;border-radius:50%;background:#ffcf4f;right:13px;bottom:12px;box-shadow:0 0 7px #ffcf4f}
 .settings-card,.test-card{padding:11px 12px}.card-head{display:flex;align-items:center;justify-content:space-between}.card-head h3,.test-card h3{font-size:13px;margin:0 0 9px}.card-head button{padding:4px 7px;font-size:10px}
+.future-badge{font-size:9px;font-weight:800;color:#6b3da3;background:#f0e4ff;padding:4px 7px;border-radius:20px}
+.enable-row{display:block;font-size:11px;font-weight:750;margin-bottom:8px}
 .pin-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.pin-grid label{display:flex;align-items:center;justify-content:space-between;font-size:11px;background:#f4f7f9;padding:6px 7px;border-radius:6px}.pin-grid select{border:1px solid var(--line);border-radius:5px;padding:3px}
 .wiring-note{display:flex;justify-content:space-between;font-size:9px;color:#69757f;margin:7px 2px}
 .switch-row{display:grid;gap:5px;border-top:1px dashed var(--line);padding-top:7px}.switch-row label{font-size:10px}
@@ -70,6 +72,13 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .drive-pad{display:grid;grid-template-columns:repeat(3,50px);grid-template-areas:". up ." "left stop right" ". down .";justify-content:center;gap:5px;margin:8px 0}
 .drive-pad button{height:42px;padding:3px;background:#e7eef4;color:var(--navy);font-size:14px}.drive-pad button small{display:block;font-size:8px}.drive-pad [data-drive=forward]{grid-area:up}.drive-pad [data-drive=backward]{grid-area:down}.drive-pad [data-drive=left]{grid-area:left}.drive-pad [data-drive=right]{grid-area:right}.drive-pad [data-drive=stop]{grid-area:stop;background:#ffe3e3;color:#b12b2b}
 .test-card>p{font-size:9px;color:var(--muted);margin:3px 0 0;text-align:center}
+.remote-panel{padding:13px}.remote-hero{display:flex;gap:10px;align-items:center;margin:3px 0 12px}.remote-icon{font-size:30px}.remote-hero h3{font-size:16px;margin:0 0 3px}.remote-hero p{font-size:10px;color:var(--muted);margin:0;line-height:1.4}
+.remote-status-row{display:flex;justify-content:space-between;align-items:center;margin:9px 0;font-size:9px;color:var(--muted)}
+.remote-card,.wifi-card{border:1px solid var(--line);border-radius:11px;padding:13px;margin-top:10px;background:#fff}
+.remote-card .drive-pad{grid-template-columns:repeat(3,64px);gap:8px;margin:15px 0}.remote-card .drive-pad button{height:54px;font-size:18px;touch-action:none}.remote-card .drive-pad button small{font-size:9px}
+.hold-note{font-size:9px;color:var(--muted);text-align:center;margin:0}
+.wifi-card{background:#edf7fb;border-color:#cce4ed}.wifi-card h3{font-size:13px;margin:0 0 6px}.wifi-card p{font-size:10px;line-height:1.5;margin:0 0 8px}.wifi-card code{display:block;background:#12314a;color:#fff;border-radius:7px;padding:9px;text-align:center;font-weight:800}.wifi-card small{display:block;text-align:center;margin-top:7px;color:#52636e}
+.remote-help{font-size:10px;line-height:1.7;color:#64717c;padding-left:20px;margin-top:12px}
 .code-panel,.serial-panel{padding:0;flex-direction:column}.code-panel.active,.serial-panel.active{display:flex}
 .panel-head{min-height:67px;padding:10px 11px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:center}.panel-head h3{margin:0 0 3px;font-size:14px}.panel-head p{margin:0;font-size:9px;line-height:1.4;color:var(--muted)}.panel-head>div:last-child{display:flex;gap:5px}.panel-head button,.panel-head select{font-size:10px;padding:6px}
 #codeView{flex:1;resize:none;border:0;outline:0;padding:13px;background:#10232e;color:#d9e6eb;font:11px/1.55 "Cascadia Code",Consolas,monospace;tab-size:2}

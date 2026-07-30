@@ -3,15 +3,21 @@
 
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
-  const DEFAULT_PINS = { in1: 1, in2: 3, in3: 4, in4: 5, led: 8 };
+  const DEFAULT_PINS = { in1: 1, in2: 3, in3: 4, in4: 5, led: 8, huskySda: 6, huskyScl: 7 };
   const SAFE_PINS = [0, 1, 3, 4, 5, 6, 7, 10, 20, 21];
   const ALL_PINS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21];
   const STORAGE_KEY = "onemaker-esp32-c3-boat-autosave-v1";
+  const BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
+  const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
+  const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
 
   let workspace;
   let serialPort;
   let serialReader;
   let serialWriter;
+  let bleDevice;
+  let bleRxCharacteristic;
+  let bleTxCharacteristic;
   let readLoopActive = false;
   let receiveBuffer = "";
   let selectedBlockId = null;
@@ -47,6 +53,25 @@
       previousStatement: null,
       nextStatement: null,
       colour: 198
+    },
+    {
+      type: "remote_when",
+      message0: "🎮 리모컨 %1 버튼을 누르면",
+      args0: [{
+        type: "field_dropdown",
+        name: "BUTTON",
+        options: [["전진", "forward"], ["후진", "backward"], ["좌회전", "left"], ["우회전", "right"], ["정지", "stop"]]
+      }],
+      nextStatement: null,
+      colour: 315,
+      tooltip: "웹 리모컨 버튼을 누를 때 아래 블록을 실행합니다."
+    },
+    {
+      type: "remote_speed",
+      message0: "리모컨 속도",
+      output: "Number",
+      colour: 315,
+      tooltip: "웹 리모컨의 현재 속도(0~255)입니다."
     },
     {
       type: "motor_set",
@@ -117,6 +142,44 @@
       colour: 168
     },
     {
+      type: "husky_algorithm",
+      message0: "HuskyLens 모드 %1",
+      args0: [{
+        type: "field_dropdown",
+        name: "ALGORITHM",
+        options: [
+          ["물체 추적", "object_tracking"],
+          ["물체 인식", "object_recognition"],
+          ["색상 인식", "color_recognition"],
+          ["선 추적", "line_tracking"],
+          ["얼굴 인식", "face_recognition"],
+          ["태그 인식", "tag_recognition"],
+          ["물체 분류", "object_classification"]
+        ]
+      }],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 165
+    },
+    {
+      type: "husky_seen",
+      message0: "HuskyLens ID %1 보임?",
+      args0: [{ type: "input_value", name: "ID", check: "Number" }],
+      output: "Boolean",
+      colour: 165
+    },
+    {
+      type: "husky_value",
+      message0: "HuskyLens ID %1의 %2",
+      args0: [
+        { type: "input_value", name: "ID", check: "Number" },
+        { type: "field_dropdown", name: "FIELD", options: [["X 중심", "x"], ["Y 중심", "y"], ["너비", "width"], ["높이", "height"]] }
+      ],
+      output: "Number",
+      inputsInline: true,
+      colour: 165
+    },
+    {
       type: "control_wait",
       message0: "%1 초 기다리기",
       args0: [{ type: "input_value", name: "SECONDS", check: "Number" }],
@@ -156,6 +219,12 @@
         ]
       },
       {
+        kind: "category", name: "리모컨", colour: "315", contents: [
+          { kind: "block", type: "remote_when" },
+          { kind: "block", type: "remote_speed" }
+        ]
+      },
+      {
         kind: "category", name: "모터", colour: "215", contents: [
           { kind: "block", type: "motor_set", inputs: { SPEED: { shadow: { type: "math_number", fields: { NUM: 150 } } } } }
         ]
@@ -172,6 +241,13 @@
           { kind: "block", type: "sensor_digital" },
           { kind: "block", type: "sensor_analog" },
           { kind: "block", type: "sensor_sonar" }
+        ]
+      },
+      {
+        kind: "category", name: "HuskyLens", colour: "165", contents: [
+          { kind: "block", type: "husky_algorithm" },
+          { kind: "block", type: "husky_seen", inputs: { ID: { shadow: { type: "math_number", fields: { NUM: 1 } } } } },
+          { kind: "block", type: "husky_value", inputs: { ID: { shadow: { type: "math_number", fields: { NUM: 1 } } } } }
         ]
       },
       {
@@ -220,11 +296,14 @@
   }
 
   function populatePinSelects() {
-    const ids = ["pinIn1", "pinIn2", "pinIn3", "pinIn4"];
+    const ids = ["pinIn1", "pinIn2", "pinIn3", "pinIn4", "huskySda", "huskyScl"];
     ids.forEach((id, index) => {
       const select = $(`#${id}`);
       select.innerHTML = SAFE_PINS.map(pin => `<option value="${pin}">GPIO${pin}</option>`).join("");
-      select.value = [DEFAULT_PINS.in1, DEFAULT_PINS.in2, DEFAULT_PINS.in3, DEFAULT_PINS.in4][index];
+      select.value = [
+        DEFAULT_PINS.in1, DEFAULT_PINS.in2, DEFAULT_PINS.in3, DEFAULT_PINS.in4,
+        DEFAULT_PINS.huskySda, DEFAULT_PINS.huskyScl
+      ][index];
     });
   }
 
@@ -240,6 +319,7 @@
     $$(".side-tabs button").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
     $("#firmwareBtn").addEventListener("click", () => $("#firmwareDialog").showModal());
     $("#connectBtn").addEventListener("click", connectSerial);
+    $("#bleConnectBtn").addEventListener("click", connectBluetooth);
     $("#uploadBtn").addEventListener("click", uploadAndRun);
     $("#stopBtn").addEventListener("click", emergencyStop);
     $("#exampleBtn").addEventListener("click", () => loadExample(true));
@@ -267,14 +347,26 @@
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
     $("#testSpeed").addEventListener("input", event => { $("#testSpeedValue").textContent = event.target.value; });
-    $$(".drive-pad button").forEach(button => {
+    $("#remoteSpeed").addEventListener("input", event => { $("#remoteSpeedValue").textContent = event.target.value; });
+    $$(".test-card .drive-pad button").forEach(button => {
       button.addEventListener("pointerdown", () => quickDrive(button.dataset.drive));
       if (button.dataset.drive !== "stop") {
         button.addEventListener("pointerup", () => quickDrive("stop"));
         button.addEventListener("pointerleave", event => { if (event.buttons) quickDrive("stop"); });
       }
     });
-    ["pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight"].forEach(id => {
+    $$(".remote-pad button").forEach(button => {
+      button.addEventListener("pointerdown", event => {
+        event.preventDefault();
+        remoteDrive(button.dataset.remote);
+      });
+      if (button.dataset.remote !== "stop") {
+        button.addEventListener("pointerup", () => remoteDrive("stop"));
+        button.addEventListener("pointercancel", () => remoteDrive("stop"));
+        button.addEventListener("pointerleave", event => { if (event.buttons) remoteDrive("stop"); });
+      }
+    });
+    ["pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight", "huskyEnabled", "huskySda", "huskyScl"].forEach(id => {
       $(`#${id}`).addEventListener("change", () => {
         codeManuallyEdited = false;
         refreshGeneratedCode();
@@ -284,6 +376,7 @@
     $("#progressCloseBtn").addEventListener("click", () => $("#progressDialog").close());
     window.addEventListener("beforeunload", () => {
       if (serialReader) serialReader.cancel().catch(() => {});
+      if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
     });
   }
 
@@ -303,7 +396,12 @@
       },
       invertLeft: $("#invertLeft").checked,
       invertRight: $("#invertRight").checked,
-      ledActiveLow: true
+      ledActiveLow: true,
+      husky: {
+        enabled: $("#huskyEnabled").checked,
+        sda: Number($("#huskySda").value),
+        scl: Number($("#huskyScl").value)
+      }
     };
   }
 
@@ -314,6 +412,8 @@
     $("#pinIn4").value = DEFAULT_PINS.in4;
     $("#invertLeft").checked = false;
     $("#invertRight").checked = true;
+    $("#huskySda").value = DEFAULT_PINS.huskySda;
+    $("#huskyScl").value = DEFAULT_PINS.huskyScl;
     refreshGeneratedCode();
     toast("DRV8833 기본 핀으로 되돌렸습니다.");
   }
@@ -326,7 +426,8 @@
       board: "ESP32-C3 Super Mini",
       config: config(),
       workspace: Blockly.serialization.workspaces.save(workspace),
-      program: compileRuntimeProgram()
+      program: compileRuntimeProgram(),
+      handlers: compileRuntimeHandlers()
     };
   }
 
@@ -379,6 +480,9 @@
     $("#pinIn4").value = pins.in4 ?? DEFAULT_PINS.in4;
     $("#invertLeft").checked = Boolean(cfg.invertLeft);
     $("#invertRight").checked = cfg.invertRight !== false;
+    $("#huskyEnabled").checked = Boolean(cfg.husky?.enabled);
+    $("#huskySda").value = cfg.husky?.sda ?? DEFAULT_PINS.huskySda;
+    $("#huskyScl").value = cfg.husky?.scl ?? DEFAULT_PINS.huskyScl;
     codeManuallyEdited = false;
     refreshGeneratedCode();
   }
@@ -445,7 +549,10 @@
   }
 
   function topProgramBlock() {
-    return workspace.getTopBlocks(true).find(block => block.type === "boat_start") || workspace.getTopBlocks(true)[0] || null;
+    const topBlocks = workspace.getTopBlocks(true);
+    return topBlocks.find(block => block.type === "boat_start")
+      || topBlocks.find(block => block.type !== "remote_when")
+      || null;
   }
 
   function firstStatementBlock() {
@@ -455,6 +562,17 @@
 
   function compileRuntimeProgram() {
     return compileStatementChain(firstStatementBlock());
+  }
+
+  function compileRuntimeHandlers() {
+    const handlers = {};
+    workspace.getTopBlocks(true)
+      .filter(block => block.type === "remote_when")
+      .forEach(block => {
+        const button = block.getFieldValue("BUTTON");
+        handlers[button] = [...(handlers[button] || []), ...compileStatementChain(block.getNextBlock())];
+      });
+    return handlers;
   }
 
   function compileStatementChain(firstBlock) {
@@ -480,6 +598,7 @@
       case "gpio_pwm":
         return { op: "analogWrite", pin: Number(block.getFieldValue("PIN")), value: expressionAst(block.getInputTargetBlock("VALUE")) };
       case "control_wait": return { op: "wait", seconds: expressionAst(block.getInputTargetBlock("SECONDS")) };
+      case "husky_algorithm": return { op: "huskyAlgorithm", algorithm: block.getFieldValue("ALGORITHM") };
       case "controls_repeat_ext":
         return { op: "repeat", count: expressionAst(block.getInputTargetBlock("TIMES")), steps: compileStatementChain(block.getInputTargetBlock("DO")) };
       case "control_forever":
@@ -522,6 +641,10 @@
       case "sensor_digital": return { type: "digitalRead", pin: Number(block.getFieldValue("PIN")) };
       case "sensor_analog": return { type: "analogRead", pin: Number(block.getFieldValue("PIN")) };
       case "sensor_sonar": return { type: "sonar", trig: Number(block.getFieldValue("TRIG")), echo: Number(block.getFieldValue("ECHO")) };
+      case "remote_speed": return { type: "remoteSpeed" };
+      case "husky_seen": return { type: "huskySeen", id: expressionAst(block.getInputTargetBlock("ID")) };
+      case "husky_value":
+        return { type: "huskyValue", id: expressionAst(block.getInputTargetBlock("ID")), field: block.getFieldValue("FIELD") };
       case "math_arithmetic":
         return { type: "math", op: block.getFieldValue("OP"), a: expressionAst(block.getInputTargetBlock("A")), b: expressionAst(block.getInputTargetBlock("B")) };
       case "logic_compare":
@@ -543,6 +666,9 @@
       case "sensor_digital": return `digitalRead(${block.getFieldValue("PIN")})`;
       case "sensor_analog": return `analogRead(${block.getFieldValue("PIN")})`;
       case "sensor_sonar": return `readSonarCm(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
+      case "remote_speed": return "remoteSpeed";
+      case "husky_seen": return `huskySeen(${cppExpression(block.getInputTargetBlock("ID"))})`;
+      case "husky_value": return `huskyValue(${cppExpression(block.getInputTargetBlock("ID"))}, "${block.getFieldValue("FIELD")}")`;
       case "math_arithmetic": {
         const ops = { ADD: "+", MINUS: "-", MULTIPLY: "*", DIVIDE: "/", POWER: "" };
         const op = block.getFieldValue("OP");
@@ -586,6 +712,9 @@
         case "control_wait":
           code += `${indent}delay((unsigned long)(${cppExpression(block.getInputTargetBlock("SECONDS"))} * 1000));\n`;
           break;
+        case "husky_algorithm":
+          code += `${indent}setHuskyAlgorithm("${block.getFieldValue("ALGORITHM")}");\n`;
+          break;
         case "controls_repeat_ext":
           code += `${indent}for (int i = 0; i < ${cppExpression(block.getInputTargetBlock("TIMES"))}; i++) {\n`;
           code += cppStatements(block.getInputTargetBlock("DO"), depth + 1);
@@ -625,13 +754,53 @@
 
   function generateCpp() {
     const cfg = config();
-    const variables = workspace.getAllVariables().map(variable => `double ${cppVariable(variable.name)} = 0;`).join("\n");
+    const variables = workspace.getVariableMap().getAllVariables().map(variable => `double ${cppVariable(variable.name)} = 0;`).join("\n");
     const body = cppStatements(firstStatementBlock(), 1) || "  // 왼쪽에서 블록을 가져와 프로그램을 만드세요.\n";
+    const usesHusky = workspace.getAllBlocks(false).some(block => block.type.startsWith("husky_"));
+    const huskyInclude = usesHusky ? "\n#include <Wire.h>\n#include <HUSKYLENS.h>" : "";
+    const huskyGlobals = usesHusky ? `
+const int HUSKY_SDA = ${cfg.husky.sda};
+const int HUSKY_SCL = ${cfg.husky.scl};
+HUSKYLENS huskylens;
+bool huskyReady = false;
+double remoteSpeed = 0;
+
+bool ensureHusky() {
+  if (huskyReady) return true;
+  Wire.begin(HUSKY_SDA, HUSKY_SCL);
+  huskyReady = huskylens.begin(Wire);
+  return huskyReady;
+}
+
+bool huskySeen(int id) {
+  return ensureHusky() && huskylens.requestBlocks(id) && huskylens.available();
+}
+
+int huskyValue(int id, const String &field) {
+  if (!ensureHusky() || !huskylens.requestBlocks(id) || !huskylens.available()) return 0;
+  HUSKYLENSResult result = huskylens.read();
+  if (field == "x") return result.xCenter;
+  if (field == "y") return result.yCenter;
+  if (field == "width") return result.width;
+  return result.height;
+}
+
+void setHuskyAlgorithm(const String &algorithm) {
+  if (!ensureHusky()) return;
+  if (algorithm == "object_tracking") huskylens.writeAlgorithm(ALGORITHM_OBJECT_TRACKING);
+  else if (algorithm == "object_recognition") huskylens.writeAlgorithm(ALGORITHM_OBJECT_RECOGNITION);
+  else if (algorithm == "color_recognition") huskylens.writeAlgorithm(ALGORITHM_COLOR_RECOGNITION);
+  else if (algorithm == "line_tracking") huskylens.writeAlgorithm(ALGORITHM_LINE_TRACKING);
+  else if (algorithm == "face_recognition") huskylens.writeAlgorithm(ALGORITHM_FACE_RECOGNITION);
+  else if (algorithm == "tag_recognition") huskylens.writeAlgorithm(ALGORITHM_TAG_RECOGNITION);
+  else if (algorithm == "object_classification") huskylens.writeAlgorithm(ALGORITHM_OBJECT_CLASSIFICATION);
+}
+` : "\ndouble remoteSpeed = 0;\n";
     return `// OneMaker ESP32-C3 Boat Studio
 // 보드: ESP32C3 Dev Module / USB CDC On Boot: Enabled
 
 #include <Arduino.h>
-#include <math.h>
+#include <math.h>${huskyInclude}
 
 const int IN1 = ${cfg.pins.in1};
 const int IN2 = ${cfg.pins.in2};
@@ -643,7 +812,7 @@ const int LED_OFF = HIGH;
 const bool INVERT_LEFT = ${cfg.invertLeft ? "true" : "false"};
 const bool INVERT_RIGHT = ${cfg.invertRight ? "true" : "false"};
 
-${variables || "// 사용자가 만든 변수 없음"}
+${variables || "// 사용자가 만든 변수 없음"}${huskyGlobals}
 
 void setChannel(int pinA, int pinB, int speed) {
   speed = constrain(speed, -255, 255);
@@ -746,6 +915,34 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
   }
 
+  async function connectBluetooth() {
+    if (!navigator.bluetooth) return toast("Android 또는 PC의 Chrome/Edge에서 Bluetooth 연결을 사용하세요.");
+    if (bleDevice?.gatt?.connected && bleRxCharacteristic) return toast("이미 Bluetooth로 연결되어 있습니다.");
+    try {
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "OneMaker Boat" }],
+        optionalServices: [BLE_SERVICE_UUID]
+      });
+      bleDevice.addEventListener("gattserverdisconnected", () => setBluetoothConnected(false));
+      const server = await bleDevice.gatt.connect();
+      const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+      bleRxCharacteristic = await service.getCharacteristic(BLE_RX_UUID);
+      bleTxCharacteristic = await service.getCharacteristic(BLE_TX_UUID);
+      await bleTxCharacteristic.startNotifications();
+      bleTxCharacteristic.addEventListener("characteristicvaluechanged", event => {
+        receiveBuffer += new TextDecoder().decode(event.target.value);
+        consumeSerialLines();
+      });
+      setBluetoothConnected(true);
+      await writeLine(JSON.stringify({ cmd: "hello" }), "ble");
+      toast("Bluetooth 리모컨 연결이 완료되었습니다.");
+    } catch (error) {
+      console.error(error);
+      setBluetoothConnected(false);
+      toast(error.name === "NotFoundError" ? "연결할 보트를 선택하지 않았습니다." : `Bluetooth 연결 실패: ${error.message}`);
+    }
+  }
+
   async function startReadLoop() {
     if (!serialPort?.readable || readLoopActive) return;
     readLoopActive = true;
@@ -808,22 +1005,35 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     });
   }
 
-  async function writeLine(text) {
-    if (!serialWriter) throw new Error("먼저 USB 연결을 눌러 보드와 연결하세요.");
-    await serialWriter.write(new TextEncoder().encode(`${text}\n`));
+  async function writeLine(text, preferredTransport = null) {
+    const bytes = new TextEncoder().encode(`${text}\n`);
+    if (preferredTransport !== "ble" && serialWriter) {
+      await serialWriter.write(bytes);
+      return;
+    }
+    if (bleRxCharacteristic && bleDevice?.gatt?.connected) {
+      for (let offset = 0; offset < bytes.length; offset += 180) {
+        const chunk = bytes.slice(offset, offset + 180);
+        if (bleRxCharacteristic.writeValueWithoutResponse) await bleRxCharacteristic.writeValueWithoutResponse(chunk);
+        else await bleRxCharacteristic.writeValue(chunk);
+      }
+      return;
+    }
+    throw new Error("먼저 USB 또는 Bluetooth로 보드와 연결하세요.");
   }
 
   async function uploadAndRun() {
     try {
-      if (!serialWriter) await connectSerial();
-      if (!serialWriter) return;
+      if (!serialWriter && !bleRxCharacteristic) await connectSerial();
+      if (!serialWriter && !bleRxCharacteristic) return;
       const program = compileRuntimeProgram();
-      if (!program.length) throw new Error("실행할 블록이 없습니다.");
+      const handlers = compileRuntimeHandlers();
+      if (!program.length && !Object.keys(handlers).length) throw new Error("실행할 시작 또는 리모컨 이벤트 블록이 없습니다.");
       showProgress("보드에 저장 중", "블록 프로그램을 ESP32-C3로 보내고 있습니다.", 25);
       const stopPromise = waitForMessage(message => message.type === "stopped", 2500).catch(() => null);
       await writeLine(JSON.stringify({ cmd: "stop" }));
       await stopPromise;
-      const payload = { cmd: "load", config: config(), program };
+      const payload = { cmd: "load", config: config(), program, handlers };
       const ackPromise = waitForMessage(message => message.type === "loaded", 8000);
       await writeLine(JSON.stringify(payload));
       await ackPromise;
@@ -841,7 +1051,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
 
   async function emergencyStop() {
     try {
-      if (!serialWriter) return toast("보드가 연결되어 있지 않습니다.");
+      if (!serialWriter && !bleRxCharacteristic) return toast("보드가 연결되어 있지 않습니다.");
       await writeLine(JSON.stringify({ cmd: "stop" }));
       toast("모터 정지 명령을 보냈습니다.");
     } catch (error) {
@@ -856,6 +1066,20 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         cmd: "drive",
         direction,
         speed: Number($("#testSpeed").value),
+        config: config()
+      }));
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
+  async function remoteDrive(button) {
+    try {
+      if (!serialWriter && !bleRxCharacteristic) return toast("먼저 Bluetooth 또는 USB로 보트를 연결하세요.");
+      await writeLine(JSON.stringify({
+        cmd: "remote",
+        button,
+        speed: Number($("#remoteSpeed").value),
         config: config()
       }));
     } catch (error) {
@@ -881,6 +1105,17 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     $("#connectBtn").classList.toggle("connected", connected);
     $("#connectBtn .dot").classList.toggle("on", connected);
     $("#connectBtn").lastChild.textContent = connected ? " 연결됨" : "② USB 연결";
+  }
+
+  function setBluetoothConnected(connected) {
+    $("#bleStatus").textContent = connected ? `${bleDevice?.name || "OneMaker Boat"} 연결됨` : "Bluetooth 연결 안 됨";
+    $("#bleStatus").className = `status ${connected ? "connected" : "disconnected"}`;
+    $("#bleConnectBtn").textContent = connected ? "Bluetooth 연결됨" : "Bluetooth 보트 연결";
+    $("#bleConnectBtn").classList.toggle("connected", connected);
+    if (!connected) {
+      bleRxCharacteristic = null;
+      bleTxCharacteristic = null;
+    }
   }
 
   function appendSerial(text) {
@@ -944,6 +1179,10 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     if (!("serial" in navigator)) {
       $("#connectionStatus").textContent = "Web Serial 미지원";
       $("#connectBtn").title = "PC·크롬북의 Chrome 또는 Edge를 사용하세요.";
+    }
+    if (!navigator.bluetooth) {
+      $("#bleConnectBtn").disabled = true;
+      $("#bleConnectBtn").title = "Android 또는 PC의 Chrome/Edge가 필요합니다.";
     }
   }
 
