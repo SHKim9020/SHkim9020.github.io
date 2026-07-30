@@ -6,6 +6,10 @@ on:
     paths:
       - "esp32-c3-boat/firmware/boat_runtime/**"
       - ".github/workflows/build-esp32-c3-boat-firmware.yml"
+  pull_request:
+    paths:
+      - "esp32-c3-boat/firmware/boat_runtime/**"
+      - ".github/workflows/build-esp32-c3-boat-firmware.yml"
   workflow_dispatch:
 
 permissions:
@@ -39,6 +43,7 @@ jobs:
             esp32-c3-boat/firmware/boat_runtime.merged.bin
 
       - name: Commit generated firmware
+        if: ${{ github.event_name == 'push' }}
         run: |
           if git diff --quiet -- esp32-c3-boat/firmware/boat_runtime.merged.bin; then
             echo "Firmware is unchanged."
