@@ -10,6 +10,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
+// OneMaker Boat Runtime 1.2.0: custom blocks and controller UI.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_SSID = "OneMaker-Boat";
 static const char *WIFI_PASSWORD = "onemaker1";
