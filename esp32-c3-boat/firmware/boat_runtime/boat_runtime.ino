@@ -55,6 +55,7 @@ bool bleConnected = false;
 bool huskyReady = false;
 bool stopRequested = false;
 double remoteSpeed = 0;
+int functionDepth = 0;
 String serialInputLine;
 String bleInputLine;
 String blePendingData;
@@ -64,19 +65,23 @@ static const char REMOTE_PAGE[] PROGMEM = R"HTML(
 <title>OneMaker Boat Remote</title><style>
 *{box-sizing:border-box}body{margin:0;background:#eef4f7;color:#12314a;font-family:system-ui,sans-serif;text-align:center}
 main{max-width:430px;margin:auto;padding:24px 18px}h1{font-size:24px;margin:6px}p{font-size:13px;color:#62717d}
-.card{background:#fff;border-radius:18px;padding:20px;box-shadow:0 12px 32px #12314a20}
-label{display:flex;gap:12px;align-items:center}input{width:100%}output{font-weight:800;color:#2677df}
-.pad{display:grid;grid-template:70px 70px 70px/repeat(3,70px);gap:10px;justify-content:center;margin:24px 0}
-button{border:0;border-radius:15px;background:#dfeaf0;color:#12314a;font-size:28px;font-weight:800;touch-action:none}
+.card{background:linear-gradient(#fff,#f8fbfd);border-radius:22px;padding:20px;box-shadow:0 12px 32px #12314a20}
+label{display:grid;grid-template-columns:34px 1fr 42px;gap:12px;align-items:center;font-weight:800}input{width:100%;accent-color:#087ff5}output{font-size:20px;font-weight:900;color:#0875da}
+.boat{height:120px;margin:12px 0 4px;border-radius:15px;background:#e5f8fc;display:grid;place-items:center;position:relative;overflow:hidden}.boat svg{width:145px;height:110px;transition:.18s}.boat b{position:absolute;right:10px;top:9px;font-size:10px;color:#176b90;background:#fff9;padding:4px 7px;border-radius:15px}.hull{fill:#238bc4;stroke:#114a70;stroke-width:3}.deck{fill:#eaf8fc;stroke:#12314a;stroke-width:2}.guard{fill:#dbe8ed;stroke:#12314a;stroke-width:3}.prop{stroke:#607883;stroke-width:4;stroke-linecap:round}.wave{fill:none;stroke:#79ccdf;stroke-width:2;opacity:.5}
+.pad{display:grid;grid-template:78px 78px 78px/repeat(3,78px);gap:9px;justify-content:center;margin:12px 0}
+button{border:0;border-radius:16px;background:#e4eef3;color:#12314a;font-size:28px;font-weight:800;touch-action:none;box-shadow:inset 0 -3px #cad9e0}
 button small{display:block;font-size:10px}.up{grid-column:2}.left{grid-row:2;grid-column:1}.stop{grid-row:2;grid-column:2;background:#ffe0e0;color:#b12828}.right{grid-row:2;grid-column:3}.down{grid-row:3;grid-column:2}
+button.on{outline:3px solid #2d91c7;background:#cae8f7}.stop.on{outline-color:#e65a5f;background:#ffcaca}
 #status{font-size:11px;color:#16815d}.warn{font-size:11px;background:#fff5d6;border-radius:10px;padding:10px}
 </style></head><body><main><h1>🚤 OneMaker Boat</h1><p id="status">Wi‑Fi 리모컨 연결됨</p><div class="card">
 <label>속도 <input id="speed" type="range" min="0" max="255" value="180"><output id="value">180</output></label>
+<div class="boat"><b id="motion">정지</b><svg viewBox="0 0 180 130"><path class="wave" d="M5 25c30-12 45 12 75 0s45 12 95 0M5 108c30-12 45 12 75 0s45 12 95 0"/><g id="ship"><circle class="guard" cx="62" cy="99" r="22"/><circle class="guard" cx="118" cy="99" r="22"/><path class="prop" d="M50 99h24M62 87v24M106 99h24M118 87v24"/><path class="hull" d="M90 12C66 25 55 55 60 102c2 13 12 20 30 24 18-4 28-11 30-24 5-47-6-77-30-90Z"/><path class="deck" d="M90 32C77 43 72 59 73 87h34c1-28-4-44-17-55Z"/></g></svg></div>
 <div class="pad"><button class="up" data-b="forward">▲<small>전진</small></button><button class="left" data-b="left">◀<small>좌회전</small></button><button class="stop" data-b="stop">■<small>정지</small></button><button class="right" data-b="right">▶<small>우회전</small></button><button class="down" data-b="backward">▼<small>후진</small></button></div>
 <div class="warn">방향 버튼을 누르는 동안만 움직입니다. 먼저 프로펠러를 분리하고 시험하세요.</div></div></main>
 <script>
 const speed=document.querySelector("#speed"),value=document.querySelector("#value");speed.oninput=()=>value.textContent=speed.value;
-function send(button){fetch(`/api/remote?button=${button}&speed=${speed.value}`,{cache:"no-store"}).catch(()=>status.textContent="연결을 확인하세요.");}
+const names={forward:"전진 중",backward:"후진 중",left:"좌회전 중",right:"우회전 중",stop:"정지"};
+function send(button){motion.textContent=names[button];document.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.b===button));fetch(`/api/remote?button=${button}&speed=${speed.value}`,{cache:"no-store"}).catch(()=>status.textContent="연결을 확인하세요.");}
 document.querySelectorAll("button").forEach(b=>{b.onpointerdown=e=>{e.preventDefault();send(b.dataset.b)};if(b.dataset.b!=="stop"){b.onpointerup=()=>send("stop");b.onpointercancel=()=>send("stop");b.onpointerleave=e=>{if(e.buttons)send("stop")}}});
 </script></body></html>
 )HTML";
@@ -84,6 +89,7 @@ document.querySelectorAll("button").forEach(b=>{b.onpointerdown=e=>{e.preventDef
 void pollIncomingCommands();
 bool parseIncomingLine(const String &line, bool allowCommands);
 bool executeSteps(JsonArrayConst steps);
+double callUserFunction(const String &name, JsonArrayConst args);
 void handleRemote(const String &button, int speed);
 
 void sendBleLine(const String &line) {
@@ -308,6 +314,9 @@ double evaluateNumber(JsonVariantConst expression) {
     if (strcmp(field, "width") == 0) return result.width;
     return result.height;
   }
+  if (strcmp(type, "functionCall") == 0) {
+    return callUserFunction(expression["name"].as<String>(), expression["args"].as<JsonArrayConst>());
+  }
   if (strcmp(type, "not") == 0) return !evaluateNumber(expression["value"]);
 
   double a = evaluateNumber(expression["a"]);
@@ -407,6 +416,8 @@ bool executeStep(JsonObjectConst step) {
   } else if (strcmp(op, "changeVar") == 0) {
     String name = step["name"].as<String>();
     setVariable(name, getVariable(name) + evaluateNumber(step["value"]));
+  } else if (strcmp(op, "call") == 0) {
+    callUserFunction(step["name"].as<String>(), step["args"].as<JsonArrayConst>());
   } else if (strcmp(op, "print") == 0) {
     String text = evaluateText(step["value"]);
     Serial.println(text);
@@ -444,6 +455,69 @@ bool executeSteps(JsonArrayConst steps) {
   return !stopRequested;
 }
 
+double callUserFunction(const String &name, JsonArrayConst args) {
+  if (functionDepth >= 12) {
+    emit("error", "내 블록 호출 깊이가 너무 큽니다.");
+    return 0;
+  }
+  JsonObjectConst definition = activeProgram["functions"][name.c_str()].as<JsonObjectConst>();
+  if (definition.isNull()) {
+    emit("error", "내 블록을 찾을 수 없습니다: " + name);
+    return 0;
+  }
+
+  struct ParamBackup {
+    String name;
+    bool existed;
+    double value;
+  };
+  ParamBackup backups[8];
+  double values[8] = {0};
+  JsonArrayConst params = definition["params"].as<JsonArrayConst>();
+  int count = min((int)params.size(), 8);
+
+  for (int index = 0; index < count; index++) {
+    JsonVariantConst argument = args[index];
+    values[index] = argument.isNull() ? 0 : evaluateNumber(argument["value"]);
+  }
+  for (int index = 0; index < count; index++) {
+    backups[index].name = params[index].as<String>();
+    backups[index].existed = false;
+    backups[index].value = 0;
+    for (int slot = 0; slot < MAX_VARS; slot++) {
+      if (variables[slot].used && variables[slot].name == backups[index].name) {
+        backups[index].existed = true;
+        backups[index].value = variables[slot].value;
+        break;
+      }
+    }
+    setVariable(backups[index].name, values[index]);
+  }
+
+  functionDepth++;
+  bool completed = executeSteps(definition["steps"].as<JsonArrayConst>());
+  double result = completed && !definition["returns"].isNull()
+    ? evaluateNumber(definition["returns"])
+    : 0;
+  functionDepth--;
+
+  for (int index = count - 1; index >= 0; index--) {
+    if (backups[index].existed) {
+      setVariable(backups[index].name, backups[index].value);
+    } else {
+      for (int slot = 0; slot < MAX_VARS; slot++) {
+        if (variables[slot].used && variables[slot].name == backups[index].name) {
+          variables[slot].used = false;
+          variables[slot].name = "";
+          variables[slot].value = 0;
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 bool saveProgram(JsonVariantConst root) {
   File file = LittleFS.open(PROGRAM_PATH, "w");
   if (!file) return false;
@@ -473,6 +547,7 @@ bool runSavedProgram() {
     return false;
   }
   clearVariables();
+  functionDepth = 0;
   stopRequested = false;
   emit("started");
   bool completed = executeSteps(activeProgram["program"].as<JsonArrayConst>());
@@ -517,7 +592,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.1.0";
+    response["runtime"] = "OneMaker Boat 1.2.0";
     response["wifi"] = WIFI_SSID;
     String output;
     serializeJson(response, output);
@@ -530,6 +605,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     stored["config"] = document["config"];
     stored["program"] = document["program"];
     stored["handlers"] = document["handlers"];
+    stored["functions"] = document["functions"];
     if (saveProgram(stored) && loadActiveProgram()) emit("loaded");
     else emit("error", "프로그램을 저장하지 못했습니다.");
     return true;
@@ -561,7 +637,7 @@ void startWebRemote() {
     webServer.send(200, "application/json", "{\"ok\":true}");
   });
   webServer.on("/api/status", HTTP_GET, []() {
-    webServer.send(200, "application/json", "{\"board\":\"ESP32-C3 Super Mini\",\"runtime\":\"1.1.0\"}");
+    webServer.send(200, "application/json", "{\"board\":\"ESP32-C3 Super Mini\",\"runtime\":\"1.2.0\"}");
   });
   webServer.onNotFound([]() {
     webServer.send(404, "text/plain; charset=utf-8", "Not found");
@@ -589,7 +665,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", "OneMaker ESP32-C3 Boat Runtime 1.1.0");
+  emit("ready", "OneMaker ESP32-C3 Boat Runtime 1.2.0");
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }
