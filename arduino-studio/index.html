@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#152b43">
+  <title>OneMaker Arduino UNO·Nano Studio</title>
+  <link rel="stylesheet" href="style.css?v=1.0.0">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="OneMaker Arduino Studio">
+      <span class="brand-mark">OM</span>
+      <span><b>OneMaker</b><small>ARDUINO UNO·NANO STUDIO</small></span>
+    </a>
+    <label class="project-name">
+      <span>프로젝트</span>
+      <input id="projectName" value="나의 아두이노 프로젝트" maxlength="40">
+    </label>
+    <div class="top-actions">
+      <button id="exampleBtn" class="ghost">예제</button>
+      <button id="saveBtn" class="ghost">저장</button>
+      <button id="openBtn" class="ghost">열기</button>
+      <input id="openFile" type="file" accept=".omarduino,.json" hidden>
+      <button id="firmwareBtn" class="outline">① 런타임 설치</button>
+      <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
+      <button id="runBtn" class="primary">③ USB로 실행</button>
+      <button id="stopBtn" class="danger">■ 정지</button>
+    </div>
+  </header>
+
+  <section class="class-strip">
+    <div><b>수업 순서</b><span>보드당 처음 한 번 런타임을 설치한 뒤 USB 연결을 유지합니다.</span></div>
+    <ol><li class="active">블록 만들기</li><li>런타임 설치</li><li>USB 연결·실행</li></ol>
+    <span id="connectionStatus" class="status disconnected">연결 안 됨</span>
+  </section>
+
+  <main class="app-shell">
+    <section class="editor-pane">
+      <div class="editor-toolbar">
+        <div class="toolbar-group">
+          <button id="undoBtn" title="실행 취소">↶</button>
+          <button id="redoBtn" title="다시 실행">↷</button>
+          <button id="copyBtn">복사</button>
+          <button id="pasteBtn">붙여넣기</button>
+          <button id="deleteBtn">삭제</button>
+        </div>
+        <div class="toolbar-hint">UNO·Nano의 핀 번호와 연결한 부품을 블록에서 선택하세요.</div>
+        <div class="toolbar-group">
+          <button id="zoomOutBtn">−</button>
+          <button id="zoomResetBtn">100%</button>
+          <button id="zoomInBtn">＋</button>
+          <button id="centerBtn">블록 찾기</button>
+          <button id="clearBtn">모두 지우기</button>
+        </div>
+      </div>
+      <div id="blocklyDiv" aria-label="아두이노 블록 코딩 작업 공간"></div>
+    </section>
+
+    <aside class="side-pane">
+      <nav class="side-tabs" aria-label="오른쪽 패널">
+        <button class="active" data-tab="board">보드</button>
+        <button data-tab="test">빠른 테스트</button>
+        <button data-tab="code">텍스트 코드</button>
+        <button data-tab="serial">시리얼 모니터</button>
+      </nav>
+
+      <section class="tab-panel active board-panel" data-panel="board">
+        <div class="board-card">
+          <div class="board-title">
+            <div><small>선택 보드</small><h2 id="boardTitle">Arduino UNO R3</h2></div>
+            <span class="board-badge">ATmega328P</span>
+          </div>
+          <label class="board-select-label">보드 종류
+            <select id="boardType">
+              <option value="uno">Arduino UNO R3</option>
+              <option value="nano">Arduino Nano</option>
+              <option value="nanoOldBootloader">Arduino Nano 구형 부트로더</option>
+            </select>
+          </label>
+          <div class="board-visual" aria-label="Arduino UNO와 Nano 공통 핀 안내">
+            <div class="pin-row analog"><span>A0</span><span>A1</span><span>A2</span><span>A3</span><span>A4·SDA</span><span>A5·SCL</span></div>
+            <div class="uno-board">
+              <span class="usb-port"></span>
+              <div class="chip"><b>ATmega</b><small>328P</small></div>
+              <span class="power-led"></span>
+              <strong>UNO · NANO</strong>
+            </div>
+            <div class="pin-row digital"><span>D2</span><span>D3~</span><span>D4</span><span>D5~</span><span>D6~</span><span>D7</span><span>D8</span><span>D9~</span><span>D10~</span><span>D11~</span><span>D12</span><span>D13</span></div>
+          </div>
+        </div>
+
+        <div class="settings-card capability-card">
+          <div class="card-head"><h3>지원 부품</h3><span class="future-badge">수업용</span></div>
+          <div class="capability-grid">
+            <span>☀️ 조도</span><span>📏 초음파</span><span>🌡️ 온습도</span><span>🌫️ 미세먼지</span>
+            <span>🌱 토양수분</span><span>🔘 버튼</span><span>💡 LED</span><span>⚙️ DC모터</span>
+            <span>🦾 서보</span><span>🔊 피에조</span><span>🖥️ I²C LCD</span><span>🌈 네오픽셀</span>
+            <span>🎵 MP3</span><span>📶 Bluetooth</span>
+          </div>
+        </div>
+
+        <div class="settings-card mode-note">
+          <h3>실행 방식</h3>
+          <p><b>USB로 실행</b>은 블록을 브라우저에서 실행하므로 USB 연결을 유지합니다. 보드 단독 실행이 필요하면 생성된 Arduino C++을 <b>INO 다운로드</b>하여 Arduino IDE에서 업로드하세요.</p>
+        </div>
+
+        <div class="settings-card pin-warning">
+          <h3>핀 사용 주의</h3>
+          <p>D0·D1은 USB 시리얼과 겹쳐 기본 목록에서 제외했습니다. I²C LCD는 A4(SDA)·A5(SCL), Servo는 Timer1, 피에조는 tone 기능을 사용합니다.</p>
+        </div>
+      </section>
+
+      <section class="tab-panel test-panel" data-panel="test">
+        <div class="test-card">
+          <h3>디지털·PWM 테스트</h3>
+          <div class="form-grid">
+            <label>핀 <select id="testPin"></select></label>
+            <label>값 <input id="testValue" type="number" min="0" max="255" value="255"></label>
+          </div>
+          <div class="button-row"><button id="testHighBtn">HIGH</button><button id="testLowBtn">LOW</button><button id="testPwmBtn" class="primary">PWM 출력</button></div>
+        </div>
+        <div class="test-card">
+          <h3>센서값 읽기</h3>
+          <div class="form-grid">
+            <label>디지털핀 <select id="testDigitalPin"></select></label>
+            <label>아날로그핀 <select id="testAnalogPin"></select></label>
+          </div>
+          <div class="button-row"><button id="readDigitalBtn">디지털 읽기</button><button id="readAnalogBtn">아날로그 읽기</button></div>
+          <output id="testResult">연결 후 시험하세요.</output>
+        </div>
+        <div class="test-card">
+          <h3>DC모터 테스트</h3>
+          <div class="form-grid three">
+            <label>IN1 <select id="motorPin1"></select></label>
+            <label>IN2 <select id="motorPin2"></select></label>
+            <label>속도 <input id="motorSpeed" type="number" min="-255" max="255" value="180"></label>
+          </div>
+          <div class="button-row"><button id="motorRunBtn" class="primary">회전</button><button id="motorStopBtn" class="danger-soft">정지</button></div>
+        </div>
+      </section>
+
+      <section class="tab-panel code-panel" data-panel="code">
+        <div class="panel-head">
+          <div><h3>Arduino C++</h3><p>사용한 블록에 필요한 라이브러리와 코드만 생성합니다.</p></div>
+          <div><button id="copyCodeBtn">복사</button><button id="downloadInoBtn">INO 다운로드</button></div>
+        </div>
+        <textarea id="codeView" spellcheck="false" aria-label="생성된 Arduino C++ 코드"></textarea>
+      </section>
+
+      <section class="tab-panel serial-panel" data-panel="serial">
+        <div class="panel-head">
+          <div><h3>시리얼 모니터</h3><p>런타임 메시지와 센서값을 확인합니다.</p></div>
+          <div><button id="clearSerialBtn">지우기</button></div>
+        </div>
+        <pre id="serialOutput" aria-live="polite"></pre>
+        <div class="serial-send"><input id="serialInput" placeholder="보드로 보낼 명령"><button id="serialSendBtn">전송</button></div>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="firmwareDialog">
+    <form method="dialog" class="dialog-card firmware-card">
+      <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+      <span class="step-chip">보드당 처음 1번</span>
+      <h2>OneMaker Arduino 런타임 설치</h2>
+      <p>보드 종류에 맞는 버튼을 누르고 USB 포트를 선택하세요. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
+      <div class="firmware-options">
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime.hex?v=1.0.0" board="uno" verify>
+          Arduino UNO 설치 <span class="upload-progress"></span>
+        </button>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime.hex?v=1.0.0" board="nano" verify>
+          Nano 설치 <span class="upload-progress"></span>
+        </button>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime.hex?v=1.0.0" board="nanoOldBootloader" verify>
+          Nano 구형 부트로더 설치 <span class="upload-progress"></span>
+        </button>
+      </div>
+      <ol class="mini-steps">
+        <li>설치가 끝나면 보드가 자동으로 재시작됩니다.</li>
+        <li>창을 닫고 상단의 ‘USB 연결’을 누릅니다.</li>
+        <li>Nano 설치가 실패하면 ‘Nano 구형 부트로더’를 시험합니다.</li>
+      </ol>
+      <button class="outline wide" value="done">설치를 마쳤습니다</button>
+    </form>
+  </dialog>
+
+  <dialog id="runDialog">
+    <div class="dialog-card progress-card">
+      <div class="spinner"></div>
+      <h2 id="runTitle">블록 실행 중</h2>
+      <p id="runText">USB 연결을 유지하세요.</p>
+      <button id="runCloseBtn" class="outline wide">백그라운드로 계속 실행</button>
+    </div>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
+  <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
+  <script src="app.js?v=1.0.0"></script>
+</body>
+</html>
