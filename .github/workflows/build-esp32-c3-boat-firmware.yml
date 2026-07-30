@@ -24,13 +24,16 @@ jobs:
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Install ESP32 core and ArduinoJson
+      - name: Install ESP32 core and libraries
         run: |
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
           arduino-cli lib install ArduinoJson
+          git clone --depth 1 https://github.com/HuskyLens/HUSKYLENSArduino.git /tmp/HUSKYLENSArduino
+          mkdir -p "$HOME/Arduino/libraries"
+          cp -R /tmp/HUSKYLENSArduino/HUSKYLENS "$HOME/Arduino/libraries/HUSKYLENS"
 
       - name: Compile ESP32-C3 runtime
         run: |
