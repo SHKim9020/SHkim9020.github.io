@@ -86,6 +86,47 @@
       colour: 155
     },
     {
+      type: "pin_digital_read",
+      message0: "디지털 입력 핀 %1 값",
+      args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
+      output: "Number",
+      colour: 65,
+      tooltip: "선택한 디지털 핀을 INPUT으로 설정하고 0(LOW) 또는 1(HIGH)을 읽습니다."
+    },
+    {
+      type: "pin_analog_read",
+      message0: "아날로그 입력 핀 %1 값",
+      args0: [{ type: "field_dropdown", name: "PIN", options: analogOptions }],
+      output: "Number",
+      colour: 65,
+      tooltip: "선택한 아날로그 핀에서 0~1023 값을 읽습니다."
+    },
+    {
+      type: "pin_digital_write",
+      message0: "디지털 출력 핀 %1 %2",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: digitalOptions },
+        { type: "field_dropdown", name: "STATE", options: [["HIGH", "1"], ["LOW", "0"]] }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 65,
+      tooltip: "선택한 디지털 핀을 OUTPUT으로 설정하고 HIGH 또는 LOW를 출력합니다."
+    },
+    {
+      type: "pin_pwm_write",
+      message0: "PWM 출력 핀 %1 값 %2",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: pwmOptions },
+        { type: "input_value", name: "VALUE", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 65,
+      tooltip: "UNO·Nano PWM 핀에 0~255 값을 출력합니다. 두 보드에는 별도의 DAC 아날로그 출력이 없습니다."
+    },
+    {
       type: "sensor_button",
       message0: "푸시버튼 %1 눌림?",
       args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
@@ -409,6 +450,12 @@
         { kind: "block", type: "arduino_start" },
         { kind: "block", type: "arduino_loop" }
       ] },
+      { kind: "category", name: "핀 입·출력", colour: "65", contents: [
+        { kind: "block", type: "pin_digital_read" },
+        { kind: "block", type: "pin_analog_read" },
+        { kind: "block", type: "pin_digital_write" },
+        { kind: "block", type: "pin_pwm_write", inputs: { VALUE: numberShadow(128) } }
+      ] },
       { kind: "category", name: "입력·센서", colour: "155", contents: [
         { kind: "block", type: "sensor_analog" },
         { kind: "block", type: "sensor_button" },
@@ -547,7 +594,6 @@
     $("#readAnalogBtn").addEventListener("click", async () => showTestResult(await requestValue("AR", $("#testAnalogPin").value)));
     $("#motorRunBtn").addEventListener("click", () => sendAction("MOTOR", $("#motorPin1").value, $("#motorPin2").value, clamp($("#motorSpeed").value, -255, 255)));
     $("#motorStopBtn").addEventListener("click", () => sendAction("MOTOR", $("#motorPin1").value, $("#motorPin2").value, 0));
-    $("#runCloseBtn").addEventListener("click", () => $("#runDialog").close());
     window.addEventListener("beforeunload", () => {
       runCancelled = true;
       if (serialReader) serialReader.cancel().catch(() => {});
@@ -876,6 +922,8 @@
         return result;
       }
       case "sensor_analog": return requestValue("AR", block.getFieldValue("PIN"));
+      case "pin_digital_read": return requestValue("DR", block.getFieldValue("PIN"));
+      case "pin_analog_read": return requestValue("AR", block.getFieldValue("PIN"));
       case "sensor_button": return Boolean(await requestValue("BUTTON", block.getFieldValue("PIN")));
       case "sensor_ultrasonic": return requestValue("SONAR", block.getFieldValue("TRIG"), block.getFieldValue("ECHO"));
       case "sensor_dht": return requestValue("DHT", block.getFieldValue("PIN"), block.getFieldValue("TYPE"), block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
@@ -945,6 +993,10 @@
         liveVariables.set(key, current + Number(await evaluate(inputBlock(block, "DELTA"), functionDepth)));
         return;
       }
+      case "pin_digital_write":
+        return sendAction("DW", block.getFieldValue("PIN"), block.getFieldValue("STATE"));
+      case "pin_pwm_write":
+        return sendAction("PW", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "VALUE"), functionDepth), 0, 255));
       case "led_digital":
         return sendAction("DW", block.getFieldValue("PIN"), block.getFieldValue("STATE"));
       case "led_pwm":
@@ -1031,9 +1083,8 @@
       executionSliceSteps = 0;
       liveVariables.clear();
       await sendAction("STOP");
-      $("#runTitle").textContent = "블록 실행 중";
-      $("#runText").textContent = "UNO·Nano와 USB 연결을 유지하세요.";
-      if (!$("#runDialog").open) $("#runDialog").show();
+      setRunningUi(true);
+      toast("블록 실행을 시작했습니다. 정지하려면 상단의 ‘정지’를 누르세요.");
       for (const hat of startHats) await executeChain(hat.getNextBlock());
       if (loopHats.length) {
         while (!runCancelled) {
@@ -1049,16 +1100,24 @@
       }
     } finally {
       running = false;
-      if ($("#runDialog").open) $("#runDialog").close();
+      setRunningUi(false);
     }
   }
 
   async function stopWorkspace() {
     runCancelled = true;
+    setRunningUi(false);
     try {
       if (runtimeReady) await sendAction("STOP");
       toast("블록과 출력 동작을 정지했습니다.");
     } catch (_) {}
+  }
+
+  function setRunningUi(active) {
+    const button = $("#runBtn");
+    button.textContent = active ? "● 실행 중" : "③ USB로 실행";
+    button.classList.toggle("running", active);
+    button.setAttribute("aria-pressed", String(active));
   }
 
   function projectData() {
@@ -1286,6 +1345,8 @@
         return parts.length ? parts.join(" + ") : 'String("")';
       }
       case "sensor_analog": return `analogRead(A${block.getFieldValue("PIN")})`;
+      case "pin_digital_read": return `readDigitalPin(${block.getFieldValue("PIN")})`;
+      case "pin_analog_read": return `analogRead(A${block.getFieldValue("PIN")})`;
       case "sensor_button": return `readButton(${block.getFieldValue("PIN")})`;
       case "sensor_ultrasonic": return `readUltrasonic(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
       case "sensor_dht": {
@@ -1336,6 +1397,12 @@
       }
       case "variables_set": return line(`${cppVariable(block)} = ${cppInput(block, "VALUE")};`);
       case "math_change": return line(`${cppVariable(block)} += ${cppInput(block, "DELTA")};`);
+      case "pin_digital_write":
+        return line(`pinMode(${block.getFieldValue("PIN")}, OUTPUT);`)
+          + line(`digitalWrite(${block.getFieldValue("PIN")}, ${block.getFieldValue("STATE") === "1" ? "HIGH" : "LOW"});`);
+      case "pin_pwm_write":
+        return line(`pinMode(${block.getFieldValue("PIN")}, OUTPUT);`)
+          + line(`analogWrite(${block.getFieldValue("PIN")}, constrain(${cppInput(block, "VALUE")}, 0, 255));`);
       case "led_digital":
         return line(`pinMode(${block.getFieldValue("PIN")}, OUTPUT);`)
           + line(`digitalWrite(${block.getFieldValue("PIN")}, ${block.getFieldValue("STATE") === "1" ? "HIGH" : "LOW"});`);
@@ -1450,6 +1517,11 @@
     });
 
     const helpers = [];
+    if (hardware.types.has("pin_digital_read")) helpers.push(`
+int readDigitalPin(uint8_t pin) {
+  pinMode(pin, INPUT);
+  return digitalRead(pin);
+}`);
     if (hardware.types.has("sensor_ultrasonic")) helpers.push(`
 long readUltrasonic(uint8_t trigPin, uint8_t echoPin) {
   pinMode(trigPin, OUTPUT);
