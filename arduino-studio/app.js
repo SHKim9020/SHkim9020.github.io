@@ -1117,7 +1117,12 @@
         await sleep(250);
       }
       if (!runtimeReady) throw new Error("OneMaker 런타임 응답이 없습니다. 먼저 런타임을 다시 설치하세요.");
-      toast(`OneMaker Arduino Runtime ${RUNTIME_VERSION} 연결 완료`);
+      if (runtimeVersion !== RUNTIME_VERSION) {
+        toast(`현재 런타임 ${runtimeVersion || "확인 불가"} · ${RUNTIME_VERSION} 재설치가 필요합니다.`);
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+      } else {
+        toast(`OneMaker Arduino Runtime ${runtimeVersion} 연결 완료`);
+      }
     } catch (error) {
       console.error(error);
       if (error.name !== "NotFoundError") toast(`USB 연결 실패: ${error.message}`);
@@ -1160,7 +1165,7 @@
 
   function setConnected(connected) {
     $("#connectionStatus").textContent = connected
-      ? (runtimeReady ? "런타임 연결됨" : "USB 확인 중")
+      ? (runtimeReady ? `런타임 ${runtimeVersion || ""} 연결됨` : "USB 확인 중")
       : "연결 안 됨";
     $("#connectionStatus").className = `status ${connected ? "connected" : "disconnected"}`;
     $("#connectBtn").classList.toggle("primary", connected);
