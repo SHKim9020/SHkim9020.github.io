@@ -11,6 +11,7 @@
   const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
+  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 1];
 
   let workspace;
   let serialPort;
@@ -498,14 +499,22 @@
     return version ? version.join(".") : "확인되지 않음";
   }
 
-  function supportsNumberedBoats(runtime = boardRuntime) {
+  function supportsFirmware(minimum, runtime = boardRuntime) {
     const version = runtimeVersion(runtime);
     if (!version) return false;
-    for (let index = 0; index < NUMBERED_FIRMWARE_MIN.length; index++) {
-      if (version[index] > NUMBERED_FIRMWARE_MIN[index]) return true;
-      if (version[index] < NUMBERED_FIRMWARE_MIN[index]) return false;
+    for (let index = 0; index < minimum.length; index++) {
+      if (version[index] > minimum[index]) return true;
+      if (version[index] < minimum[index]) return false;
     }
     return true;
+  }
+
+  function supportsNumberedBoats(runtime = boardRuntime) {
+    return supportsFirmware(NUMBERED_FIRMWARE_MIN, runtime);
+  }
+
+  function supportsStableBluetooth(runtime = boardRuntime) {
+    return supportsFirmware(STABLE_BLE_FIRMWARE_MIN, runtime);
   }
 
   function showFirmwareUpdateRequired() {
@@ -1107,6 +1116,13 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       });
       setBluetoothConnected(true);
       await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "ble");
+      if (!supportsStableBluetooth()) {
+        const installedVersion = runtimeVersionText();
+        if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
+        setBluetoothConnected(false);
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+        return toast(`Bluetooth 안정화를 위해 펌웨어 1.4.1이 필요합니다. 현재 ${installedVersion}입니다.`);
+      }
       setBluetoothConnected(true);
       toast(`${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결 완료`);
     } catch (error) {
