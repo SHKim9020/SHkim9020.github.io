@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.2: BLE-only radio mode while a controller is connected.
+// OneMaker Boat Runtime 1.4.2: BLE-only radio mode; Wi-Fi returns after disconnect.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
