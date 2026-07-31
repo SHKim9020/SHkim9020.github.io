@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.0";
+  const RUNTIME_VERSION = "1.1.1";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
