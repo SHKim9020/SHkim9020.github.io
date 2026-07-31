@@ -1,6 +1,6 @@
 {
   "name": "OneMaker ESP32-C3 Boat Runtime",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "home_assistant_domain": "onemaker_boat",
   "new_install_prompt_erase": true,
   "builds": [
@@ -8,7 +8,7 @@
       "chipFamily": "ESP32-C3",
       "parts": [
         {
-          "path": "boat_runtime.merged.bin?v=1.4.0-numbered-boats",
+          "path": "boat_runtime-1.4.1.merged.bin",
           "offset": 0
         }
       ]

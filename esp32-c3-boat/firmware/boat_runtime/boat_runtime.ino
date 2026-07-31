@@ -11,8 +11,10 @@
 #include <BLE2902.h>
 #include <mbedtls/base64.h>
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.0: numbered classroom boats and BLE disconnect support.
+// OneMaker Boat Runtime 1.4.1: stable serialized BLE input and notifications.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -27,6 +29,7 @@ static const int DEFAULT_HUSKY_SDA = 6;
 static const int DEFAULT_HUSKY_SCL = 7;
 static const int MAX_VARS = 20;
 static const size_t MAX_UPLOAD_SIZE = 65536;
+static const size_t BLE_SAFE_CHUNK_SIZE = 20;
 
 struct BoatConfig {
   int in1 = DEFAULT_IN1;
@@ -62,6 +65,7 @@ int functionDepth = 0;
 String serialInputLine;
 String bleInputLine;
 String blePendingData;
+SemaphoreHandle_t bleDataMutex = nullptr;
 String uploadBuffer;
 size_t uploadExpectedSize = 0;
 int uploadNextIndex = 0;
@@ -132,8 +136,21 @@ bool persistBoatNumber(int number) {
 
 void sendBleLine(const String &line) {
   if (!bleConnected || !bleTx) return;
-  bleTx->setValue((line + "\n").c_str());
-  bleTx->notify();
+  String payload = line + "\n";
+  for (size_t offset = 0; offset < payload.length() && bleConnected; offset += BLE_SAFE_CHUNK_SIZE) {
+    String chunk = payload.substring(offset, min(offset + BLE_SAFE_CHUNK_SIZE, payload.length()));
+    bleTx->setValue(chunk.c_str());
+    bleTx->notify();
+    delay(8);
+  }
+}
+
+String takeBlePendingData() {
+  if (!bleDataMutex || xSemaphoreTake(bleDataMutex, 0) != pdTRUE) return "";
+  String pending = blePendingData;
+  blePendingData = "";
+  xSemaphoreGive(bleDataMutex);
+  return pending;
 }
 
 void emit(const String &type, const String &message = "") {
@@ -161,7 +178,11 @@ class BoatServerCallbacks : public BLEServerCallbacks {
 class BoatRxCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
     String value = characteristic->getValue();
-    if (value.length()) blePendingData += value;
+    if (!value.length() || !bleDataMutex) return;
+    if (xSemaphoreTake(bleDataMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+      blePendingData += value;
+      xSemaphoreGive(bleDataMutex);
+    }
   }
 };
 
@@ -399,11 +420,8 @@ void pollIncomingCommands() {
   String serialData;
   while (Serial.available()) serialData += (char)Serial.read();
   if (serialData.length()) consumeInput(serialInputLine, serialData, false);
-  if (blePendingData.length()) {
-    String pending = blePendingData;
-    blePendingData = "";
-    consumeInput(bleInputLine, pending, false);
-  }
+  String bleData = takeBlePendingData();
+  if (bleData.length()) consumeInput(bleInputLine, bleData, false);
   webServer.handleClient();
 }
 
@@ -604,7 +622,7 @@ void handleRemote(const String &button, int speed) {
   } else {
     driveDirection(button, (int)remoteSpeed);
   }
-  emit("remote", button);
+  Serial.printf("{\"type\":\"remote\",\"message\":\"%s\"}\n", button.c_str());
 }
 
 bool parseIncomingLine(const String &line, bool allowCommands) {
@@ -631,7 +649,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.0";
+    response["runtime"] = "OneMaker Boat 1.4.1";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -766,7 +784,7 @@ void startWebRemote() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.0";
+    status["runtime"] = "1.4.1";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -784,6 +802,7 @@ void setup() {
   Serial.begin(115200);
   delay(250);
   LittleFS.begin(true);
+  bleDataMutex = xSemaphoreCreateMutex();
   loadBoatNumber();
   JsonDocument defaults;
   JsonObject pins = defaults["pins"].to<JsonObject>();
@@ -801,7 +820,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.0 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.1 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }
@@ -810,11 +829,8 @@ void loop() {
   String serialData;
   while (Serial.available()) serialData += (char)Serial.read();
   if (serialData.length()) consumeInput(serialInputLine, serialData, true);
-  if (blePendingData.length()) {
-    String pending = blePendingData;
-    blePendingData = "";
-    consumeInput(bleInputLine, pending, true);
-  }
+  String bleData = takeBlePendingData();
+  if (bleData.length()) consumeInput(bleInputLine, bleData, true);
   webServer.handleClient();
   delay(2);
 }

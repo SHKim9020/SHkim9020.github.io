@@ -38,18 +38,43 @@ jobs:
 
       - name: Compile ESP32-C3 runtime
         run: |
+          rm -rf /tmp/onemaker-c3-build
           mkdir -p /tmp/onemaker-c3-build
           arduino-cli compile \
+            --clean \
             --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=qio,FlashSize=4M,PartitionScheme=huge_app" \
             --output-dir /tmp/onemaker-c3-build \
             esp32-c3-boat/firmware/boat_runtime
           cp /tmp/onemaker-c3-build/boat_runtime.ino.merged.bin \
             esp32-c3-boat/firmware/boat_runtime.merged.bin
+          cp /tmp/onemaker-c3-build/boat_runtime.ino.merged.bin \
+            esp32-c3-boat/firmware/boat_runtime-1.4.1.merged.bin
+
+      - name: Verify ESP32-C3 runtime
+        run: |
+          test -s esp32-c3-boat/firmware/boat_runtime.merged.bin
+          cmp esp32-c3-boat/firmware/boat_runtime.merged.bin \
+            esp32-c3-boat/firmware/boat_runtime-1.4.1.merged.bin
+          python3 - <<'PY'
+          from pathlib import Path
+          image = Path("esp32-c3-boat/firmware/boat_runtime-1.4.1.merged.bin").read_bytes()
+          assert b"OneMaker Boat 1.4.1" in image, "runtime 1.4.1 marker is missing"
+          assert b"OneMaker Boat 1.4.0" not in image, "stale runtime 1.4.0 marker remains"
+          PY
+
+      - name: Upload verified ESP32-C3 runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: onemaker-boat-runtime-1.4.1
+          path: esp32-c3-boat/firmware/boat_runtime-1.4.1.merged.bin
+          if-no-files-found: error
 
       - name: Commit generated firmware
         if: ${{ github.event_name == 'push' }}
         run: |
-          git add esp32-c3-boat/firmware/boat_runtime.merged.bin
+          git add \
+            esp32-c3-boat/firmware/boat_runtime.merged.bin \
+            esp32-c3-boat/firmware/boat_runtime-1.4.1.merged.bin
           if git diff --cached --quiet; then
             echo "Firmware is unchanged."
             exit 0
