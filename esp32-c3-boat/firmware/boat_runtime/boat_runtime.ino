@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.2: BLE-only radio mode; Wi-Fi returns after disconnect.
+// OneMaker Boat Runtime 1.4.3: classroom motor ramp, speed cap, and remote watchdog.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -30,6 +30,11 @@ static const int DEFAULT_HUSKY_SCL = 7;
 static const int MAX_VARS = 20;
 static const size_t MAX_UPLOAD_SIZE = 65536;
 static const size_t BLE_SAFE_CHUNK_SIZE = 20;
+static const int CLASSROOM_MAX_PWM = 150;
+static const int MOTOR_RAMP_STEP = 15;
+static const unsigned long MOTOR_RAMP_INTERVAL_MS = 25;
+static const unsigned long DIRECTION_CHANGE_DEADTIME_MS = 180;
+static const unsigned long REMOTE_WATCHDOG_MS = 1100;
 
 struct BoatConfig {
   int in1 = DEFAULT_IN1;
@@ -76,6 +81,15 @@ String uploadBuffer;
 size_t uploadExpectedSize = 0;
 int uploadNextIndex = 0;
 int boatNumber = 1;
+int currentLeftSpeed = 0;
+int currentRightSpeed = 0;
+int targetLeftSpeed = 0;
+int targetRightSpeed = 0;
+unsigned long lastMotorRampAt = 0;
+unsigned long motorDeadtimeUntil = 0;
+String activeRemoteButton = "stop";
+unsigned long lastRemoteHeartbeatAt = 0;
+bool remoteWatchdogArmed = false;
 
 static const char REMOTE_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
@@ -91,15 +105,18 @@ button small{display:block;font-size:10px}.up{grid-column:2}.left{grid-row:2;gri
 button.on{outline:3px solid #2d91c7;background:#cae8f7}.stop.on{outline-color:#e65a5f;background:#ffcaca}
 #status{font-size:11px;color:#16815d}.warn{font-size:11px;background:#fff5d6;border-radius:10px;padding:10px}
 </style></head><body><main><h1>🚤 OneMaker Boat</h1><p id="status">Wi‑Fi 리모컨 연결됨</p><div class="card">
-<label>속도 <input id="speed" type="range" min="0" max="255" value="180"><output id="value">180</output></label>
+<label>속도 <input id="speed" type="range" min="0" max="150" value="150"><output id="value">150</output></label>
 <div class="boat"><b id="motion">정지</b><svg viewBox="0 0 180 130"><path class="wave" d="M5 25c30-12 45 12 75 0s45 12 95 0M5 108c30-12 45 12 75 0s45 12 95 0"/><g id="ship"><circle class="guard" cx="62" cy="99" r="22"/><circle class="guard" cx="118" cy="99" r="22"/><path class="prop" d="M50 99h24M62 87v24M106 99h24M118 87v24"/><path class="hull" d="M90 12C66 25 55 55 60 102c2 13 12 20 30 24 18-4 28-11 30-24 5-47-6-77-30-90Z"/><path class="deck" d="M90 32C77 43 72 59 73 87h34c1-28-4-44-17-55Z"/></g></svg></div>
 <div class="pad"><button class="up" data-b="forward">▲<small>전진</small></button><button class="left" data-b="left">◀<small>좌회전</small></button><button class="stop" data-b="stop">■<small>정지</small></button><button class="right" data-b="right">▶<small>우회전</small></button><button class="down" data-b="backward">▼<small>후진</small></button></div>
 <div class="warn">방향 버튼을 누르는 동안만 움직입니다. 먼저 프로펠러를 분리하고 시험하세요.</div></div></main>
 <script>
-const speed=document.querySelector("#speed"),value=document.querySelector("#value");speed.oninput=()=>value.textContent=speed.value;
+const speed=document.querySelector("#speed"),value=document.querySelector("#value");let held="stop",heartbeat=null;speed.oninput=()=>value.textContent=speed.value;
 const names={forward:"전진 중",backward:"후진 중",left:"좌회전 중",right:"우회전 중",stop:"정지"};
-function send(button){motion.textContent=names[button];document.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.b===button));fetch(`/api/remote?button=${button}&speed=${speed.value}`,{cache:"no-store"}).catch(()=>status.textContent="연결을 확인하세요.");}
-document.querySelectorAll("button").forEach(b=>{b.onpointerdown=e=>{e.preventDefault();send(b.dataset.b)};if(b.dataset.b!=="stop"){b.onpointerup=()=>send("stop");b.onpointercancel=()=>send("stop");b.onpointerleave=e=>{if(e.buttons)send("stop")}}});
+function show(button){motion.textContent=names[button];document.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.b===button));}
+function command(button){return fetch(`/api/remote?button=${button}&speed=${speed.value}`,{cache:"no-store"}).catch(()=>status.textContent="연결을 확인하세요.");}
+function press(button){if(button==="stop")return release(true);if(held===button)return;release(false);held=button;show(button);command(button);heartbeat=setInterval(()=>fetch(`/api/heartbeat?button=${held}`,{cache:"no-store"}).catch(()=>{}),400);}
+function release(force=false){if(heartbeat){clearInterval(heartbeat);heartbeat=null}const moving=held!=="stop";held="stop";show("stop");if(moving||force)command("stop");}
+document.querySelectorAll("button").forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture?.(e.pointerId);press(b.dataset.b)};if(b.dataset.b!=="stop"){b.onpointerup=()=>release();b.onpointercancel=()=>release();b.onpointerleave=e=>{if(e.buttons)release()}}});
 </script></body></html>
 )HTML";
 
@@ -110,6 +127,7 @@ double callUserFunction(const String &name, JsonArrayConst args);
 void handleRemote(const String &button, int speed);
 void startWebRemote();
 void serviceBluetoothState();
+void serviceMotorSafety();
 
 String twoDigitBoatNumber() {
   char value[3];
@@ -246,7 +264,7 @@ void serviceBluetoothState() {
 }
 
 void setChannel(int pinA, int pinB, int speed) {
-  speed = constrain(speed, -255, 255);
+  speed = constrain(speed, -CLASSROOM_MAX_PWM, CLASSROOM_MAX_PWM);
   if (speed > 0) {
     analogWrite(pinA, speed);
     analogWrite(pinB, 0);
@@ -259,7 +277,7 @@ void setChannel(int pinA, int pinB, int speed) {
   }
 }
 
-void setDrive(int left, int right) {
+void writeDriveOutput(int left, int right) {
   if (config.invertLeft) left = -left;
   if (config.invertRight) right = -right;
   setChannel(config.in1, config.in2, left);
@@ -267,11 +285,66 @@ void setDrive(int left, int right) {
 }
 
 void stopBoat() {
-  setDrive(0, 0);
+  targetLeftSpeed = 0;
+  targetRightSpeed = 0;
+  currentLeftSpeed = 0;
+  currentRightSpeed = 0;
+  motorDeadtimeUntil = 0;
+  writeDriveOutput(0, 0);
+}
+
+int safeMotorSpeed(int speed) {
+  return constrain(speed, -CLASSROOM_MAX_PWM, CLASSROOM_MAX_PWM);
+}
+
+bool changesDirection(int current, int target) {
+  return current != 0 && target != 0 && ((current > 0) != (target > 0));
+}
+
+int approachMotorSpeed(int current, int target) {
+  if (current < target) return min(current + MOTOR_RAMP_STEP, target);
+  if (current > target) return max(current - MOTOR_RAMP_STEP, target);
+  return current;
+}
+
+void setDrive(int left, int right) {
+  left = safeMotorSpeed(left);
+  right = safeMotorSpeed(right);
+  bool reversing = changesDirection(currentLeftSpeed, left)
+    || changesDirection(currentRightSpeed, right);
+  targetLeftSpeed = left;
+  targetRightSpeed = right;
+  if (reversing) {
+    currentLeftSpeed = 0;
+    currentRightSpeed = 0;
+    writeDriveOutput(0, 0);
+    motorDeadtimeUntil = millis() + DIRECTION_CHANGE_DEADTIME_MS;
+  }
+  serviceMotorSafety();
+}
+
+void serviceMotorSafety() {
+  unsigned long now = millis();
+  if (remoteWatchdogArmed && now - lastRemoteHeartbeatAt > REMOTE_WATCHDOG_MS) {
+    remoteWatchdogArmed = false;
+    activeRemoteButton = "stop";
+    stopBoat();
+    Serial.println("{\"type\":\"safetyStop\",\"message\":\"remote heartbeat timeout\"}");
+    return;
+  }
+  if ((long)(now - motorDeadtimeUntil) < 0) return;
+  if (now - lastMotorRampAt < MOTOR_RAMP_INTERVAL_MS) return;
+  lastMotorRampAt = now;
+  int nextLeft = approachMotorSpeed(currentLeftSpeed, targetLeftSpeed);
+  int nextRight = approachMotorSpeed(currentRightSpeed, targetRightSpeed);
+  if (nextLeft == currentLeftSpeed && nextRight == currentRightSpeed) return;
+  currentLeftSpeed = nextLeft;
+  currentRightSpeed = nextRight;
+  writeDriveOutput(currentLeftSpeed, currentRightSpeed);
 }
 
 void driveDirection(const String &direction, int speed) {
-  speed = constrain(speed, 0, 255);
+  speed = constrain(speed, 0, CLASSROOM_MAX_PWM);
   if (direction == "forward") setDrive(speed, speed);
   else if (direction == "backward") setDrive(-speed, -speed);
   else if (direction == "left") setDrive(-speed, speed);
@@ -458,6 +531,7 @@ void consumeInput(String &buffer, const String &data, bool allowCommands) {
 
 void pollIncomingCommands() {
   serviceBluetoothState();
+  serviceMotorSafety();
   String serialData;
   while (Serial.available()) serialData += (char)Serial.read();
   if (serialData.length()) consumeInput(serialInputLine, serialData, false);
@@ -655,15 +729,35 @@ bool runSavedProgram() {
 }
 
 void handleRemote(const String &button, int speed) {
-  remoteSpeed = constrain(speed, 0, 255);
+  String safeButton = button;
+  if (safeButton != "forward" && safeButton != "backward"
+      && safeButton != "left" && safeButton != "right" && safeButton != "stop") {
+    safeButton = "stop";
+  }
+  remoteSpeed = constrain(speed, 0, CLASSROOM_MAX_PWM);
+  lastRemoteHeartbeatAt = millis();
+
+  if (safeButton == "stop") {
+    remoteWatchdogArmed = false;
+    activeRemoteButton = "stop";
+  } else {
+    if (remoteWatchdogArmed && activeRemoteButton == safeButton) {
+      Serial.printf("{\"type\":\"remoteDuplicate\",\"message\":\"%s\"}\n", safeButton.c_str());
+      return;
+    }
+    remoteWatchdogArmed = true;
+    activeRemoteButton = safeButton;
+  }
+
   stopRequested = false;
-  JsonArrayConst handler = activeProgram["handlers"][button.c_str()].as<JsonArrayConst>();
+  JsonArrayConst handler = activeProgram["handlers"][safeButton.c_str()].as<JsonArrayConst>();
   if (!handler.isNull() && handler.size()) {
     executeSteps(handler);
   } else {
-    driveDirection(button, (int)remoteSpeed);
+    driveDirection(safeButton, (int)remoteSpeed);
   }
-  Serial.printf("{\"type\":\"remote\",\"message\":\"%s\"}\n", button.c_str());
+  Serial.printf("{\"type\":\"remote\",\"message\":\"%s\",\"speed\":%d}\n",
+    safeButton.c_str(), (int)remoteSpeed);
 }
 
 bool parseIncomingLine(const String &line, bool allowCommands) {
@@ -676,8 +770,17 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
   const char *command = document["cmd"] | "";
   if (strcmp(command, "stop") == 0) {
     stopRequested = true;
+    remoteWatchdogArmed = false;
+    activeRemoteButton = "stop";
     stopBoat();
     emit("stopped");
+    return true;
+  }
+  if (strcmp(command, "heartbeat") == 0) {
+    const char *button = document["button"] | "";
+    if (remoteWatchdogArmed && activeRemoteButton == button) {
+      lastRemoteHeartbeatAt = millis();
+    }
     return true;
   }
   if (strcmp(command, "remote") == 0) {
@@ -690,7 +793,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.2";
+    response["runtime"] = "OneMaker Boat 1.4.3";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -817,14 +920,21 @@ void registerWebRemoteRoutes() {
   });
   webServer.on("/api/remote", HTTP_GET, []() {
     String button = webServer.arg("button");
-    int speed = constrain(webServer.arg("speed").toInt(), 0, 255);
+    int speed = constrain(webServer.arg("speed").toInt(), 0, CLASSROOM_MAX_PWM);
     handleRemote(button.length() ? button : "stop", speed);
+    webServer.send(200, "application/json", "{\"ok\":true}");
+  });
+  webServer.on("/api/heartbeat", HTTP_GET, []() {
+    String button = webServer.arg("button");
+    if (remoteWatchdogArmed && activeRemoteButton == button) {
+      lastRemoteHeartbeatAt = millis();
+    }
     webServer.send(200, "application/json", "{\"ok\":true}");
   });
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.2";
+    status["runtime"] = "1.4.3";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -869,13 +979,14 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.2 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.3 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }
 
 void loop() {
   serviceBluetoothState();
+  serviceMotorSafety();
   String serialData;
   while (Serial.available()) serialData += (char)Serial.read();
   if (serialData.length()) consumeInput(serialInputLine, serialData, true);
