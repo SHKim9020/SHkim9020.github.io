@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#152b43">
   <title>OneMaker Arduino UNO·Nano Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.2.0">
+  <link rel="stylesheet" href="style.css?v=1.2.1">
 </head>
 <body>
   <header class="topbar">
@@ -169,17 +169,17 @@
     <form method="dialog" class="dialog-card firmware-card">
       <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
       <span class="step-chip">보드당 처음 1번</span>
-      <h2>OneMaker Arduino 런타임 설치</h2>
-      <p>보드 종류에 맞는 버튼을 누르고 USB 포트를 선택하세요. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
+      <h2>OneMaker Arduino 런타임 1.1.0 설치</h2>
+      <p>기존 1.0.0이 설치된 보드도 아래 버튼으로 다시 설치해야 합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
       <div class="firmware-options">
-        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime.hex?v=1.1.0" board="uno" verify>
-          Arduino UNO 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.0.hex?build=0d98cdf" board="uno" verify>
+          Arduino UNO에 1.1.0 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime.hex?v=1.1.0" board="nano" verify>
-          Nano 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.0.hex?build=0d98cdf" board="nano" verify>
+          Nano에 1.1.0 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime.hex?v=1.1.0" board="nanoOldBootloader" verify>
-          Nano 구형 부트로더 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.0.hex?build=0d98cdf" board="nanoOldBootloader" verify>
+          Nano 구형 부트로더에 1.1.0 설치 <span class="upload-progress"></span>
         </button>
       </div>
       <ol class="mini-steps">
@@ -208,6 +208,6 @@
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
-  <script src="app.js?v=1.2.0"></script>
+  <script src="app.js?v=1.2.1"></script>
 </body>
 </html>
