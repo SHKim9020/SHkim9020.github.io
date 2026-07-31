@@ -6,11 +6,11 @@ Arduino UNO R3와 ATmega328P Nano를 위한 수업용 Blockly 웹앱입니다.
 
 1. 보드당 처음 한 번 브라우저에서 `OneMaker Arduino Runtime` HEX를 설치합니다.
 2. Web Serial로 USB를 연결합니다.
-3. `USB로 실행`을 누르면 블록을 브라우저가 해석하고 런타임에 센서·출력 명령을 보냅니다.
-4. USB 없이 보드만 단독 실행하려면 `업로드 모드`에서 현재 블록을 ATmega328P HEX로 컴파일한 뒤 UNO·Nano에 바로 기록합니다.
-5. I²C LCD, NeoPixel, MP3, Bluetooth 블록을 사용한 프로젝트는 현재 `텍스트 코드 → INO 다운로드` 후 Arduino IDE에서 업로드합니다.
+3. `보드에 저장·실행`을 누르면 블록이 작은 보드 명령으로 변환되어 UNO·Nano의 EEPROM에 저장됩니다.
+4. 저장이 끝나면 프로그램이 즉시 실행되며, USB를 분리한 뒤에도 전원만 연결하면 자동 실행됩니다.
+5. I²C LCD, NeoPixel, MP3, Bluetooth를 포함한 지원 블록이 모두 같은 방식으로 웹에서 바로 저장됩니다.
 
-웹 컴파일은 [`@horang-corp/avr-gcc-wasm`](https://www.npmjs.com/package/@horang-corp/avr-gcc-wasm)을 사용합니다. 첫 실행 시 약 55MB의 컴파일러·Arduino 자산을 내려받고 이후에는 브라우저 캐시를 활용합니다. 업로드 모드는 OneMaker 런타임을 덮어쓰므로 다시 USB 실시간 실행을 사용할 때는 런타임을 재설치해야 합니다.
+브라우저에서 55MB 규모의 AVR 컴파일러를 내려받지 않습니다. 런타임은 보드당 처음 한 번만 설치하고, 이후 블록 프로그램은 보통 수 초 안에 저장합니다. EEPROM 프로그램 공간은 최대 1,015바이트이므로 수업용 중소 규모 프로젝트에 적합합니다. 더 큰 프로젝트나 직접 작성한 C++ 라이브러리가 필요하면 `텍스트 코드 → INO 다운로드` 후 Arduino IDE를 사용합니다.
 
 오른쪽의 보드·빠른 테스트·텍스트 코드·시리얼 모니터 패널은 `접기` 버튼으로 축소할 수 있으며 선택 상태는 브라우저에 저장됩니다.
 
