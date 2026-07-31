@@ -19,6 +19,7 @@
   let bleDevice;
   let bleRxCharacteristic;
   let bleTxCharacteristic;
+  let bleWriteTransport;
   let readLoopActive = false;
   let receiveBuffer = "";
   let boardRuntime = "";
@@ -1098,6 +1099,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       const service = await server.getPrimaryService(BLE_SERVICE_UUID);
       bleRxCharacteristic = await service.getCharacteristic(BLE_RX_UUID);
       bleTxCharacteristic = await service.getCharacteristic(BLE_TX_UUID);
+      bleWriteTransport = new BoatBleWriteQueue(bleRxCharacteristic);
       await bleTxCharacteristic.startNotifications();
       bleTxCharacteristic.addEventListener("characteristicvaluechanged", event => {
         receiveBuffer += new TextDecoder().decode(event.target.value);
@@ -1123,8 +1125,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       await writeLine(JSON.stringify({
         cmd: "remote",
         button: "stop",
-        speed: 0,
-        config: config()
+        speed: 0
       }), "ble").catch(() => {});
       bleDevice.gatt.disconnect();
       setRemoteVisual("stop");
@@ -1249,13 +1250,8 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       }
       return;
     }
-    if (bleRxCharacteristic && bleDevice?.gatt?.connected) {
-      for (let offset = 0; offset < bytes.length; offset += 180) {
-        const chunk = bytes.slice(offset, offset + 180);
-        if (bleRxCharacteristic.writeValueWithoutResponse) await bleRxCharacteristic.writeValueWithoutResponse(chunk);
-        else await bleRxCharacteristic.writeValue(chunk);
-        if (offset + 180 < bytes.length) await sleep(8);
-      }
+    if (bleWriteTransport && bleDevice?.gatt?.connected) {
+      await bleWriteTransport.write(bytes);
       return;
     }
     throw new Error("먼저 USB 또는 Bluetooth로 보드와 연결하세요.");
@@ -1383,8 +1379,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       await writeLine(JSON.stringify({
         cmd: "remote",
         button,
-        speed: Number($("#remoteSpeed").value),
-        config: config()
+        speed: Number($("#remoteSpeed").value)
       }));
     } catch (error) {
       toast(error.message);
@@ -1436,6 +1431,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     $("#bleConnectBtn").disabled = connected || !navigator.bluetooth;
     $("#bleDisconnectBtn").disabled = !connected;
     if (!connected) {
+      bleWriteTransport = null;
       bleRxCharacteristic = null;
       bleTxCharacteristic = null;
     }
