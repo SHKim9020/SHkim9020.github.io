@@ -758,6 +758,9 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     Serial.print(F("LOG,"));
     Serial.println(decodeHex(args[0]));
   } else if (!strcmp(operation, "STOP")) {
+    storedProgramValid = false;
+    vmWaitUntil = 0;
+    repeatDepth = 0;
     stopOutputs();
   }
 }
