@@ -861,6 +861,19 @@
     }
   }
 
+  function compileSetupChain(firstBlock, writer, context) {
+    let block = firstBlock;
+    while (block) {
+      if (block.type === "control_forever") {
+        const body = block.getInputTargetBlock("DO");
+        if (body) context.foreverBodies.push(body);
+        return;
+      }
+      compileStatement(block, writer, context);
+      block = block.getNextBlock();
+    }
+  }
+
   function compileStatement(block, writer, context) {
     const expression = name => writeCompiledExpression(writer, inputBlock(block, name), context);
     const pin = name => writer.u8(block.getFieldValue(name));
@@ -974,7 +987,8 @@
       variables: new Map(),
       functions: new Map(),
       valueFunctions: new Map(),
-      functionDepth: 0
+      functionDepth: 0,
+      foreverBodies: []
     };
     for (const block of workspace.getAllBlocks(false)) {
       if (block.type === "my_function_def") context.functions.set(block.getFieldValue("NAME"), block);
@@ -986,9 +1000,10 @@
     if (!starts.length && !loops.length) throw new Error("‘시작하면’ 또는 ‘계속 실행’ 블록을 추가하세요.");
 
     const writer = new ByteWriter();
-    for (const block of starts) compileStatementChain(block.getNextBlock(), writer, context);
+    for (const block of starts) compileSetupChain(block.getNextBlock(), writer, context);
     writer.u8(VM.END);
     const setupLength = writer.position;
+    for (const body of context.foreverBodies) compileStatementChain(body, writer, context);
     for (const block of loops) compileStatementChain(block.getNextBlock(), writer, context);
     writer.u8(VM.END);
     if (writer.position > EEPROM_PROGRAM_LIMIT) {
