@@ -1058,6 +1058,14 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     if (!codeManuallyEdited) $("#codeView").value = generateCpp();
   }
 
+  async function prepareBoardHandshake(preferredTransport) {
+    // A saved forever-loop accepts stop/remote commands while it is running, but
+    // runtime 1.4.2 does not answer hello until that loop has yielded completely.
+    await writeLine(JSON.stringify({ cmd: "stop" }), preferredTransport);
+    await sleep(300);
+    return sendCommandAndWait({ cmd: "hello" }, ["hello"], 6000, preferredTransport);
+  }
+
   async function connectSerial() {
     if (!("serial" in navigator)) {
       toast("Chrome 또는 Edge의 Web Serial 지원 환경이 필요합니다.");
@@ -1077,7 +1085,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       setConnected(true);
       startReadLoop();
       await sleep(350);
-      await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "serial");
+      await prepareBoardHandshake("serial");
       if (supportsNumberedBoats()) {
         toast(`ESP32-C3 USB 연결 완료 · 펌웨어 ${runtimeVersionText()}`);
       } else {
@@ -1115,7 +1123,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         consumeSerialLines();
       });
       setBluetoothConnected(true);
-      await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "ble");
+      await prepareBoardHandshake("ble");
       if (!supportsStableBluetooth()) {
         const installedVersion = runtimeVersionText();
         if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
@@ -1160,7 +1168,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
     try {
       if (!boardRuntime) {
-        await sendCommandAndWait({ cmd: "hello" }, ["hello"], 3500, "serial");
+        await prepareBoardHandshake("serial");
       }
       if (!supportsNumberedBoats()) {
         showFirmwareUpdateRequired();
