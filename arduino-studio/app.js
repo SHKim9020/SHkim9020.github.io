@@ -7,7 +7,11 @@
   const PWM_PINS = [3, 5, 6, 9, 10, 11];
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
+  const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
   const RUNTIME_VERSION = "1.0.0";
+  const AVR_COMPILER_BASE = "https://unpkg.com/@horang-corp/avr-gcc-wasm@0.2.0/";
+  const AVR_COMPILER_MODULE = `${AVR_COMPILER_BASE}firmware-builder.js`;
+  const COMPILE_TIMEOUT_MS = 240000;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
   const EXECUTION_SLICE_STEPS = 40;
@@ -30,6 +34,10 @@
   let executionSliceStarted = 0;
   let executionSliceSteps = 0;
   let serialFlushTimer = null;
+  let compiledHexUrl = null;
+  let compilingProject = false;
+  let workspaceRevision = 0;
+  let compiledRevision = -1;
   const valueWaiters = new Map();
   const runtimeReadyWaiters = [];
   const liveVariables = new Map();
@@ -538,6 +546,7 @@
       grid: { spacing: 22, length: 2, colour: "#dbe4e9", snap: false }
     });
     bindEvents();
+    restoreSidePanel();
     restoreAutosave();
     if (!workspace.getAllBlocks(false).length) loadExample(false);
     refreshCode();
@@ -559,10 +568,13 @@
     workspace.addChangeListener(event => {
       if (event.type === Blockly.Events.SELECTED) selectedBlockId = event.newElementId || null;
       if (event.isUiEvent) return;
+      workspaceRevision++;
+      invalidateCompiledProject();
       refreshCode();
       scheduleAutosave();
     });
-    $$(".side-tabs button").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
+    $$(".side-tabs [data-tab]").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
+    $("#sideCollapseBtn").addEventListener("click", toggleSidePanel);
     $("#boardType").addEventListener("change", updateBoardTitle);
     $("#exampleBtn").addEventListener("click", () => loadExample(true));
     $("#saveBtn").addEventListener("click", saveProject);
@@ -571,6 +583,10 @@
     $("#firmwareBtn").addEventListener("click", openFirmwareDialog);
     $("#connectBtn").addEventListener("click", toggleSerialConnection);
     $("#runBtn").addEventListener("click", runWorkspace);
+    $("#uploadModeBtn").addEventListener("click", openUploadDialog);
+    $("#closeUploadDialogBtn").addEventListener("click", () => $("#uploadDialog").close());
+    $("#compileProjectBtn").addEventListener("click", compileProjectForUpload);
+    $("#downloadUnsupportedInoBtn").addEventListener("click", downloadIno);
     $("#stopBtn").addEventListener("click", stopWorkspace);
     $("#undoBtn").addEventListener("click", () => workspace.undo(false));
     $("#redoBtn").addEventListener("click", () => workspace.undo(true));
@@ -597,6 +613,7 @@
     window.addEventListener("beforeunload", () => {
       runCancelled = true;
       if (serialReader) serialReader.cancel().catch(() => {});
+      if (compiledHexUrl) URL.revokeObjectURL(compiledHexUrl);
     });
     if ("serial" in navigator) {
       navigator.serial.addEventListener("disconnect", () => closeSerialState());
@@ -604,8 +621,31 @@
   }
 
   function activateTab(name) {
-    $$(".side-tabs button").forEach(button => button.classList.toggle("active", button.dataset.tab === name));
+    $$(".side-tabs [data-tab]").forEach(button => button.classList.toggle("active", button.dataset.tab === name));
     $$(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === name));
+  }
+
+  function restoreSidePanel() {
+    setSidePanelCollapsed(localStorage.getItem(SIDE_PANEL_KEY) === "1", false);
+  }
+
+  function toggleSidePanel() {
+    setSidePanelCollapsed(!$(".app-shell").classList.contains("side-collapsed"));
+  }
+
+  function setSidePanelCollapsed(collapsed, persist = true) {
+    const shell = $(".app-shell");
+    const button = $("#sideCollapseBtn");
+    shell.classList.toggle("side-collapsed", collapsed);
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute("aria-label", collapsed ? "오른쪽 패널 펼치기" : "오른쪽 패널 접기");
+    button.title = collapsed ? "오른쪽 패널 펼치기" : "오른쪽 패널 접기";
+    button.querySelector(".collapse-label").textContent = collapsed ? "펼치기" : "접기";
+    if (persist) localStorage.setItem(SIDE_PANEL_KEY, collapsed ? "1" : "0");
+    requestAnimationFrame(() => {
+      Blockly.svgResize(workspace);
+      setTimeout(() => Blockly.svgResize(workspace), 240);
+    });
   }
 
   function updateBoardTitle() {
@@ -615,6 +655,8 @@
       nanoOldBootloader: "Arduino Nano 구형 부트로더"
     };
     $("#boardTitle").textContent = names[$("#boardType").value];
+    $("#uploadBoardName").textContent = names[$("#boardType").value];
+    selectProjectUploader();
     scheduleAutosave();
   }
 
@@ -622,6 +664,7 @@
     const supported = "serial" in navigator;
     $("#connectBtn").disabled = !supported;
     $("#runBtn").disabled = !supported;
+    $("#uploadModeBtn").disabled = !supported;
     if (!supported) $("#connectionStatus").textContent = "Chrome·Edge 필요";
   }
 
@@ -629,6 +672,191 @@
     if (!("serial" in navigator)) return toast("PC·크롬북의 Chrome 또는 Edge에서 설치할 수 있습니다.");
     if (serialConnected) return toast("먼저 USB 연결을 끊은 뒤 런타임을 설치하세요.");
     $("#firmwareDialog").showModal();
+  }
+
+  function openUploadDialog() {
+    if (!("serial" in navigator)) return toast("PC·크롬북의 Chrome 또는 Edge에서 업로드할 수 있습니다.");
+    if (serialConnected) return toast("먼저 상단의 ‘USB 연결 끊기’를 누른 뒤 업로드 모드를 사용하세요.");
+    updateBoardTitle();
+    if (compiledRevision !== workspaceRevision || !compiledHexUrl) resetCompileStatus();
+    $("#uploadDialog").showModal();
+  }
+
+  function resetCompileStatus() {
+    const status = $("#compileStatus");
+    status.dataset.state = "idle";
+    status.innerHTML = "<b>1단계 · HEX 만들기</b><span>아래 버튼을 눌러 블록 프로그램을 컴파일하세요.</span>";
+    $("#compileProgress").hidden = true;
+    $("#unsupportedUpload").hidden = true;
+    $("#projectUploadActions").hidden = true;
+  }
+
+  function setCompileStatus(state, title, detail) {
+    const status = $("#compileStatus");
+    status.dataset.state = state;
+    status.innerHTML = "";
+    const heading = document.createElement("b");
+    const text = document.createElement("span");
+    heading.textContent = title;
+    text.textContent = detail;
+    status.append(heading, text);
+  }
+
+  function unsupportedUploadBlocks() {
+    const types = new Set(workspace.getAllBlocks(false).map(block => block.type));
+    const groups = [
+      { label: "I²C LCD", matches: type => type.startsWith("lcd_") },
+      { label: "네오픽셀", matches: type => type.startsWith("neo_") },
+      { label: "MP3", matches: type => type.startsWith("mp3_") },
+      { label: "Bluetooth", matches: type => type.startsWith("bt_") }
+    ];
+    return groups.filter(group => [...types].some(group.matches)).map(group => group.label);
+  }
+
+  function invalidateCompiledProject() {
+    if (compiledHexUrl) URL.revokeObjectURL(compiledHexUrl);
+    compiledHexUrl = null;
+    compiledRevision = -1;
+    if ($("#projectUploadActions")) $("#projectUploadActions").hidden = true;
+    $$(".project-uploader").forEach(button => button.setAttribute("hex-href", ""));
+  }
+
+  function selectProjectUploader() {
+    const selectedId = {
+      uno: "projectUploadUno",
+      nano: "projectUploadNano",
+      nanoOldBootloader: "projectUploadNanoOld"
+    }[$("#boardType").value];
+    $$(".project-uploader").forEach(button => button.classList.toggle("selected", button.id === selectedId));
+  }
+
+  async function compileProjectForUpload() {
+    if (compilingProject) return;
+    if (serialConnected) return toast("USB 연결을 먼저 끊어주세요.");
+
+    const unsupported = unsupportedUploadBlocks();
+    $("#unsupportedUpload").hidden = !unsupported.length;
+    $("#projectUploadActions").hidden = true;
+    if (unsupported.length) {
+      $("#unsupportedUploadText").textContent =
+        `${unsupported.join(", ")} 블록은 웹 컴파일러에 필요한 라이브러리가 아직 포함되지 않았습니다. INO 파일을 내려받아 Arduino IDE에서 업로드해주세요.`;
+      setCompileStatus("error", "웹 업로드를 진행할 수 없습니다.", "지원되지 않는 라이브러리 블록을 빼거나 INO 다운로드를 사용하세요.");
+      return;
+    }
+
+    const revision = workspaceRevision;
+    const button = $("#compileProjectBtn");
+    compilingProject = true;
+    button.disabled = true;
+    button.textContent = "컴파일 중…";
+    $("#compileProgress").hidden = false;
+    $("#unsupportedUpload").hidden = true;
+    setCompileStatus("idle", "컴파일러 준비 중", "도구와 라이브러리를 내려받고 있습니다. 이 창을 닫지 마세요.");
+
+    try {
+      const source = `#include <Arduino.h>\n${generateArduinoCode()}`;
+      const result = await compileAvrProject(source);
+      if (revision !== workspaceRevision) throw new Error("컴파일 중 블록이 변경되었습니다. 다시 HEX를 만들어주세요.");
+      if (!result.hex) throw new Error("컴파일 결과에 HEX 파일이 없습니다.");
+      if (!result.fitsTarget) {
+        throw new Error(`프로그램 크기 ${result.flashBytes.toLocaleString()}바이트가 UNO·Nano 한도 32,256바이트를 넘었습니다.`);
+      }
+
+      invalidateCompiledProject();
+      compiledHexUrl = URL.createObjectURL(new Blob([result.hex], { type: "text/plain" }));
+      compiledRevision = workspaceRevision;
+      $$(".project-uploader").forEach(uploadButton => uploadButton.setAttribute("hex-href", compiledHexUrl));
+      selectProjectUploader();
+      $("#projectUploadActions").hidden = false;
+      setCompileStatus(
+        "success",
+        "HEX 만들기 완료",
+        `프로그램 ${result.flashBytes.toLocaleString()}바이트 · 아래 버튼으로 ${$("#uploadBoardName").textContent}에 기록하세요.`
+      );
+      toast("프로젝트 HEX를 만들었습니다. 이제 2단계 업로드 버튼을 누르세요.");
+    } catch (error) {
+      console.error(error);
+      setCompileStatus("error", "컴파일 실패", friendlyCompileError(error));
+    } finally {
+      compilingProject = false;
+      button.disabled = false;
+      button.textContent = "1. 프로젝트 HEX 다시 만들기";
+      $("#compileProgress").hidden = true;
+    }
+  }
+
+  function friendlyCompileError(error) {
+    const message = String(error?.message || error || "알 수 없는 오류");
+    if (/fetch|network|Failed to fetch/i.test(message)) {
+      return "컴파일러 파일을 받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.";
+    }
+    if (/timeout|시간/i.test(message)) {
+      return "컴파일 시간이 초과되었습니다. 다른 탭을 닫고 다시 시도해주세요.";
+    }
+    const compilerLine = message.split("\n").find(line => /error:/i.test(line));
+    return compilerLine ? compilerLine.replace(/^\[[^\]]+\]\s*/, "") : message;
+  }
+
+  function compileAvrProject(source) {
+    return new Promise((resolve, reject) => {
+      const workerSource = `
+        const nativeFetch = self.fetch.bind(self);
+        self.fetch = async (input, init) => {
+          let lastError;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              const response = await nativeFetch(input, init);
+              if (response.ok || response.status < 500 || attempt === 3) return response;
+              lastError = new Error("HTTP " + response.status);
+            } catch (error) {
+              lastError = error;
+            }
+            await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
+          }
+          throw lastError || new Error("fetch failed");
+        };
+        self.onmessage = async event => {
+          try {
+            const { buildFirmware } = await import(${JSON.stringify(AVR_COMPILER_MODULE)});
+            const result = await buildFirmware({
+              source: event.data.source,
+              assetsBase: ${JSON.stringify(AVR_COMPILER_BASE)}
+            });
+            self.postMessage({
+              ok: true,
+              result: {
+                hex: result.hex,
+                flashBytes: result.flashBytes,
+                fitsTarget: result.fitsTarget
+              }
+            });
+          } catch (error) {
+            self.postMessage({ ok: false, message: error?.message || String(error) });
+          }
+        };
+      `;
+      const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+      const worker = new Worker(workerUrl, { type: "module", name: "onemaker-avr-compiler" });
+      const finish = () => {
+        clearTimeout(timer);
+        worker.terminate();
+        URL.revokeObjectURL(workerUrl);
+      };
+      const timer = setTimeout(() => {
+        finish();
+        reject(new Error("컴파일 시간이 초과되었습니다."));
+      }, COMPILE_TIMEOUT_MS);
+      worker.onmessage = event => {
+        finish();
+        if (event.data?.ok) resolve(event.data.result);
+        else reject(new Error(event.data?.message || "컴파일에 실패했습니다."));
+      };
+      worker.onerror = event => {
+        finish();
+        reject(new Error(event.message || "웹 컴파일러를 시작하지 못했습니다."));
+      };
+      worker.postMessage({ source });
+    });
   }
 
   function toast(message) {
