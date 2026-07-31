@@ -8,10 +8,8 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.0.0";
-  const AVR_COMPILER_BASE = "https://unpkg.com/@horang-corp/avr-gcc-wasm@0.2.0/";
-  const AVR_COMPILER_MODULE = `${AVR_COMPILER_BASE}firmware-builder.js`;
-  const COMPILE_TIMEOUT_MS = 240000;
+  const RUNTIME_VERSION = "1.1.0";
+  const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
   const EXECUTION_SLICE_STEPS = 40;
@@ -24,6 +22,7 @@
   let serialWriter;
   let serialConnected = false;
   let runtimeReady = false;
+  let runtimeVersion = "";
   let serialBuffer = "";
   let selectedBlockId = null;
   let copiedBlockState = null;
@@ -34,11 +33,8 @@
   let executionSliceStarted = 0;
   let executionSliceSteps = 0;
   let serialFlushTimer = null;
-  let compiledHexUrl = null;
-  let compilingProject = false;
-  let workspaceRevision = 0;
-  let compiledRevision = -1;
   const valueWaiters = new Map();
+  const lineWaiters = [];
   const runtimeReadyWaiters = [];
   const liveVariables = new Map();
   const serialLogLines = [];
@@ -568,8 +564,6 @@
     workspace.addChangeListener(event => {
       if (event.type === Blockly.Events.SELECTED) selectedBlockId = event.newElementId || null;
       if (event.isUiEvent) return;
-      workspaceRevision++;
-      invalidateCompiledProject();
       refreshCode();
       scheduleAutosave();
     });
@@ -582,11 +576,8 @@
     $("#openFile").addEventListener("change", openProject);
     $("#firmwareBtn").addEventListener("click", openFirmwareDialog);
     $("#connectBtn").addEventListener("click", toggleSerialConnection);
-    $("#runBtn").addEventListener("click", runWorkspace);
-    $("#uploadModeBtn").addEventListener("click", openUploadDialog);
-    $("#closeUploadDialogBtn").addEventListener("click", () => $("#uploadDialog").close());
-    $("#compileProjectBtn").addEventListener("click", compileProjectForUpload);
-    $("#downloadUnsupportedInoBtn").addEventListener("click", downloadIno);
+    $("#saveBoardBtn").addEventListener("click", saveProgramToBoard);
+    $("#closeSaveBoardDialogBtn").addEventListener("click", () => $("#saveBoardDialog").close());
     $("#stopBtn").addEventListener("click", stopWorkspace);
     $("#undoBtn").addEventListener("click", () => workspace.undo(false));
     $("#redoBtn").addEventListener("click", () => workspace.undo(true));
@@ -613,7 +604,6 @@
     window.addEventListener("beforeunload", () => {
       runCancelled = true;
       if (serialReader) serialReader.cancel().catch(() => {});
-      if (compiledHexUrl) URL.revokeObjectURL(compiledHexUrl);
     });
     if ("serial" in navigator) {
       navigator.serial.addEventListener("disconnect", () => closeSerialState());
@@ -655,16 +645,13 @@
       nanoOldBootloader: "Arduino Nano 구형 부트로더"
     };
     $("#boardTitle").textContent = names[$("#boardType").value];
-    $("#uploadBoardName").textContent = names[$("#boardType").value];
-    selectProjectUploader();
     scheduleAutosave();
   }
 
   function updateBrowserSupport() {
     const supported = "serial" in navigator;
     $("#connectBtn").disabled = !supported;
-    $("#runBtn").disabled = !supported;
-    $("#uploadModeBtn").disabled = !supported;
+    $("#saveBoardBtn").disabled = !supported;
     if (!supported) $("#connectionStatus").textContent = "Chrome·Edge 필요";
   }
 
@@ -674,207 +661,417 @@
     $("#firmwareDialog").showModal();
   }
 
-  function openUploadDialog() {
-    if (!("serial" in navigator)) return toast("PC·크롬북의 Chrome 또는 Edge에서 업로드할 수 있습니다.");
-    if (serialConnected) return toast("먼저 상단의 ‘USB 연결 끊기’를 누른 뒤 업로드 모드를 사용하세요.");
-    updateBoardTitle();
-    if (compiledRevision !== workspaceRevision || !compiledHexUrl) resetCompileStatus();
-    $("#uploadDialog").showModal();
+  const VM = Object.freeze({
+    END: 0, WAIT: 1, SET_VAR: 2, CHANGE_VAR: 3, DIGITAL_WRITE: 4, PWM_WRITE: 5,
+    MOTOR: 6, SERVO: 7, TONE: 8, NO_TONE: 9, LCD_BEGIN: 10, LCD_PRINT: 11,
+    LCD_CLEAR: 12, NEO_BEGIN: 13, NEO_SET: 14, NEO_CLEAR: 15, MP3_BEGIN: 16,
+    MP3_PLAY: 17, MP3_VOLUME: 18, MP3_STOP: 19, BT_BEGIN: 20, BT_SEND: 21,
+    SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26
+  });
+
+  const EX = Object.freeze({
+    NUMBER: 1, TEXT: 2, VARIABLE: 3, ANALOG: 4, DIGITAL: 5, BUTTON: 6,
+    ULTRASONIC: 7, DHT: 8, DUST: 9, BT_AVAILABLE: 10, BT_READ: 11,
+    ADD: 20, SUBTRACT: 21, MULTIPLY: 22, DIVIDE: 23, POWER: 24,
+    EQUAL: 30, NOT_EQUAL: 31, LESS: 32, LESS_EQUAL: 33, GREATER: 34,
+    GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43
+  });
+
+  class ByteWriter {
+    constructor() {
+      this.bytes = [];
+    }
+
+    get position() {
+      return this.bytes.length;
+    }
+
+    u8(value) {
+      this.bytes.push(Number(value) & 0xff);
+    }
+
+    u16(value) {
+      this.u8(value);
+      this.u8(Number(value) >> 8);
+    }
+
+    f32(value) {
+      const buffer = new ArrayBuffer(4);
+      new DataView(buffer).setFloat32(0, Number(value) || 0, true);
+      this.bytes.push(...new Uint8Array(buffer));
+    }
+
+    append(values) {
+      this.bytes.push(...values);
+    }
+
+    patchU16(position, value) {
+      this.bytes[position] = value & 0xff;
+      this.bytes[position + 1] = (value >> 8) & 0xff;
+    }
   }
 
-  function resetCompileStatus() {
-    const status = $("#compileStatus");
-    status.dataset.state = "idle";
-    status.innerHTML = "<b>1단계 · HEX 만들기</b><span>아래 버튼을 눌러 블록 프로그램을 컴파일하세요.</span>";
-    $("#compileProgress").hidden = true;
-    $("#unsupportedUpload").hidden = true;
-    $("#projectUploadActions").hidden = true;
+  function compileExpression(block, context) {
+    const writer = new ByteWriter();
+    writeExpressionValue(writer, block, context);
+    if (writer.position > 255) throw new Error("수식이나 한 개의 출력 문장이 너무 깁니다.");
+    return [writer.position, ...writer.bytes];
   }
 
-  function setCompileStatus(state, title, detail) {
-    const status = $("#compileStatus");
-    status.dataset.state = state;
-    status.innerHTML = "";
-    const heading = document.createElement("b");
-    const text = document.createElement("span");
-    heading.textContent = title;
-    text.textContent = detail;
-    status.append(heading, text);
+  function writeTextValue(writer, value) {
+    const bytes = [...new TextEncoder().encode(String(value ?? ""))];
+    if (bytes.length > 120) throw new Error("한 개의 텍스트는 UTF-8 기준 120바이트까지 저장할 수 있습니다.");
+    writer.u8(EX.TEXT);
+    writer.u8(bytes.length);
+    writer.append(bytes);
   }
 
-  function unsupportedUploadBlocks() {
-    const types = new Set(workspace.getAllBlocks(false).map(block => block.type));
-    const groups = [
-      { label: "I²C LCD", matches: type => type.startsWith("lcd_") },
-      { label: "네오픽셀", matches: type => type.startsWith("neo_") },
-      { label: "MP3", matches: type => type.startsWith("mp3_") },
-      { label: "Bluetooth", matches: type => type.startsWith("bt_") }
-    ];
-    return groups.filter(group => [...types].some(group.matches)).map(group => group.label);
-  }
-
-  function invalidateCompiledProject() {
-    if (compiledHexUrl) URL.revokeObjectURL(compiledHexUrl);
-    compiledHexUrl = null;
-    compiledRevision = -1;
-    if ($("#projectUploadActions")) $("#projectUploadActions").hidden = true;
-    $$(".project-uploader").forEach(button => button.setAttribute("hex-href", ""));
-  }
-
-  function selectProjectUploader() {
-    const selectedId = {
-      uno: "projectUploadUno",
-      nano: "projectUploadNano",
-      nanoOldBootloader: "projectUploadNanoOld"
-    }[$("#boardType").value];
-    $$(".project-uploader").forEach(button => button.classList.toggle("selected", button.id === selectedId));
-  }
-
-  async function compileProjectForUpload() {
-    if (compilingProject) return;
-    if (serialConnected) return toast("USB 연결을 먼저 끊어주세요.");
-
-    const unsupported = unsupportedUploadBlocks();
-    $("#unsupportedUpload").hidden = !unsupported.length;
-    $("#projectUploadActions").hidden = true;
-    if (unsupported.length) {
-      $("#unsupportedUploadText").textContent =
-        `${unsupported.join(", ")} 블록은 웹 컴파일러에 필요한 라이브러리가 아직 포함되지 않았습니다. INO 파일을 내려받아 Arduino IDE에서 업로드해주세요.`;
-      setCompileStatus("error", "웹 업로드를 진행할 수 없습니다.", "지원되지 않는 라이브러리 블록을 빼거나 INO 다운로드를 사용하세요.");
+  function writeExpressionValue(writer, block, context) {
+    if (!block) {
+      writer.u8(EX.NUMBER);
+      writer.f32(0);
       return;
     }
+    const binary = (leftName, rightName, opcode) => {
+      writeExpressionValue(writer, inputBlock(block, leftName), context);
+      writeExpressionValue(writer, inputBlock(block, rightName), context);
+      writer.u8(opcode);
+    };
+    switch (block.type) {
+      case "math_number":
+        writer.u8(EX.NUMBER);
+        writer.f32(block.getFieldValue("NUM"));
+        return;
+      case "text":
+        writeTextValue(writer, block.getFieldValue("TEXT"));
+        return;
+      case "logic_boolean":
+        writer.u8(EX.NUMBER);
+        writer.f32(block.getFieldValue("BOOL") === "TRUE" ? 1 : 0);
+        return;
+      case "variables_get":
+        writer.u8(EX.VARIABLE);
+        writer.u8(variableIndex(block, context));
+        return;
+      case "math_arithmetic":
+        binary("A", "B", {
+          ADD: EX.ADD, MINUS: EX.SUBTRACT, MULTIPLY: EX.MULTIPLY,
+          DIVIDE: EX.DIVIDE, POWER: EX.POWER
+        }[block.getFieldValue("OP")] ?? EX.ADD);
+        return;
+      case "logic_compare":
+        binary("A", "B", {
+          EQ: EX.EQUAL, NEQ: EX.NOT_EQUAL, LT: EX.LESS, LTE: EX.LESS_EQUAL,
+          GT: EX.GREATER, GTE: EX.GREATER_EQUAL
+        }[block.getFieldValue("OP")] ?? EX.EQUAL);
+        return;
+      case "logic_operation":
+        binary("A", "B", block.getFieldValue("OP") === "AND" ? EX.AND : EX.OR);
+        return;
+      case "logic_negate":
+        writeExpressionValue(writer, inputBlock(block, "BOOL"), context);
+        writer.u8(EX.NOT);
+        return;
+      case "text_join": {
+        const inputs = [];
+        for (let index = 0; block.getInput(`ADD${index}`); index++) inputs.push(inputBlock(block, `ADD${index}`));
+        if (!inputs.length) return writeTextValue(writer, "");
+        writeExpressionValue(writer, inputs[0], context);
+        for (let index = 1; index < inputs.length; index++) {
+          writeExpressionValue(writer, inputs[index], context);
+          writer.u8(EX.CONCAT);
+        }
+        return;
+      }
+      case "sensor_analog":
+      case "pin_analog_read":
+        writer.u8(EX.ANALOG);
+        writer.u8(block.getFieldValue("PIN"));
+        return;
+      case "pin_digital_read":
+        writer.u8(EX.DIGITAL);
+        writer.u8(block.getFieldValue("PIN"));
+        return;
+      case "sensor_button":
+        writer.u8(EX.BUTTON);
+        writer.u8(block.getFieldValue("PIN"));
+        return;
+      case "sensor_ultrasonic":
+        writer.u8(EX.ULTRASONIC);
+        writer.u8(block.getFieldValue("TRIG"));
+        writer.u8(block.getFieldValue("ECHO"));
+        return;
+      case "sensor_dht":
+        writer.u8(EX.DHT);
+        writer.u8(block.getFieldValue("PIN"));
+        writer.u8(block.getFieldValue("TYPE"));
+        writer.u8(block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
+        return;
+      case "sensor_dust":
+        writer.u8(EX.DUST);
+        writer.u8(block.getFieldValue("LED_PIN"));
+        writer.u8(block.getFieldValue("ANALOG_PIN"));
+        return;
+      case "bt_available":
+        writer.u8(EX.BT_AVAILABLE);
+        return;
+      case "bt_read":
+        writer.u8(EX.BT_READ);
+        return;
+      case "my_function_call_value": {
+        const definition = context.valueFunctions.get(block.getFieldValue("NAME"));
+        if (!definition) {
+          writer.u8(EX.NUMBER);
+          writer.f32(0);
+          return;
+        }
+        if (definition.getInputTargetBlock("DO")) {
+          throw new Error(`값 내 블록 ‘${block.getFieldValue("NAME")}’의 실행 부분은 저장 모드에서 사용할 수 없습니다.`);
+        }
+        if (context.functionDepth >= 12) throw new Error("내 블록 호출이 너무 깊습니다.");
+        context.functionDepth++;
+        writeExpressionValue(writer, definition.getInputTargetBlock("RETURN"), context);
+        context.functionDepth--;
+        return;
+      }
+      default:
+        writer.u8(EX.NUMBER);
+        writer.f32(0);
+    }
+  }
 
-    const revision = workspaceRevision;
-    const button = $("#compileProjectBtn");
-    compilingProject = true;
-    button.disabled = true;
-    button.textContent = "컴파일 중…";
-    $("#compileProgress").hidden = false;
-    $("#unsupportedUpload").hidden = true;
-    setCompileStatus("idle", "컴파일러 준비 중", "도구와 라이브러리를 내려받고 있습니다. 이 창을 닫지 마세요.");
+  function writeCompiledExpression(writer, block, context) {
+    writer.append(compileExpression(block, context));
+  }
+
+  function variableIndex(block, context) {
+    const key = variableKey(block);
+    if (!context.variables.has(key)) {
+      if (context.variables.size >= 8) throw new Error("보드 저장 모드에서는 변수를 최대 8개 사용할 수 있습니다.");
+      context.variables.set(key, context.variables.size);
+    }
+    return context.variables.get(key);
+  }
+
+  function compileStatementChain(firstBlock, writer, context) {
+    let block = firstBlock;
+    while (block) {
+      compileStatement(block, writer, context);
+      block = block.getNextBlock();
+    }
+  }
+
+  function compileStatement(block, writer, context) {
+    const expression = name => writeCompiledExpression(writer, inputBlock(block, name), context);
+    const pin = name => writer.u8(block.getFieldValue(name));
+    switch (block.type) {
+      case "control_wait":
+        writer.u8(VM.WAIT); expression("SECONDS"); return;
+      case "control_forever": {
+        const start = writer.position;
+        compileStatementChain(block.getInputTargetBlock("DO"), writer, context);
+        writer.u8(VM.JUMP); writer.u16(start);
+        return;
+      }
+      case "controls_repeat_ext": {
+        writer.u8(VM.REPEAT_START);
+        expression("TIMES");
+        const endPatch = writer.position;
+        writer.u16(0);
+        const body = writer.position;
+        compileStatementChain(block.getInputTargetBlock("DO"), writer, context);
+        writer.u8(VM.REPEAT_END);
+        writer.u16(body);
+        writer.patchU16(endPatch, writer.position);
+        return;
+      }
+      case "controls_if": {
+        const endPatches = [];
+        let index = 0;
+        while (block.getInput(`IF${index}`)) {
+          writer.u8(VM.JUMP_IF_FALSE);
+          writeCompiledExpression(writer, block.getInputTargetBlock(`IF${index}`), context);
+          const nextPatch = writer.position;
+          writer.u16(0);
+          compileStatementChain(block.getInputTargetBlock(`DO${index}`), writer, context);
+          writer.u8(VM.JUMP);
+          endPatches.push(writer.position);
+          writer.u16(0);
+          writer.patchU16(nextPatch, writer.position);
+          index++;
+        }
+        if (block.getInput("ELSE")) compileStatementChain(block.getInputTargetBlock("ELSE"), writer, context);
+        for (const patch of endPatches) writer.patchU16(patch, writer.position);
+        return;
+      }
+      case "variables_set":
+        writer.u8(VM.SET_VAR); writer.u8(variableIndex(block, context)); expression("VALUE"); return;
+      case "math_change":
+        writer.u8(VM.CHANGE_VAR); writer.u8(variableIndex(block, context)); expression("DELTA"); return;
+      case "pin_digital_write":
+      case "led_digital":
+        writer.u8(VM.DIGITAL_WRITE); pin("PIN"); writer.u8(block.getFieldValue("STATE")); return;
+      case "pin_pwm_write":
+      case "led_pwm":
+        writer.u8(VM.PWM_WRITE); pin("PIN"); expression("VALUE"); return;
+      case "motor_set":
+        writer.u8(VM.MOTOR); pin("IN1"); pin("IN2"); expression("SPEED"); return;
+      case "motor_stop":
+        writer.u8(VM.MOTOR); pin("IN1"); pin("IN2");
+        writeCompiledExpression(writer, null, context); return;
+      case "servo_write":
+        writer.u8(VM.SERVO); pin("PIN"); expression("ANGLE"); return;
+      case "buzzer_tone":
+        writer.u8(VM.TONE); pin("PIN"); expression("FREQ"); expression("SECONDS"); return;
+      case "buzzer_stop":
+        writer.u8(VM.NO_TONE); pin("PIN"); return;
+      case "lcd_begin": {
+        const [columns, rows] = block.getFieldValue("SIZE").split("x");
+        writer.u8(VM.LCD_BEGIN); pin("ADDRESS"); writer.u8(columns); writer.u8(rows); return;
+      }
+      case "lcd_print":
+        writer.u8(VM.LCD_PRINT); expression("ROW"); expression("COL"); expression("VALUE"); return;
+      case "lcd_clear":
+        writer.u8(VM.LCD_CLEAR); return;
+      case "neo_begin":
+        writer.u8(VM.NEO_BEGIN); pin("PIN"); expression("COUNT"); return;
+      case "neo_set":
+        writer.u8(VM.NEO_SET); expression("INDEX"); expression("R"); expression("G"); expression("B"); return;
+      case "neo_clear":
+        writer.u8(VM.NEO_CLEAR); return;
+      case "mp3_begin":
+        writer.u8(VM.MP3_BEGIN); pin("RX"); pin("TX"); expression("VOLUME"); return;
+      case "mp3_play":
+        writer.u8(VM.MP3_PLAY); expression("TRACK"); return;
+      case "mp3_volume":
+        writer.u8(VM.MP3_VOLUME); expression("VOLUME"); return;
+      case "mp3_stop":
+        writer.u8(VM.MP3_STOP); return;
+      case "bt_begin":
+        writer.u8(VM.BT_BEGIN); pin("RX"); pin("TX"); writer.u16(block.getFieldValue("BAUD")); return;
+      case "bt_send":
+        writer.u8(VM.BT_SEND); expression("VALUE"); return;
+      case "serial_print":
+        writer.u8(VM.SERIAL_PRINT); expression("VALUE"); return;
+      case "my_function_call": {
+        const definition = context.functions.get(block.getFieldValue("NAME"));
+        if (!definition) return;
+        if (context.functionDepth >= 12) throw new Error("내 블록 호출이 너무 깊습니다.");
+        context.functionDepth++;
+        compileStatementChain(definition.getInputTargetBlock("DO"), writer, context);
+        context.functionDepth--;
+        return;
+      }
+      default:
+        if (!["my_function_def", "my_function_def_value"].includes(block.type)) {
+          throw new Error(`‘${block.type}’ 블록은 아직 보드 저장 모드에서 지원되지 않습니다.`);
+        }
+    }
+  }
+
+  function compileStoredProgram() {
+    const context = {
+      variables: new Map(),
+      functions: new Map(),
+      valueFunctions: new Map(),
+      functionDepth: 0
+    };
+    for (const block of workspace.getAllBlocks(false)) {
+      if (block.type === "my_function_def") context.functions.set(block.getFieldValue("NAME"), block);
+      if (block.type === "my_function_def_value") context.valueFunctions.set(block.getFieldValue("NAME"), block);
+    }
+    const topBlocks = workspace.getTopBlocks(true);
+    const starts = topBlocks.filter(block => block.type === "arduino_start");
+    const loops = topBlocks.filter(block => block.type === "arduino_loop");
+    if (!starts.length && !loops.length) throw new Error("‘시작하면’ 또는 ‘계속 실행’ 블록을 추가하세요.");
+
+    const writer = new ByteWriter();
+    for (const block of starts) compileStatementChain(block.getNextBlock(), writer, context);
+    writer.u8(VM.END);
+    const setupLength = writer.position;
+    for (const block of loops) compileStatementChain(block.getNextBlock(), writer, context);
+    writer.u8(VM.END);
+    if (writer.position > EEPROM_PROGRAM_LIMIT) {
+      throw new Error(`프로그램이 ${writer.position}바이트입니다. UNO·Nano 저장 한도 ${EEPROM_PROGRAM_LIMIT}바이트보다 ${writer.position - EEPROM_PROGRAM_LIMIT}바이트 줄여주세요.`);
+    }
+    return { bytes: writer.bytes, setupLength };
+  }
+
+  function bytesToHex(bytes) {
+    return bytes.map(value => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  function waitForSerialLine(predicate, timeout = 5000) {
+    return new Promise((resolve, reject) => {
+      const waiter = { predicate, resolve, reject };
+      waiter.timer = setTimeout(() => {
+        const index = lineWaiters.indexOf(waiter);
+        if (index >= 0) lineWaiters.splice(index, 1);
+        reject(new Error("보드의 응답 시간이 초과되었습니다."));
+      }, timeout);
+      lineWaiters.push(waiter);
+    });
+  }
+
+  function setSaveBoardResult(state, message) {
+    const result = $("#saveBoardResult");
+    result.dataset.state = state;
+    result.textContent = message;
+  }
+
+  async function saveProgramToBoard() {
+    if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
+    const dialog = $("#saveBoardDialog");
+    const closeButton = $("#closeSaveBoardDialogBtn");
+    dialog.showModal();
+    closeButton.disabled = true;
+    $("#saveBoardProgress").value = 2;
+    $("#saveBoardTitle").textContent = "블록 프로그램 준비 중";
+    $("#saveBoardMessage").textContent = "블록을 보드용 명령으로 바꾸고 있습니다.";
+    setSaveBoardResult("working", "USB 연결을 유지하세요.");
 
     try {
-      const source = `#include <Arduino.h>\n${generateArduinoCode()}`;
-      const result = await compileAvrProject(source);
-      if (revision !== workspaceRevision) throw new Error("컴파일 중 블록이 변경되었습니다. 다시 HEX를 만들어주세요.");
-      if (!result.hex) throw new Error("컴파일 결과에 HEX 파일이 없습니다.");
-      if (!result.fitsTarget) {
-        throw new Error(`프로그램 크기 ${result.flashBytes.toLocaleString()}바이트가 UNO·Nano 한도 32,256바이트를 넘었습니다.`);
+      await ensureRuntime();
+      if (runtimeVersion !== RUNTIME_VERSION) {
+        throw new Error(`현재 런타임은 ${runtimeVersion || "이전 버전"}입니다. USB 연결을 끊고 ① 런타임 설치에서 ${RUNTIME_VERSION}을 다시 설치하세요.`);
+      }
+      const program = compileStoredProgram();
+      const checksum = program.bytes.reduce((sum, value) => (sum + value) & 0xffff, 0);
+      $("#saveBoardTitle").textContent = "보드에 저장 중";
+      $("#saveBoardMessage").textContent = `${program.bytes.length}바이트 프로그램을 EEPROM으로 보내고 있습니다.`;
+      $("#saveBoardProgress").value = 8;
+
+      let response = waitForSerialLine(line => line === "PROGRAM_READY");
+      await sendLine(`P,BEGIN,${program.bytes.length},${program.setupLength},${checksum}`);
+      await response;
+
+      const chunkSize = 48;
+      for (let offset = 0; offset < program.bytes.length; offset += chunkSize) {
+        const chunk = program.bytes.slice(offset, offset + chunkSize);
+        const end = offset + chunk.length;
+        response = waitForSerialLine(line => line === `PROGRAM_DATA,${end}`, 6000);
+        await sendLine(`P,DATA,${offset},${bytesToHex(chunk)}`);
+        await response;
+        $("#saveBoardProgress").value = 10 + Math.round(end / program.bytes.length * 82);
       }
 
-      invalidateCompiledProject();
-      compiledHexUrl = URL.createObjectURL(new Blob([result.hex], { type: "text/plain" }));
-      compiledRevision = workspaceRevision;
-      $$(".project-uploader").forEach(uploadButton => uploadButton.setAttribute("hex-href", compiledHexUrl));
-      selectProjectUploader();
-      $("#projectUploadActions").hidden = false;
-      setCompileStatus(
-        "success",
-        "HEX 만들기 완료",
-        `프로그램 ${result.flashBytes.toLocaleString()}바이트 · 아래 버튼으로 ${$("#uploadBoardName").textContent}에 기록하세요.`
-      );
-      toast("프로젝트 HEX를 만들었습니다. 이제 2단계 업로드 버튼을 누르세요.");
+      response = waitForSerialLine(line => line === `SAVED,${program.bytes.length}`, 8000);
+      await sendLine("P,SAVE");
+      await response;
+      $("#saveBoardProgress").value = 100;
+      $("#saveBoardTitle").textContent = "저장 및 실행 완료";
+      $("#saveBoardMessage").textContent = "이제 USB를 분리해도 전원을 켜면 프로그램이 자동으로 실행됩니다.";
+      setSaveBoardResult("success", `저장 크기 ${program.bytes.length}/${EEPROM_PROGRAM_LIMIT}바이트 · I²C LCD, 네오픽셀, MP3, Bluetooth 포함`);
+      toast("보드에 저장했습니다. 프로그램이 바로 실행됩니다.");
     } catch (error) {
       console.error(error);
-      setCompileStatus("error", "컴파일 실패", friendlyCompileError(error));
+      $("#saveBoardTitle").textContent = "저장 실패";
+      $("#saveBoardMessage").textContent = error.message;
+      setSaveBoardResult("error", "USB 연결과 런타임 버전을 확인한 뒤 다시 시도하세요.");
+      toast(error.message);
     } finally {
-      compilingProject = false;
-      button.disabled = false;
-      button.textContent = "1. 프로젝트 HEX 다시 만들기";
-      $("#compileProgress").hidden = true;
+      closeButton.disabled = false;
     }
-  }
-
-  function friendlyCompileError(error) {
-    const message = String(error?.message || error || "알 수 없는 오류");
-    if (/fetch|network|Failed to fetch/i.test(message)) {
-      return "컴파일러 파일을 받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.";
-    }
-    if (/timeout|시간/i.test(message)) {
-      return "컴파일 시간이 초과되었습니다. 다른 탭을 닫고 다시 시도해주세요.";
-    }
-    const compilerLine = message.split("\n").find(line => /error:/i.test(line));
-    return compilerLine ? compilerLine.replace(/^\[[^\]]+\]\s*/, "") : message;
-  }
-
-  function compileAvrProject(source) {
-    return new Promise((resolve, reject) => {
-      const workerSource = `
-        const nativeFetch = self.fetch.bind(self);
-        const fetchQueue = [];
-        let activeFetches = 0;
-        const runQueuedFetches = () => {
-          while (activeFetches < 8 && fetchQueue.length) {
-            const task = fetchQueue.shift();
-            activeFetches++;
-            fetchWithRetry(task.input, task.init)
-              .then(task.resolve, task.reject)
-              .finally(() => {
-                activeFetches--;
-                runQueuedFetches();
-              });
-          }
-        };
-        const fetchWithRetry = async (input, init) => {
-          let lastError;
-          for (let attempt = 0; attempt < 4; attempt++) {
-            try {
-              const response = await nativeFetch(input, init);
-              if (response.ok || response.status < 500 || attempt === 3) return response;
-              lastError = new Error("HTTP " + response.status);
-            } catch (error) {
-              lastError = error;
-            }
-            await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
-          }
-          throw lastError || new Error("fetch failed");
-        };
-        self.fetch = (input, init) => new Promise((resolve, reject) => {
-          fetchQueue.push({ input, init, resolve, reject });
-          runQueuedFetches();
-        });
-        self.onmessage = async event => {
-          try {
-            const { buildFirmware } = await import(${JSON.stringify(AVR_COMPILER_MODULE)});
-            const result = await buildFirmware({
-              source: event.data.source,
-              assetsBase: ${JSON.stringify(AVR_COMPILER_BASE)}
-            });
-            self.postMessage({
-              ok: true,
-              result: {
-                hex: result.hex,
-                flashBytes: result.flashBytes,
-                fitsTarget: result.fitsTarget
-              }
-            });
-          } catch (error) {
-            self.postMessage({ ok: false, message: error?.message || String(error) });
-          }
-        };
-      `;
-      const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
-      const worker = new Worker(workerUrl, { type: "module", name: "onemaker-avr-compiler" });
-      const finish = () => {
-        clearTimeout(timer);
-        worker.terminate();
-        URL.revokeObjectURL(workerUrl);
-      };
-      const timer = setTimeout(() => {
-        finish();
-        reject(new Error("컴파일 시간이 초과되었습니다."));
-      }, COMPILE_TIMEOUT_MS);
-      worker.onmessage = event => {
-        finish();
-        if (event.data?.ok) resolve(event.data.result);
-        else reject(new Error(event.data?.message || "컴파일에 실패했습니다."));
-      };
-      worker.onerror = event => {
-        finish();
-        reject(new Error(event.message || "웹 컴파일러를 시작하지 못했습니다."));
-      };
-      worker.postMessage({ source });
-    });
   }
 
   function toast(message) {
@@ -910,12 +1107,16 @@
       serialWriter = serialPort.writable.getWriter();
       serialConnected = true;
       runtimeReady = false;
+      runtimeVersion = "";
       setConnected(true);
       readSerialLoop();
-      await sleep(800);
-      const readyPromise = waitForRuntimeReady(2500);
-      await sendLine("PING");
-      await readyPromise;
+      const deadline = Date.now() + 8000;
+      while (!runtimeReady && Date.now() < deadline) {
+        await sleep(500);
+        await sendLine("PING");
+        await sleep(250);
+      }
+      if (!runtimeReady) throw new Error("OneMaker 런타임 응답이 없습니다. 먼저 런타임을 다시 설치하세요.");
       toast(`OneMaker Arduino Runtime ${RUNTIME_VERSION} 연결 완료`);
     } catch (error) {
       console.error(error);
@@ -927,8 +1128,14 @@
   async function disconnectSerial() {
     runCancelled = true;
     runtimeReady = false;
+    runtimeVersion = "";
     for (const waiter of valueWaiters.values()) waiter.reject(new Error("USB 연결이 끊어졌습니다."));
     valueWaiters.clear();
+    while (lineWaiters.length) {
+      const waiter = lineWaiters.shift();
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error("USB 연결이 끊어졌습니다."));
+    }
     if (serialReader) {
       await serialReader.cancel().catch(() => {});
       serialReader = null;
@@ -947,6 +1154,7 @@
   function closeSerialState() {
     serialConnected = false;
     runtimeReady = false;
+    runtimeVersion = "";
     setConnected(false);
   }
 
@@ -990,9 +1198,17 @@
     for (const line of lines) {
       if (!line) continue;
       appendSerial(line);
+      for (let index = lineWaiters.length - 1; index >= 0; index--) {
+        const waiter = lineWaiters[index];
+        if (!waiter.predicate(line)) continue;
+        lineWaiters.splice(index, 1);
+        clearTimeout(waiter.timer);
+        waiter.resolve(line);
+      }
       const parts = line.split(",");
       if (parts[0] === "READY") {
         runtimeReady = true;
+        runtimeVersion = parts[2] || "";
         setConnected(true);
         while (runtimeReadyWaiters.length) runtimeReadyWaiters.shift().resolve(line);
       } else if ((parts[0] === "V" || parts[0] === "T") && parts[1]) {
@@ -1316,54 +1532,12 @@
     }
   }
 
-  async function runWorkspace() {
-    if (running) return toast("이미 블록을 실행하고 있습니다.");
-    try {
-      await ensureRuntime();
-      const startHats = workspace.getTopBlocks(true).filter(block => block.type === "arduino_start");
-      const loopHats = workspace.getTopBlocks(true).filter(block => block.type === "arduino_loop");
-      if (!startHats.length && !loopHats.length) throw new Error("‘시작하면’ 또는 ‘계속 실행’ 블록을 추가하세요.");
-      running = true;
-      runCancelled = false;
-      executionSliceStarted = performance.now();
-      executionSliceSteps = 0;
-      liveVariables.clear();
-      await sendAction("STOP");
-      setRunningUi(true);
-      toast("블록 실행을 시작했습니다. 정지하려면 상단의 ‘정지’를 누르세요.");
-      for (const hat of startHats) await executeChain(hat.getNextBlock());
-      if (loopHats.length) {
-        while (!runCancelled) {
-          for (const hat of loopHats) await executeChain(hat.getNextBlock());
-          await sleep(LIVE_LOOP_DELAY_MS);
-        }
-      }
-      if (!runCancelled) toast("블록 실행을 완료했습니다.");
-    } catch (error) {
-      if (!runCancelled) {
-        toast(error.message);
-        if (/런타임/.test(error.message) && !$("#firmwareDialog").open) $("#firmwareDialog").showModal();
-      }
-    } finally {
-      running = false;
-      setRunningUi(false);
-    }
-  }
-
   async function stopWorkspace() {
     runCancelled = true;
-    setRunningUi(false);
     try {
       if (runtimeReady) await sendAction("STOP");
       toast("블록과 출력 동작을 정지했습니다.");
     } catch (_) {}
-  }
-
-  function setRunningUi(active) {
-    const button = $("#runBtn");
-    button.textContent = active ? "● 실행 중" : "③ USB로 실행";
-    button.classList.toggle("running", active);
-    button.setAttribute("aria-pressed", String(active));
   }
 
   function projectData() {
