@@ -8,6 +8,11 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const RUNTIME_VERSION = "1.0.0";
+  const LIVE_LOOP_DELAY_MS = 16;
+  const EXECUTION_SLICE_MS = 12;
+  const EXECUTION_SLICE_STEPS = 40;
+  const SERIAL_FLUSH_DELAY_MS = 100;
+  const MAX_SERIAL_LINES = 400;
 
   let workspace;
   let serialPort;
@@ -22,9 +27,13 @@
   let requestSequence = 1;
   let runCancelled = false;
   let running = false;
+  let executionSliceStarted = 0;
+  let executionSliceSteps = 0;
+  let serialFlushTimer = null;
   const valueWaiters = new Map();
   const runtimeReadyWaiters = [];
   const liveVariables = new Map();
+  const serialLogLines = [];
   const digitalOptions = DIGITAL_PINS.map(pin => [`D${pin}`, String(pin)]);
   const pwmOptions = PWM_PINS.map(pin => [`D${pin} (PWM)`, String(pin)]);
   const analogOptions = ANALOG_PINS.map((pin, index) => [pin, String(index)]);
@@ -528,7 +537,7 @@
     $("#clearBtn").addEventListener("click", clearWorkspace);
     $("#copyCodeBtn").addEventListener("click", copyCode);
     $("#downloadInoBtn").addEventListener("click", downloadIno);
-    $("#clearSerialBtn").addEventListener("click", () => { $("#serialOutput").textContent = ""; });
+    $("#clearSerialBtn").addEventListener("click", clearSerialOutput);
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
     $("#testHighBtn").addEventListener("click", () => sendAction("DW", $("#testPin").value, 1));
@@ -586,6 +595,16 @@
 
   const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, Number(value) || 0));
+
+  async function yieldToBrowser(force = false) {
+    executionSliceSteps++;
+    const now = performance.now();
+    if (!executionSliceStarted) executionSliceStarted = now;
+    if (!force && executionSliceSteps < EXECUTION_SLICE_STEPS && now - executionSliceStarted < EXECUTION_SLICE_MS) return;
+    executionSliceSteps = 0;
+    executionSliceStarted = performance.now();
+    await sleep(0);
+  }
 
   async function toggleSerialConnection() {
     if (serialConnected) {
@@ -758,10 +777,29 @@
   }
 
   function appendSerial(text) {
-    const output = $("#serialOutput");
     const now = new Date().toLocaleTimeString("ko-KR", { hour12: false });
-    output.textContent += `[${now}] ${text}\n`;
+    serialLogLines.push(`[${now}] ${text}`);
+    if (serialLogLines.length > MAX_SERIAL_LINES) {
+      serialLogLines.splice(0, serialLogLines.length - MAX_SERIAL_LINES);
+    }
+    if (serialFlushTimer) return;
+    serialFlushTimer = setTimeout(flushSerialOutput, SERIAL_FLUSH_DELAY_MS);
+  }
+
+  function flushSerialOutput() {
+    serialFlushTimer = null;
+    const output = $("#serialOutput");
+    output.textContent = serialLogLines.length ? `${serialLogLines.join("\n")}\n` : "";
     output.scrollTop = output.scrollHeight;
+  }
+
+  function clearSerialOutput() {
+    serialLogLines.length = 0;
+    if (serialFlushTimer) {
+      clearTimeout(serialFlushTimer);
+      serialFlushTimer = null;
+    }
+    $("#serialOutput").textContent = "";
   }
 
   async function sendSerialText() {
@@ -862,6 +900,7 @@
     let block = firstBlock;
     while (block && !runCancelled) {
       await executeStatement(block, functionDepth);
+      await yieldToBrowser();
       block = block.getNextBlock();
     }
   }
@@ -874,13 +913,14 @@
       case "control_forever":
         while (!runCancelled) {
           await executeChain(block.getInputTargetBlock("DO"), functionDepth);
-          await sleep(1);
+          await sleep(LIVE_LOOP_DELAY_MS);
         }
         return;
       case "controls_repeat_ext": {
         const times = clamp(await evaluate(inputBlock(block, "TIMES"), functionDepth), 0, 10000);
         for (let index = 0; index < times && !runCancelled; index++) {
           await executeChain(block.getInputTargetBlock("DO"), functionDepth);
+          await yieldToBrowser();
         }
         return;
       }
@@ -987,6 +1027,8 @@
       if (!startHats.length && !loopHats.length) throw new Error("‘시작하면’ 또는 ‘계속 실행’ 블록을 추가하세요.");
       running = true;
       runCancelled = false;
+      executionSliceStarted = performance.now();
+      executionSliceSteps = 0;
       liveVariables.clear();
       await sendAction("STOP");
       $("#runTitle").textContent = "블록 실행 중";
@@ -996,7 +1038,7 @@
       if (loopHats.length) {
         while (!runCancelled) {
           for (const hat of loopHats) await executeChain(hat.getNextBlock());
-          await sleep(1);
+          await sleep(LIVE_LOOP_DELAY_MS);
         }
       }
       if (!runCancelled) toast("블록 실행을 완료했습니다.");
