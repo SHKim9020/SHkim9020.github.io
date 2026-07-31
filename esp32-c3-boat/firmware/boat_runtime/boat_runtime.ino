@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.1: stable serialized BLE input and notifications.
+// OneMaker Boat Runtime 1.4.2: BLE-only radio mode while a controller is connected.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -57,7 +57,13 @@ JsonDocument activeProgram;
 WebServer webServer(80);
 HUSKYLENS huskylens;
 BLECharacteristic *bleTx = nullptr;
-bool bleConnected = false;
+volatile bool bleConnected = false;
+volatile bool bleConnectedEvent = false;
+volatile bool bleDisconnectedEvent = false;
+bool webRemoteActive = false;
+bool webRoutesRegistered = false;
+bool wifiRestorePending = false;
+unsigned long wifiRestoreStartedAt = 0;
 bool huskyReady = false;
 bool stopRequested = false;
 double remoteSpeed = 0;
@@ -102,6 +108,8 @@ bool parseIncomingLine(const String &line, bool allowCommands);
 bool executeSteps(JsonArrayConst steps);
 double callUserFunction(const String &name, JsonArrayConst args);
 void handleRemote(const String &button, int speed);
+void startWebRemote();
+void serviceBluetoothState();
 
 String twoDigitBoatNumber() {
   char value[3];
@@ -166,12 +174,12 @@ void emit(const String &type, const String &message = "") {
 class BoatServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *) override {
     bleConnected = true;
+    bleConnectedEvent = true;
   }
 
-  void onDisconnect(BLEServer *server) override {
+  void onDisconnect(BLEServer *) override {
     bleConnected = false;
-    delay(50);
-    server->getAdvertising()->start();
+    bleDisconnectedEvent = true;
   }
 };
 
@@ -203,6 +211,38 @@ void startBluetooth() {
   advertising->addServiceUUID(BLE_SERVICE_UUID);
   advertising->setScanResponse(true);
   BLEDevice::startAdvertising();
+}
+
+void stopWebRemoteForBluetooth() {
+  if (!webRemoteActive) return;
+  webServer.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  webRemoteActive = false;
+  Serial.println("{\"type\":\"radio\",\"message\":\"Bluetooth 전용 모드: Wi-Fi 일시 중지\"}");
+}
+
+void serviceBluetoothState() {
+  if (bleConnectedEvent) {
+    bleConnectedEvent = false;
+    wifiRestorePending = false;
+    stopWebRemoteForBluetooth();
+    Serial.println("{\"type\":\"bluetooth\",\"message\":\"connected\"}");
+  }
+
+  if (bleDisconnectedEvent) {
+    bleDisconnectedEvent = false;
+    stopBoat();
+    BLEDevice::startAdvertising();
+    wifiRestorePending = true;
+    wifiRestoreStartedAt = millis();
+    Serial.println("{\"type\":\"bluetooth\",\"message\":\"disconnected; advertising restarted\"}");
+  }
+
+  if (wifiRestorePending && !bleConnected && millis() - wifiRestoreStartedAt >= 500) {
+    wifiRestorePending = false;
+    startWebRemote();
+  }
 }
 
 void setChannel(int pinA, int pinB, int speed) {
@@ -417,12 +457,13 @@ void consumeInput(String &buffer, const String &data, bool allowCommands) {
 }
 
 void pollIncomingCommands() {
+  serviceBluetoothState();
   String serialData;
   while (Serial.available()) serialData += (char)Serial.read();
   if (serialData.length()) consumeInput(serialInputLine, serialData, false);
   String bleData = takeBlePendingData();
   if (bleData.length()) consumeInput(bleInputLine, bleData, false);
-  webServer.handleClient();
+  if (webRemoteActive) webServer.handleClient();
 }
 
 bool waitInterruptible(unsigned long milliseconds) {
@@ -649,7 +690,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.1";
+    response["runtime"] = "OneMaker Boat 1.4.2";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -768,10 +809,9 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
   return false;
 }
 
-void startWebRemote() {
-  WiFi.mode(WIFI_AP);
-  String ssid = wifiName();
-  WiFi.softAP(ssid.c_str(), WIFI_PASSWORD);
+void registerWebRemoteRoutes() {
+  if (webRoutesRegistered) return;
+  webRoutesRegistered = true;
   webServer.on("/", HTTP_GET, []() {
     webServer.send_P(200, "text/html; charset=utf-8", REMOTE_PAGE);
   });
@@ -784,7 +824,7 @@ void startWebRemote() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.1";
+    status["runtime"] = "1.4.2";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -795,7 +835,16 @@ void startWebRemote() {
   webServer.onNotFound([]() {
     webServer.send(404, "text/plain; charset=utf-8", "Not found");
   });
+}
+
+void startWebRemote() {
+  if (webRemoteActive || bleConnected) return;
+  registerWebRemoteRoutes();
+  WiFi.mode(WIFI_AP);
+  String ssid = wifiName();
+  WiFi.softAP(ssid.c_str(), WIFI_PASSWORD);
   webServer.begin();
+  webRemoteActive = true;
 }
 
 void setup() {
@@ -820,17 +869,18 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.1 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.2 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }
 
 void loop() {
+  serviceBluetoothState();
   String serialData;
   while (Serial.available()) serialData += (char)Serial.read();
   if (serialData.length()) consumeInput(serialInputLine, serialData, true);
   String bleData = takeBlePendingData();
   if (bleData.length()) consumeInput(bleInputLine, bleData, true);
-  webServer.handleClient();
+  if (webRemoteActive) webServer.handleClient();
   delay(2);
 }
