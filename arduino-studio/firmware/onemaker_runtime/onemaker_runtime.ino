@@ -7,8 +7,8 @@
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.0
-static const char *RUNTIME_VERSION = "1.1.0";
+// OneMaker Arduino UNO/Nano Runtime 1.1.1
+static const char *RUNTIME_VERSION = "1.1.1";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -277,6 +277,16 @@ VmValue textValue(const String &value) {
   return result;
 }
 
+long clampLong(long value, long minimum, long maximum) {
+  if (value < minimum) return minimum;
+  if (value > maximum) return maximum;
+  return value;
+}
+
+float nonNegative(float value) {
+  return value < 0 ? 0 : value;
+}
+
 float valueNumber(const VmValue &value) {
   return value.isText ? value.text.toFloat() : value.number;
 }
@@ -347,7 +357,8 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       uint8_t index = programByte(address++);
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(index < VM_MAX_VARIABLES ? vmVariables[index] : 0);
     } else if (opcode == EX_ANALOG) {
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(analogRead(A0 + constrain(programByte(address++), 0, 5)));
+      uint8_t analogPin = programByte(address++);
+      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(analogRead(A0 + clampLong(analogPin, 0, 5)));
     } else if (opcode == EX_DIGITAL) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
@@ -461,7 +472,8 @@ void executeStoredProgramStep() {
   if (opcode == OP_END) {
     vmProgramCounter = segmentEnd;
   } else if (opcode == OP_WAIT) {
-    unsigned long milliseconds = max(0.0f, valueNumber(evaluateStoredExpression(vmProgramCounter))) * 1000.0f;
+    float seconds = valueNumber(evaluateStoredExpression(vmProgramCounter));
+    unsigned long milliseconds = nonNegative(seconds) * 1000.0f;
     vmWaitUntil = millis() + milliseconds;
   } else if (opcode == OP_SET_VAR || opcode == OP_CHANGE_VAR) {
     uint8_t index = programByte(vmProgramCounter++);
@@ -478,19 +490,24 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_PWM_WRITE) {
     uint8_t pin = programByte(vmProgramCounter++);
     pinMode(pin, OUTPUT);
-    analogWrite(pin, constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 255));
+    long value = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    analogWrite(pin, clampLong(value, 0, 255));
   } else if (opcode == OP_MOTOR) {
     uint8_t pin1 = programByte(vmProgramCounter++);
     uint8_t pin2 = programByte(vmProgramCounter++);
-    setMotor(pin1, pin2, constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), -255, 255));
+    long speed = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    setMotor(pin1, pin2, clampLong(speed, -255, 255));
   } else if (opcode == OP_SERVO) {
     uint8_t pin = programByte(vmProgramCounter++);
     Servo *servo = servoForPin(pin);
-    if (servo) servo->write(constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 180));
+    long angle = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    if (servo) servo->write(clampLong(angle, 0, 180));
   } else if (opcode == OP_TONE) {
     uint8_t pin = programByte(vmProgramCounter++);
-    int frequency = constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 20, 20000);
-    unsigned long duration = max(0.0f, valueNumber(evaluateStoredExpression(vmProgramCounter))) * 1000.0f;
+    long frequencyValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    int frequency = clampLong(frequencyValue, 20, 20000);
+    float seconds = valueNumber(evaluateStoredExpression(vmProgramCounter));
+    unsigned long duration = nonNegative(seconds) * 1000.0f;
     lastTonePin = pin;
     tone(pin, frequency, max(1UL, duration));
   } else if (opcode == OP_NO_TONE) {
@@ -505,8 +522,10 @@ void executeStoredProgramStep() {
     lcd->backlight();
     lcd->clear();
   } else if (opcode == OP_LCD_PRINT) {
-    uint8_t row = constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 3);
-    uint8_t column = constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 19);
+    long rowValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long columnValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    uint8_t row = clampLong(rowValue, 0, 3);
+    uint8_t column = clampLong(columnValue, 0, 19);
     String value = valueText(evaluateStoredExpression(vmProgramCounter));
     if (lcd) {
       lcd->setCursor(column, row);
@@ -516,7 +535,8 @@ void executeStoredProgramStep() {
     if (lcd) lcd->clear();
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
-    uint8_t count = constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 1, 60);
+    long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    uint8_t count = clampLong(countValue, 1, 60);
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(count, pin, NEO_GRB + NEO_KHZ800);
     pixels->begin();
@@ -543,11 +563,14 @@ void executeStoredProgramStep() {
     if (mp3Serial) delete mp3Serial;
     mp3Serial = new SoftwareSerial(rx, tx);
     mp3Serial->begin(9600);
-    sendMp3Command(0x06, constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 30));
+    long volume = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    sendMp3Command(0x06, clampLong(volume, 0, 30));
   } else if (opcode == OP_MP3_PLAY) {
-    sendMp3Command(0x03, max(1, (int)valueNumber(evaluateStoredExpression(vmProgramCounter))));
+    long track = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    sendMp3Command(0x03, track < 1 ? 1 : track);
   } else if (opcode == OP_MP3_VOLUME) {
-    sendMp3Command(0x06, constrain((int)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 30));
+    long volume = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    sendMp3Command(0x06, clampLong(volume, 0, 30));
   } else if (opcode == OP_MP3_STOP) {
     sendMp3Command(0x16, 0);
   } else if (opcode == OP_BT_BEGIN) {
@@ -574,7 +597,8 @@ void executeStoredProgramStep() {
     uint16_t target = programWord(vmProgramCounter);
     if (!condition) vmProgramCounter = target;
   } else if (opcode == OP_REPEAT_START) {
-    long count = max(0L, (long)valueNumber(evaluateStoredExpression(vmProgramCounter)));
+    long count = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    if (count < 0) count = 0;
     uint16_t endAddress = programWord(vmProgramCounter);
     if (!count) {
       vmProgramCounter = endAddress;
