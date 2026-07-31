@@ -801,7 +801,21 @@
     return new Promise((resolve, reject) => {
       const workerSource = `
         const nativeFetch = self.fetch.bind(self);
-        self.fetch = async (input, init) => {
+        const fetchQueue = [];
+        let activeFetches = 0;
+        const runQueuedFetches = () => {
+          while (activeFetches < 8 && fetchQueue.length) {
+            const task = fetchQueue.shift();
+            activeFetches++;
+            fetchWithRetry(task.input, task.init)
+              .then(task.resolve, task.reject)
+              .finally(() => {
+                activeFetches--;
+                runQueuedFetches();
+              });
+          }
+        };
+        const fetchWithRetry = async (input, init) => {
           let lastError;
           for (let attempt = 0; attempt < 4; attempt++) {
             try {
@@ -815,6 +829,10 @@
           }
           throw lastError || new Error("fetch failed");
         };
+        self.fetch = (input, init) => new Promise((resolve, reject) => {
+          fetchQueue.push({ input, init, resolve, reject });
+          runQueuedFetches();
+        });
         self.onmessage = async event => {
           try {
             const { buildFirmware } = await import(${JSON.stringify(AVR_COMPILER_MODULE)});
