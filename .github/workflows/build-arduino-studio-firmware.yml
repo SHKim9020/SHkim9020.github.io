@@ -36,23 +36,64 @@ jobs:
 
       - name: Compile UNO/Nano runtime
         run: |
+          rm -rf "$RUNNER_TEMP/onemaker-arduino-build"
           mkdir -p "$RUNNER_TEMP/onemaker-arduino-build"
           arduino-cli compile \
+            --clean \
             --fqbn "arduino:avr:uno" \
             --output-dir "$RUNNER_TEMP/onemaker-arduino-build" \
             arduino-studio/firmware/onemaker_runtime
           cp "$RUNNER_TEMP/onemaker-arduino-build/onemaker_runtime.ino.hex" \
             arduino-studio/firmware/onemaker_runtime.hex
+          cp "$RUNNER_TEMP/onemaker-arduino-build/onemaker_runtime.ino.hex" \
+            arduino-studio/firmware/onemaker_runtime-1.1.1.hex
 
       - name: Verify runtime image
         run: |
           test -s arduino-studio/firmware/onemaker_runtime.hex
           grep -q '^:' arduino-studio/firmware/onemaker_runtime.hex
+          cmp arduino-studio/firmware/onemaker_runtime.hex \
+            arduino-studio/firmware/onemaker_runtime-1.1.1.hex
+          python3 - <<'PY'
+          from pathlib import Path
+
+          memory = {}
+          upper = 0
+          for line in Path("arduino-studio/firmware/onemaker_runtime-1.1.1.hex").read_text().splitlines():
+              if not line.startswith(":"):
+                  continue
+              record = bytes.fromhex(line[1:])
+              length = record[0]
+              address = (record[1] << 8) | record[2]
+              kind = record[3]
+              payload = record[4:4 + length]
+              if kind == 0:
+                  for offset, value in enumerate(payload):
+                      memory[upper + address + offset] = value
+              elif kind == 4:
+                  upper = int.from_bytes(payload, "big") << 16
+
+          start = min(memory)
+          image = bytearray(max(memory) - start + 1)
+          for address, value in memory.items():
+              image[address - start] = value
+          assert b"1.1.1" in image, "compiled HEX does not contain runtime version 1.1.1"
+          assert b"1.1.0" not in image, "compiled HEX still contains stale runtime version 1.1.0"
+          PY
+
+      - name: Upload verified runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: onemaker-runtime-1.1.1
+          path: arduino-studio/firmware/onemaker_runtime-1.1.1.hex
+          if-no-files-found: error
 
       - name: Commit generated firmware
         if: ${{ github.event_name == 'push' }}
         run: |
-          git add arduino-studio/firmware/onemaker_runtime.hex
+          git add \
+            arduino-studio/firmware/onemaker_runtime.hex \
+            arduino-studio/firmware/onemaker_runtime-1.1.1.hex
           if git diff --cached --quiet; then
             echo "Arduino runtime is unchanged."
             exit 0
