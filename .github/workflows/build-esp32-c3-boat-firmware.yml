@@ -48,25 +48,25 @@ jobs:
           cp /tmp/onemaker-c3-build/boat_runtime.ino.merged.bin \
             esp32-c3-boat/firmware/boat_runtime.merged.bin
           cp /tmp/onemaker-c3-build/boat_runtime.ino.merged.bin \
-            esp32-c3-boat/firmware/boat_runtime-1.4.2.merged.bin
+            esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin
 
       - name: Verify ESP32-C3 runtime
         run: |
           test -s esp32-c3-boat/firmware/boat_runtime.merged.bin
           cmp esp32-c3-boat/firmware/boat_runtime.merged.bin \
-            esp32-c3-boat/firmware/boat_runtime-1.4.2.merged.bin
+            esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin
           python3 - <<'PY'
           from pathlib import Path
-          image = Path("esp32-c3-boat/firmware/boat_runtime-1.4.2.merged.bin").read_bytes()
-          assert b"OneMaker Boat 1.4.2" in image, "runtime 1.4.2 marker is missing"
-          assert b"OneMaker Boat 1.4.1" not in image, "stale runtime 1.4.1 marker remains"
+          image = Path("esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin").read_bytes()
+          assert b"OneMaker Boat 1.4.3" in image, "runtime 1.4.3 marker is missing"
+          assert b"OneMaker Boat 1.4.2" not in image, "stale runtime 1.4.2 marker remains"
           PY
 
       - name: Upload verified ESP32-C3 runtime
         uses: actions/upload-artifact@v4
         with:
-          name: onemaker-boat-runtime-1.4.2
-          path: esp32-c3-boat/firmware/boat_runtime-1.4.2.merged.bin
+          name: onemaker-boat-runtime-1.4.3
+          path: esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin
           if-no-files-found: error
 
       - name: Commit generated firmware
@@ -74,7 +74,7 @@ jobs:
         run: |
           git add \
             esp32-c3-boat/firmware/boat_runtime.merged.bin \
-            esp32-c3-boat/firmware/boat_runtime-1.4.2.merged.bin
+            esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin
           if git diff --cached --quiet; then
             echo "Firmware is unchanged."
             exit 0

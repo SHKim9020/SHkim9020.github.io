@@ -10,8 +10,9 @@
   const BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
   const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
+  const CLASSROOM_MAX_PWM = 150;
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
-  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 2];
+  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 3];
 
   let workspace;
   let serialPort;
@@ -21,6 +22,7 @@
   let bleRxCharacteristic;
   let bleTxCharacteristic;
   let bleWriteTransport;
+  let remoteSafetyController;
   let readLoopActive = false;
   let receiveBuffer = "";
   let boardRuntime = "";
@@ -77,7 +79,7 @@
       message0: "리모컨 속도",
       output: "Number",
       colour: 315,
-      tooltip: "웹 리모컨의 현재 속도(0~255)입니다."
+      tooltip: "수업 안정화가 적용된 웹 리모컨 속도(0~150)입니다."
     },
     {
       type: "motor_set",
@@ -274,7 +276,7 @@
       { kind: "category", name: "시작", colour: "48", contents: [{ kind: "block", type: "boat_start" }] },
       {
         kind: "category", name: "스마트선박", colour: "198", contents: [
-          { kind: "block", type: "boat_move", inputs: { SPEED: { shadow: { type: "math_number", fields: { NUM: 180 } } } } },
+          { kind: "block", type: "boat_move", inputs: { SPEED: { shadow: { type: "math_number", fields: { NUM: 150 } } } } },
           { kind: "block", type: "boat_stop" }
         ]
       },
@@ -356,6 +358,23 @@
       zoom: { controls: false, wheel: true, startScale: 0.9, maxScale: 1.5, minScale: 0.45, scaleSpeed: 1.1 },
       grid: { spacing: 22, length: 2, colour: "#dbe4e9", snap: false }
     });
+    remoteSafetyController = new BoatRemoteSafetyController(
+      command => {
+        if (!serialWriter && !bleRxCharacteristic) {
+          throw new Error("먼저 Bluetooth 또는 USB로 보트를 연결하세요.");
+        }
+        return writeLine(JSON.stringify(command));
+      },
+      {
+        maxSpeed: CLASSROOM_MAX_PWM,
+        heartbeatMs: 400,
+        onError: error => {
+          remoteSafetyController.disconnect();
+          setRemoteVisual("stop");
+          toast(`안전 신호 전송 실패: ${error.message}`);
+        }
+      }
+    );
     bindEvents();
     restoreAutosave();
     if (!workspace.getAllBlocks(false).length) loadExample(false);
@@ -422,7 +441,11 @@
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
     $("#testSpeed").addEventListener("input", event => { $("#testSpeedValue").textContent = event.target.value; });
-    $("#remoteSpeed").addEventListener("input", event => { $("#remoteSpeedValue").textContent = event.target.value; });
+    $("#remoteSpeed").addEventListener("input", event => {
+      const safeSpeed = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number(event.target.value) || 0));
+      event.target.value = safeSpeed;
+      $("#remoteSpeedValue").textContent = safeSpeed;
+    });
     $$(".test-card .drive-pad button").forEach(button => {
       button.addEventListener("pointerdown", () => quickDrive(button.dataset.drive));
       if (button.dataset.drive !== "stop") {
@@ -433,7 +456,8 @@
     $$(".remote-pad button").forEach(button => {
       button.addEventListener("pointerdown", event => {
         event.preventDefault();
-        remoteDrive(button.dataset.remote);
+        button.setPointerCapture?.(event.pointerId);
+        remoteDrive(button.dataset.remote, button.dataset.remote === "stop");
       });
       if (button.dataset.remote !== "stop") {
         button.addEventListener("pointerup", () => remoteDrive("stop"));
@@ -450,6 +474,7 @@
     });
     $("#progressCloseBtn").addEventListener("click", () => $("#progressDialog").close());
     window.addEventListener("beforeunload", () => {
+      remoteSafetyController?.disconnect();
       if (serialReader) serialReader.cancel().catch(() => {});
       if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
     });
@@ -616,7 +641,7 @@
         <block type="boat_start" x="55" y="45">
           <next><block type="boat_move">
             <field name="DIRECTION">forward</field>
-            <value name="SPEED"><shadow type="math_number"><field name="NUM">180</field></shadow></value>
+            <value name="SPEED"><shadow type="math_number"><field name="NUM">150</field></shadow></value>
             <next><block type="control_wait">
               <value name="SECONDS"><shadow type="math_number"><field name="NUM">2</field></shadow></value>
               <next><block type="boat_stop">
@@ -1060,7 +1085,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
 
   async function prepareBoardHandshake(preferredTransport) {
     // A saved forever-loop accepts stop/remote commands while it is running, but
-    // runtime 1.4.2 does not answer hello until that loop has yielded completely.
+    // Saved forever-loops do not answer hello until the stop command has yielded them.
     await writeLine(JSON.stringify({ cmd: "stop" }), preferredTransport);
     await sleep(300);
     return sendCommandAndWait({ cmd: "hello" }, ["hello"], 6000, preferredTransport);
@@ -1129,7 +1154,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
         setBluetoothConnected(false);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
-        return toast(`Bluetooth 안정화를 위해 펌웨어 1.4.2가 필요합니다. 현재 ${installedVersion}입니다.`);
+        return toast(`수업 안정화 기능을 위해 펌웨어 1.4.3이 필요합니다. 현재 ${installedVersion}입니다.`);
       }
       setBluetoothConnected(true);
       toast(`${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결 완료`);
@@ -1388,7 +1413,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       await writeLine(JSON.stringify({
         cmd: "drive",
         direction,
-        speed: Number($("#testSpeed").value),
+        speed: Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number($("#testSpeed").value) || 0)),
         config: config()
       }));
     } catch (error) {
@@ -1396,16 +1421,17 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
   }
 
-  async function remoteDrive(button) {
+  async function remoteDrive(button, forceStop = false) {
     setRemoteVisual(button);
     try {
-      if (!serialWriter && !bleRxCharacteristic) return toast("먼저 Bluetooth 또는 USB로 보트를 연결하세요.");
-      await writeLine(JSON.stringify({
-        cmd: "remote",
-        button,
-        speed: Number($("#remoteSpeed").value)
-      }));
+      if (button === "stop") {
+        await remoteSafetyController.stop(forceStop);
+      } else {
+        await remoteSafetyController.press(button, Number($("#remoteSpeed").value));
+      }
     } catch (error) {
+      remoteSafetyController.disconnect();
+      setRemoteVisual("stop");
       toast(error.message);
     }
   }
@@ -1455,6 +1481,8 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     $("#bleConnectBtn").disabled = connected || !navigator.bluetooth;
     $("#bleDisconnectBtn").disabled = !connected;
     if (!connected) {
+      remoteSafetyController?.disconnect();
+      setRemoteVisual("stop");
       bleWriteTransport = null;
       bleRxCharacteristic = null;
       bleTxCharacteristic = null;
