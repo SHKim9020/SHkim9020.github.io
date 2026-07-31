@@ -11,7 +11,7 @@
   const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
-  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 1];
+  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 2];
 
   let workspace;
   let serialPort;
@@ -1121,7 +1121,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
         setBluetoothConnected(false);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
-        return toast(`Bluetooth 안정화를 위해 펌웨어 1.4.1이 필요합니다. 현재 ${installedVersion}입니다.`);
+        return toast(`Bluetooth 안정화를 위해 펌웨어 1.4.2가 필요합니다. 현재 ${installedVersion}입니다.`);
       }
       setBluetoothConnected(true);
       toast(`${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결 완료`);
