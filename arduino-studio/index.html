@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#152b43">
   <title>OneMaker Arduino UNO·Nano Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.0.0">
+  <link rel="stylesheet" href="style.css?v=1.1.0">
 </head>
 <body>
   <header class="topbar">
@@ -25,6 +25,7 @@
       <button id="firmwareBtn" class="outline">① 런타임 설치</button>
       <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
       <button id="runBtn" class="primary">③ USB로 실행</button>
+      <button id="uploadModeBtn" class="upload-mode">④ 업로드 모드</button>
       <button id="stopBtn" class="danger">■ 정지</button>
     </div>
   </header>
@@ -57,12 +58,17 @@
       <div id="blocklyDiv" aria-label="아두이노 블록 코딩 작업 공간"></div>
     </section>
 
-    <aside class="side-pane">
+    <aside class="side-pane" aria-label="도구 패널">
       <nav class="side-tabs" aria-label="오른쪽 패널">
-        <button class="active" data-tab="board">보드</button>
-        <button data-tab="test">빠른 테스트</button>
-        <button data-tab="code">텍스트 코드</button>
-        <button data-tab="serial">시리얼 모니터</button>
+        <div class="side-tab-buttons">
+          <button class="active" data-tab="board">보드</button>
+          <button data-tab="test">빠른 테스트</button>
+          <button data-tab="code">텍스트 코드</button>
+          <button data-tab="serial">시리얼 모니터</button>
+        </div>
+        <button id="sideCollapseBtn" class="side-collapse-btn" type="button" aria-expanded="true" aria-label="오른쪽 패널 접기" title="오른쪽 패널 접기">
+          <span class="collapse-arrow">›</span><span class="collapse-label">접기</span>
+        </button>
       </nav>
 
       <section class="tab-panel active board-panel" data-panel="board">
@@ -185,12 +191,61 @@
     </form>
   </dialog>
 
+  <dialog id="uploadDialog">
+    <div class="dialog-card upload-card">
+      <button id="closeUploadDialogBtn" class="dialog-close" type="button" aria-label="닫기">×</button>
+      <span class="step-chip upload-chip">보드 단독 실행</span>
+      <h2>프로젝트 업로드 모드</h2>
+      <p>현재 블록을 UNO·Nano용 HEX로 컴파일한 뒤 USB 보드에 저장합니다. 업로드가 끝나면 USB를 분리해도 프로그램이 실행됩니다.</p>
+
+      <div class="upload-board-summary">
+        <span>선택 보드</span>
+        <strong id="uploadBoardName">Arduino UNO R3</strong>
+      </div>
+
+      <div id="compileStatus" class="compile-status" data-state="idle">
+        <b>1단계 · HEX 만들기</b>
+        <span>아래 버튼을 눌러 블록 프로그램을 컴파일하세요.</span>
+      </div>
+      <div class="compile-progress" id="compileProgress" hidden>
+        <span class="spinner small" aria-hidden="true"></span>
+        <div><b>브라우저에서 컴파일 중</b><small>첫 실행은 컴파일러 파일을 내려받아 시간이 더 걸릴 수 있습니다.</small></div>
+      </div>
+      <button id="compileProjectBtn" class="primary wide" type="button">1. 프로젝트 HEX 만들기</button>
+
+      <div id="unsupportedUpload" class="unsupported-upload" hidden>
+        <b>현재 웹 업로드에서 지원하지 않는 블록</b>
+        <p id="unsupportedUploadText"></p>
+        <button id="downloadUnsupportedInoBtn" type="button">INO 다운로드</button>
+      </div>
+
+      <div id="projectUploadActions" class="project-upload-actions" hidden>
+        <p><b>2단계 · 보드에 기록</b><span>USB 포트를 선택하면 바로 업로드됩니다.</span></p>
+        <button id="projectUploadUno" class="project-uploader" type="button" arduino-uploader hex-href="" board="uno" verify>
+          2. Arduino UNO에 업로드 <span class="upload-progress"></span>
+        </button>
+        <button id="projectUploadNano" class="project-uploader" type="button" arduino-uploader hex-href="" board="nano" verify>
+          2. Arduino Nano에 업로드 <span class="upload-progress"></span>
+        </button>
+        <button id="projectUploadNanoOld" class="project-uploader" type="button" arduino-uploader hex-href="" board="nanoOldBootloader" verify>
+          2. Nano 구형 부트로더에 업로드 <span class="upload-progress"></span>
+        </button>
+      </div>
+
+      <div class="upload-warning">
+        <b>꼭 확인하세요</b>
+        <span>업로드 모드는 기존 OneMaker 런타임을 덮어씁니다. 다시 ‘USB로 실행’을 사용하려면 상단의 ‘런타임 설치’를 한 번 실행하세요.</span>
+      </div>
+      <p class="compiler-note">웹 컴파일은 첫 사용 시 약 55MB의 도구 파일을 내려받으며 이후에는 브라우저 캐시를 활용합니다.</p>
+    </div>
+  </dialog>
+
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
-  <script src="app.js?v=1.0.2"></script>
+  <script src="app.js?v=1.1.0"></script>
 </body>
 </html>
