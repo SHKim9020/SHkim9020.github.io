@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.5: Bluetooth-armed stored programs with motor safety controls.
+// OneMaker Boat Runtime 1.4.6: independent left/right remote motor trim.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -72,6 +72,9 @@ unsigned long wifiRestoreStartedAt = 0;
 bool huskyReady = false;
 bool stopRequested = false;
 double remoteSpeed = 0;
+int remoteLeftSpeed = 0;
+int remoteRightSpeed = 0;
+bool remoteHandlerActive = false;
 int functionDepth = 0;
 String serialInputLine;
 String bleInputLine;
@@ -124,7 +127,7 @@ void pollIncomingCommands();
 bool parseIncomingLine(const String &line, bool allowCommands);
 bool executeSteps(JsonArrayConst steps);
 double callUserFunction(const String &name, JsonArrayConst args);
-void handleRemote(const String &button, int speed);
+void handleRemote(const String &button, int speed, int leftSpeed, int rightSpeed);
 void startWebRemote();
 void serviceBluetoothState();
 void serviceMotorSafety();
@@ -352,6 +355,16 @@ void driveDirection(const String &direction, int speed) {
   else stopBoat();
 }
 
+void driveDirectionDual(const String &direction, int leftSpeed, int rightSpeed) {
+  leftSpeed = constrain(leftSpeed, 0, CLASSROOM_MAX_PWM);
+  rightSpeed = constrain(rightSpeed, 0, CLASSROOM_MAX_PWM);
+  if (direction == "forward") setDrive(leftSpeed, rightSpeed);
+  else if (direction == "backward") setDrive(-leftSpeed, -rightSpeed);
+  else if (direction == "left") setDrive(-leftSpeed, rightSpeed);
+  else if (direction == "right") setDrive(leftSpeed, -rightSpeed);
+  else stopBoat();
+}
+
 void applyConfig(JsonVariantConst value) {
   if (value.isNull()) return;
   JsonObjectConst pins = value["pins"];
@@ -554,7 +567,8 @@ bool executeStep(JsonObjectConst step) {
   if (stopRequested) return false;
   const char *op = step["op"] | "";
   if (strcmp(op, "move") == 0) {
-    driveDirection(step["direction"] | "forward", (int)evaluateNumber(step["speed"]));
+    if (remoteHandlerActive) driveDirectionDual(step["direction"] | "forward", remoteLeftSpeed, remoteRightSpeed);
+    else driveDirection(step["direction"] | "forward", (int)evaluateNumber(step["speed"]));
   } else if (strcmp(op, "stop") == 0) {
     stopBoat();
   } else if (strcmp(op, "motor") == 0) {
@@ -728,13 +742,15 @@ bool runSavedProgram() {
   return completed;
 }
 
-void handleRemote(const String &button, int speed) {
+void handleRemote(const String &button, int speed, int leftSpeed, int rightSpeed) {
   String safeButton = button;
   if (safeButton != "forward" && safeButton != "backward"
       && safeButton != "left" && safeButton != "right" && safeButton != "stop") {
     safeButton = "stop";
   }
   remoteSpeed = constrain(speed, 0, CLASSROOM_MAX_PWM);
+  remoteLeftSpeed = constrain(leftSpeed, 0, CLASSROOM_MAX_PWM);
+  remoteRightSpeed = constrain(rightSpeed, 0, CLASSROOM_MAX_PWM);
   lastRemoteHeartbeatAt = millis();
 
   if (safeButton == "stop") {
@@ -752,12 +768,15 @@ void handleRemote(const String &button, int speed) {
   stopRequested = false;
   JsonArrayConst handler = activeProgram["handlers"][safeButton.c_str()].as<JsonArrayConst>();
   if (!handler.isNull() && handler.size()) {
+    bool previousRemoteHandlerActive = remoteHandlerActive;
+    remoteHandlerActive = true;
     executeSteps(handler);
+    remoteHandlerActive = previousRemoteHandlerActive;
   } else {
-    driveDirection(safeButton, (int)remoteSpeed);
+    driveDirectionDual(safeButton, remoteLeftSpeed, remoteRightSpeed);
   }
-  Serial.printf("{\"type\":\"remote\",\"message\":\"%s\",\"speed\":%d}\n",
-    safeButton.c_str(), (int)remoteSpeed);
+  Serial.printf("{\"type\":\"remote\",\"message\":\"%s\",\"speed\":%d,\"leftSpeed\":%d,\"rightSpeed\":%d}\n",
+    safeButton.c_str(), (int)remoteSpeed, remoteLeftSpeed, remoteRightSpeed);
 }
 
 bool parseIncomingLine(const String &line, bool allowCommands) {
@@ -785,7 +804,13 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
   }
   if (strcmp(command, "remote") == 0) {
     applyConfig(document["config"]);
-    handleRemote(document["button"] | "stop", document["speed"] | 0);
+    int speed = document["speed"] | 0;
+    handleRemote(
+      document["button"] | "stop",
+      speed,
+      document["leftSpeed"] | speed,
+      document["rightSpeed"] | speed
+    );
     return true;
   }
   if (!allowCommands) return false;
@@ -793,7 +818,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.5";
+    response["runtime"] = "OneMaker Boat 1.4.6";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -921,7 +946,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/remote", HTTP_GET, []() {
     String button = webServer.arg("button");
     int speed = constrain(webServer.arg("speed").toInt(), 0, CLASSROOM_MAX_PWM);
-    handleRemote(button.length() ? button : "stop", speed);
+    handleRemote(button.length() ? button : "stop", speed, speed, speed);
     webServer.send(200, "application/json", "{\"ok\":true}");
   });
   webServer.on("/api/heartbeat", HTTP_GET, []() {
@@ -934,7 +959,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.5";
+    status["runtime"] = "1.4.6";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -979,7 +1004,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.5 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.6 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH) && loadActiveProgram()) {
     bool waitForBluetoothStart = activeProgram["config"]["waitForBluetoothStart"] | false;

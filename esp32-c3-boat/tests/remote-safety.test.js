@@ -35,6 +35,18 @@ test("holding one direction does not resend or increase the motor command", asyn
   assert.deepEqual(commands, [{ cmd: "remote", button: "forward", speed: 150 }]);
 });
 
+test("controller sends independent left and right motor speeds", async () => {
+  const { commands, controller } = harness();
+  await controller.press("forward", 155, { leftSpeed: 140, rightSpeed: 170 });
+  assert.deepEqual(commands, [{
+    cmd: "remote",
+    button: "forward",
+    speed: 155,
+    leftSpeed: 140,
+    rightSpeed: 170
+  }]);
+});
+
 test("heartbeat is lightweight and releasing sends one stop", async () => {
   const { commands, controller, timers } = harness();
   await controller.press("left", 140);
