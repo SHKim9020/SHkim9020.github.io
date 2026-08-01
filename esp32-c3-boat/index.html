@@ -107,6 +107,12 @@
         </div>
 
         <div class="settings-card">
+          <div class="card-head"><h3>프로그램 시작 방식</h3><span class="future-badge">물 위 안전</span></div>
+          <label class="enable-row"><input id="waitForBluetoothStart" type="checkbox" checked> 전원을 켠 뒤 Bluetooth 시작 버튼까지 대기</label>
+          <p class="safety">선박을 물에 띄우고 Bluetooth로 연결한 다음 ‘저장된 블록 실행’을 눌러 HuskyLens 자율운항을 시작합니다.</p>
+        </div>
+
+        <div class="settings-card">
           <div class="card-head"><h3>DRV8833 기본 배선</h3><button id="resetPinsBtn">기본값</button></div>
           <div class="pin-grid">
             <label>IN1 <select id="pinIn1"></select></label>
@@ -266,7 +272,7 @@
       <h2>수업용 펌웨어 설치</h2>
       <p>ESP32-C3의 <b>BOOT</b> 버튼을 누른 채 <b>RESET</b>을 한 번 누르고, 아래 설치 버튼을 선택하세요.</p>
       <div class="install-box">
-          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.9">
+          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.12">
           <button slot="activate" class="primary install-activate">ESP32-C3 펌웨어 설치</button>
           <span slot="unsupported">이 기능은 PC·크롬북의 Chrome/Edge에서 사용할 수 있습니다.</span>
         </esp-web-install-button>
@@ -298,6 +304,6 @@
   <script src="ble-transport.js?v=1.4.6"></script>
   <script src="remote-safety.js?v=1.4.9"></script>
   <script src="remote-handler.js?v=1.4.10"></script>
-  <script src="app.js?v=1.4.11"></script>
+  <script src="app.js?v=1.4.12"></script>
 </body>
 </html>

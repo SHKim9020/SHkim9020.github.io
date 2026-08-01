@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.4: adjustable 250 PWM test cap with motor ramp and remote watchdog.
+// OneMaker Boat Runtime 1.4.5: Bluetooth-armed stored programs with motor safety controls.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -793,7 +793,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.4";
+    response["runtime"] = "OneMaker Boat 1.4.5";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -934,7 +934,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.4";
+    status["runtime"] = "1.4.5";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -979,9 +979,13 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.4 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.5 · ") + bluetoothName());
   delay(500);
-  if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
+  if (LittleFS.exists(PROGRAM_PATH) && loadActiveProgram()) {
+    bool waitForBluetoothStart = activeProgram["config"]["waitForBluetoothStart"] | false;
+    if (waitForBluetoothStart) emit("armed", "Bluetooth 시작 대기");
+    else runSavedProgram();
+  }
 }
 
 void loop() {

@@ -13,6 +13,7 @@
   const CLASSROOM_MAX_PWM = 250;
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
   const STABLE_BLE_FIRMWARE_MIN = [1, 4, 4];
+  const BLUETOOTH_START_FIRMWARE_MIN = [1, 4, 5];
 
   let workspace;
   let serialPort;
@@ -475,7 +476,7 @@
         button.addEventListener("pointerleave", event => { if (event.buttons) remoteDrive("stop"); });
       }
     });
-    ["boatNumber", "pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight", "huskyEnabled", "huskySda", "huskyScl"].forEach(id => {
+    ["boatNumber", "pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight", "waitForBluetoothStart", "huskyEnabled", "huskySda", "huskyScl"].forEach(id => {
       $(`#${id}`).addEventListener("change", () => {
         codeManuallyEdited = false;
         refreshGeneratedCode();
@@ -516,6 +517,7 @@
       invertLeft: $("#invertLeft").checked,
       invertRight: $("#invertRight").checked,
       ledActiveLow: true,
+      waitForBluetoothStart: $("#waitForBluetoothStart").checked,
       husky: {
         enabled: $("#huskyEnabled").checked,
         sda: Number($("#huskySda").value),
@@ -637,6 +639,7 @@
     $("#pinIn4").value = pins.in4 ?? DEFAULT_PINS.in4;
     $("#invertLeft").checked = Boolean(cfg.invertLeft);
     $("#invertRight").checked = cfg.invertRight !== false;
+    $("#waitForBluetoothStart").checked = cfg.waitForBluetoothStart !== false;
     $("#huskyEnabled").checked = Boolean(cfg.husky?.enabled);
     $("#huskySda").value = cfg.husky?.sda ?? DEFAULT_PINS.huskySda;
     $("#huskyScl").value = cfg.husky?.scl ?? DEFAULT_PINS.huskyScl;
@@ -1389,6 +1392,11 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     try {
       if (!serialWriter && !bleRxCharacteristic) await connectSerial();
       if (!serialWriter && !bleRxCharacteristic) return;
+      const settings = config();
+      if (settings.waitForBluetoothStart && !supportsFirmware(BLUETOOTH_START_FIRMWARE_MIN)) {
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+        throw new Error(`Bluetooth 시작 대기 기능은 펌웨어 1.4.5가 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
+      }
       const program = compileRuntimeProgram();
       const handlers = compileRuntimeHandlers();
       const functions = compileRuntimeFunctions();
@@ -1398,7 +1406,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       await writeLine(JSON.stringify({ cmd: "stop" }));
       await stopPromise;
       await sleep(200);
-      const payload = { config: config(), program, handlers, functions };
+      const payload = { config: settings, program, handlers, functions };
       await sendProgram(payload);
       showProgress("실행 준비 완료", "프로그램을 시작합니다.", 80);
       await sendCommandAndWait({ cmd: "run" }, ["started"], 5000);
