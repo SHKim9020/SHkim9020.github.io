@@ -724,7 +724,8 @@
       .filter(block => block.type === "remote_when")
       .forEach(block => {
         const button = block.getFieldValue("BUTTON");
-        handlers[button] = [...(handlers[button] || []), ...compileStatementChain(block.getNextBlock())];
+        const steps = bindRemoteSpeedToMoves(compileStatementChain(block.getNextBlock()));
+        handlers[button] = [...(handlers[button] || []), ...steps];
       });
     return handlers;
   }

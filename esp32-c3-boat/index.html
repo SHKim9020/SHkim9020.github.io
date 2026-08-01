@@ -212,7 +212,7 @@
             <button data-remote="right" aria-label="우회전"><b>▶</b><small>우회전</small></button>
             <button data-remote="backward" aria-label="후진"><b>▼</b><small>후진</small></button>
           </div>
-          <p class="hold-note">방향 버튼을 누르는 동안 동작하고, 손을 떼면 정지 이벤트를 보냅니다.</p>
+          <p class="hold-note">방향 버튼을 누르는 동안 동작하며, 슬라이더 속도가 저장된 이동 블록의 숫자보다 우선 적용됩니다.</p>
         </div>
         <div class="wifi-card">
           <h3>Wi‑Fi 예비 조종</h3>
@@ -292,6 +292,7 @@
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="ble-transport.js?v=1.4.6"></script>
   <script src="remote-safety.js?v=1.4.9"></script>
-  <script src="app.js?v=1.4.9"></script>
+  <script src="remote-handler.js?v=1.4.10"></script>
+  <script src="app.js?v=1.4.10"></script>
 </body>
 </html>
