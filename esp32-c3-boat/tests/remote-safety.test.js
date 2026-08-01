@@ -21,10 +21,10 @@ function harness() {
   return { commands, controller, timers };
 }
 
-test("controller clamps every remote speed to the classroom maximum", async () => {
+test("controller clamps every remote speed to the 250 test maximum", async () => {
   const { commands, controller } = harness();
-  await controller.press("forward", 222);
-  assert.deepEqual(commands, [{ cmd: "remote", button: "forward", speed: 150 }]);
+  await controller.press("forward", 300);
+  assert.deepEqual(commands, [{ cmd: "remote", button: "forward", speed: 250 }]);
 });
 
 test("holding one direction does not resend or increase the motor command", async () => {
