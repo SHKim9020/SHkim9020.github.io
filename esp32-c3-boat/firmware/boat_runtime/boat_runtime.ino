@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.3: classroom motor ramp, speed cap, and remote watchdog.
+// OneMaker Boat Runtime 1.4.4: adjustable 250 PWM test cap with motor ramp and remote watchdog.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -30,7 +30,7 @@ static const int DEFAULT_HUSKY_SCL = 7;
 static const int MAX_VARS = 20;
 static const size_t MAX_UPLOAD_SIZE = 65536;
 static const size_t BLE_SAFE_CHUNK_SIZE = 20;
-static const int CLASSROOM_MAX_PWM = 150;
+static const int CLASSROOM_MAX_PWM = 250;
 static const int MOTOR_RAMP_STEP = 15;
 static const unsigned long MOTOR_RAMP_INTERVAL_MS = 25;
 static const unsigned long DIRECTION_CHANGE_DEADTIME_MS = 180;
@@ -105,7 +105,7 @@ button small{display:block;font-size:10px}.up{grid-column:2}.left{grid-row:2;gri
 button.on{outline:3px solid #2d91c7;background:#cae8f7}.stop.on{outline-color:#e65a5f;background:#ffcaca}
 #status{font-size:11px;color:#16815d}.warn{font-size:11px;background:#fff5d6;border-radius:10px;padding:10px}
 </style></head><body><main><h1>🚤 OneMaker Boat</h1><p id="status">Wi‑Fi 리모컨 연결됨</p><div class="card">
-<label>속도 <input id="speed" type="range" min="0" max="150" value="150"><output id="value">150</output></label>
+<label>속도 <input id="speed" type="range" min="0" max="250" value="150"><output id="value">150</output></label>
 <div class="boat"><b id="motion">정지</b><svg viewBox="0 0 180 130"><path class="wave" d="M5 25c30-12 45 12 75 0s45 12 95 0M5 108c30-12 45 12 75 0s45 12 95 0"/><g id="ship"><circle class="guard" cx="62" cy="99" r="22"/><circle class="guard" cx="118" cy="99" r="22"/><path class="prop" d="M50 99h24M62 87v24M106 99h24M118 87v24"/><path class="hull" d="M90 12C66 25 55 55 60 102c2 13 12 20 30 24 18-4 28-11 30-24 5-47-6-77-30-90Z"/><path class="deck" d="M90 32C77 43 72 59 73 87h34c1-28-4-44-17-55Z"/></g></svg></div>
 <div class="pad"><button class="up" data-b="forward">▲<small>전진</small></button><button class="left" data-b="left">◀<small>좌회전</small></button><button class="stop" data-b="stop">■<small>정지</small></button><button class="right" data-b="right">▶<small>우회전</small></button><button class="down" data-b="backward">▼<small>후진</small></button></div>
 <div class="warn">방향 버튼을 누르는 동안만 움직입니다. 먼저 프로펠러를 분리하고 시험하세요.</div></div></main>
@@ -793,7 +793,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.3";
+    response["runtime"] = "OneMaker Boat 1.4.4";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -934,7 +934,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.3";
+    status["runtime"] = "1.4.4";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -979,7 +979,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.3 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.4 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH)) runSavedProgram();
 }

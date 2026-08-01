@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#12314a">
   <title>OneMaker ESP32-C3 Boat Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.4.8">
+  <link rel="stylesheet" href="style.css?v=1.4.9">
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </head>
 <body>
@@ -138,7 +138,7 @@
         <div class="test-card">
           <h3>빠른 모터 테스트</h3>
           <div class="speed-row">
-            <label>속도 <input id="testSpeed" type="range" min="0" max="150" value="150"></label>
+            <label>속도 <input id="testSpeed" type="range" min="0" max="250" value="150"></label>
             <output id="testSpeedValue">150</output>
           </div>
           <div class="drive-pad">
@@ -166,9 +166,12 @@
           <span>Android · Chrome 권장</span>
         </div>
         <div class="remote-card remote-controller" data-direction="stop">
+          <div class="remote-card-toolbar">
+            <button id="remoteFullscreenBtn" type="button" class="outline remote-fullscreen-btn" aria-pressed="false">⛶ 전체화면</button>
+          </div>
           <div class="remote-speed-control">
             <label for="remoteSpeed">속도</label>
-            <input id="remoteSpeed" type="range" min="0" max="150" value="150">
+            <input id="remoteSpeed" type="range" min="0" max="250" value="150">
             <output id="remoteSpeedValue">150</output>
           </div>
           <div class="boat-stage" aria-label="스마트선박 진행 방향 표시">
@@ -258,7 +261,7 @@
       <h2>수업용 펌웨어 설치</h2>
       <p>ESP32-C3의 <b>BOOT</b> 버튼을 누른 채 <b>RESET</b>을 한 번 누르고, 아래 설치 버튼을 선택하세요.</p>
       <div class="install-box">
-          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.7">
+          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.9">
           <button slot="activate" class="primary install-activate">ESP32-C3 펌웨어 설치</button>
           <span slot="unsupported">이 기능은 PC·크롬북의 Chrome/Edge에서 사용할 수 있습니다.</span>
         </esp-web-install-button>
@@ -288,7 +291,7 @@
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="ble-transport.js?v=1.4.6"></script>
-  <script src="remote-safety.js?v=1.4.6"></script>
-  <script src="app.js?v=1.4.8"></script>
+  <script src="remote-safety.js?v=1.4.9"></script>
+  <script src="app.js?v=1.4.9"></script>
 </body>
 </html>
