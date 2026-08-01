@@ -10,9 +10,9 @@
   const BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
   const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
-  const CLASSROOM_MAX_PWM = 150;
+  const CLASSROOM_MAX_PWM = 250;
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
-  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 3];
+  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 4];
 
   let workspace;
   let serialPort;
@@ -79,7 +79,7 @@
       message0: "리모컨 속도",
       output: "Number",
       colour: 315,
-      tooltip: "수업 안정화가 적용된 웹 리모컨 속도(0~150)입니다."
+      tooltip: "수업 안정화가 적용된 웹 리모컨 속도(0~250)입니다."
     },
     {
       type: "motor_set",
@@ -446,6 +446,8 @@
       event.target.value = safeSpeed;
       $("#remoteSpeedValue").textContent = safeSpeed;
     });
+    $("#remoteFullscreenBtn").addEventListener("click", toggleRemoteFullscreen);
+    document.addEventListener("fullscreenchange", syncRemoteFullscreenButton);
     const remotePad = $(".remote-pad");
     ["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
       remotePad?.addEventListener(eventName, event => event.preventDefault());
@@ -1159,7 +1161,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
         setBluetoothConnected(false);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
-        return toast(`수업 안정화 기능을 위해 펌웨어 1.4.3이 필요합니다. 현재 ${installedVersion}입니다.`);
+        return toast(`속도 250 시험 기능을 위해 펌웨어 1.4.4가 필요합니다. 현재 ${installedVersion}입니다.`);
       }
       setBluetoothConnected(true);
       toast(`${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결 완료`);
@@ -1454,6 +1456,37 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       stop: "정지"
     };
     $("#boatMotionLabel").textContent = labels[direction] || "조종 대기";
+  }
+
+  function syncRemoteFullscreenButton() {
+    const controller = $(".remote-controller");
+    const button = $("#remoteFullscreenBtn");
+    if (!controller || !button) return;
+    const isFullscreen = document.fullscreenElement === controller || controller.classList.contains("fullscreen-fallback");
+    button.textContent = isFullscreen ? "✕ 전체화면 닫기" : "⛶ 전체화면";
+    button.setAttribute("aria-pressed", String(isFullscreen));
+  }
+
+  async function toggleRemoteFullscreen() {
+    const controller = $(".remote-controller");
+    if (!controller) return;
+    try {
+      if (document.fullscreenElement === controller) {
+        await document.exitFullscreen();
+      } else if (controller.classList.contains("fullscreen-fallback")) {
+        controller.classList.remove("fullscreen-fallback");
+        document.body.classList.remove("remote-fullscreen-open");
+      } else if (controller.requestFullscreen) {
+        await controller.requestFullscreen({ navigationUI: "hide" });
+      } else {
+        controller.classList.add("fullscreen-fallback");
+        document.body.classList.add("remote-fullscreen-open");
+      }
+    } catch (error) {
+      controller.classList.add("fullscreen-fallback");
+      document.body.classList.add("remote-fullscreen-open");
+    }
+    syncRemoteFullscreenButton();
   }
 
   async function sendSerialText() {
