@@ -8,7 +8,7 @@
       "chipFamily": "ESP32-C3",
       "parts": [
         {
-          "path": "https://shkim9020.github.io/esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin",
+          "path": "https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/esp32-c3-boat/firmware/boat_runtime-1.4.3.merged.bin",
           "offset": 0
         }
       ]
