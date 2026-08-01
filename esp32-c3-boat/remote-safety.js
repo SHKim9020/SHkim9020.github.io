@@ -22,14 +22,19 @@
       return Math.min(this.maxSpeed, Math.max(0, Math.round(numeric)));
     }
 
-    async press(direction, speed) {
+    async press(direction, speed, motorSpeeds = null) {
       if (!DIRECTIONS.has(direction)) return this.stop(true);
       if (this.direction === direction) return false;
 
       this.clearHeartbeat();
       this.direction = direction;
       this.speed = this.clampSpeed(speed);
-      await this.sendCommand({ cmd: "remote", button: direction, speed: this.speed });
+      const command = { cmd: "remote", button: direction, speed: this.speed };
+      if (motorSpeeds) {
+        command.leftSpeed = this.clampSpeed(motorSpeeds.leftSpeed);
+        command.rightSpeed = this.clampSpeed(motorSpeeds.rightSpeed);
+      }
+      await this.sendCommand(command);
       this.heartbeatTimer = this.setIntervalFn(() => {
         if (this.direction === "stop") return;
         Promise.resolve(this.sendCommand({ cmd: "heartbeat", button: this.direction }))
