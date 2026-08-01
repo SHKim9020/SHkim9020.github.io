@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#12314a">
   <title>OneMaker ESP32-C3 Boat Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.4.9">
+  <link rel="stylesheet" href="style.css?v=1.4.11">
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </head>
 <body>
@@ -166,6 +166,11 @@
           <span>Android · Chrome 권장</span>
         </div>
         <div class="remote-card remote-controller" data-direction="stop">
+          <div class="ble-program-controls">
+            <button id="bleRunProgramBtn" type="button" class="primary" disabled>▶ 저장된 블록 실행</button>
+            <button id="bleStopProgramBtn" type="button" class="outline" disabled>■ 블록 실행 정지</button>
+          </div>
+          <p id="bleProgramStatus" class="ble-program-status">Bluetooth 연결 후 저장된 프로그램을 실행할 수 있습니다.</p>
           <div class="remote-card-toolbar">
             <button id="remoteFullscreenBtn" type="button" class="outline remote-fullscreen-btn" aria-pressed="false">⛶ 전체화면</button>
           </div>
@@ -293,6 +298,6 @@
   <script src="ble-transport.js?v=1.4.6"></script>
   <script src="remote-safety.js?v=1.4.9"></script>
   <script src="remote-handler.js?v=1.4.10"></script>
-  <script src="app.js?v=1.4.10"></script>
+  <script src="app.js?v=1.4.11"></script>
 </body>
 </html>
