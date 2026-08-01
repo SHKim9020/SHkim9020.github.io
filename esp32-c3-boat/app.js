@@ -12,7 +12,7 @@
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
   const CLASSROOM_MAX_PWM = 250;
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
-  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 4];
+  const STABLE_BLE_FIRMWARE_MIN = [1, 4, 6];
   const BLUETOOTH_START_FIRMWARE_MIN = [1, 4, 5];
 
   let workspace;
@@ -445,10 +445,12 @@
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
     $("#testSpeed").addEventListener("input", event => { $("#testSpeedValue").textContent = event.target.value; });
-    $("#remoteSpeed").addEventListener("input", event => {
-      const safeSpeed = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number(event.target.value) || 0));
-      event.target.value = safeSpeed;
-      $("#remoteSpeedValue").textContent = safeSpeed;
+    [["remoteLeftSpeed", "remoteLeftSpeedValue"], ["remoteRightSpeed", "remoteRightSpeedValue"]].forEach(([inputId, outputId]) => {
+      $(`#${inputId}`).addEventListener("input", event => {
+        const safeSpeed = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number(event.target.value) || 0));
+        event.target.value = safeSpeed;
+        $(`#${outputId}`).textContent = safeSpeed;
+      });
     });
     $("#remoteFullscreenBtn").addEventListener("click", toggleRemoteFullscreen);
     document.addEventListener("fullscreenchange", syncRemoteFullscreenButton);
@@ -1168,7 +1170,7 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
         if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
         setBluetoothConnected(false);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
-        return toast(`속도 250 시험 기능을 위해 펌웨어 1.4.4가 필요합니다. 현재 ${installedVersion}입니다.`);
+        return toast(`좌·우 모터 개별 속도 기능을 위해 펌웨어 1.4.6이 필요합니다. 현재 ${installedVersion}입니다.`);
       }
       setBluetoothConnected(true);
       toast(`${boardBluetoothName || bleDevice?.name || "OneMaker Boat"} 연결 완료`);
@@ -1476,7 +1478,9 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       if (button === "stop") {
         await remoteSafetyController.stop(forceStop);
       } else {
-        await remoteSafetyController.press(button, Number($("#remoteSpeed").value));
+        const leftSpeed = Number($("#remoteLeftSpeed").value);
+        const rightSpeed = Number($("#remoteRightSpeed").value);
+        await remoteSafetyController.press(button, Math.round((leftSpeed + rightSpeed) / 2), { leftSpeed, rightSpeed });
       }
     } catch (error) {
       remoteSafetyController.disconnect();
