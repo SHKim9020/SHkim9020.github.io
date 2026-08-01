@@ -23,6 +23,7 @@
   let bleTxCharacteristic;
   let bleWriteTransport;
   let remoteSafetyController;
+  let bleProgramRunning = false;
   let readLoopActive = false;
   let receiveBuffer = "";
   let boardRuntime = "";
@@ -413,6 +414,8 @@
     $("#connectBtn").addEventListener("click", connectSerial);
     $("#bleConnectBtn").addEventListener("click", connectBluetooth);
     $("#bleDisconnectBtn").addEventListener("click", disconnectBluetooth);
+    $("#bleRunProgramBtn").addEventListener("click", runSavedProgramBluetooth);
+    $("#bleStopProgramBtn").addEventListener("click", stopSavedProgramBluetooth);
     $("#saveBoatNumberBtn").addEventListener("click", saveBoatNumber);
     $("#uploadBtn").addEventListener("click", uploadAndRun);
     $("#stopBtn").addEventListener("click", emergencyStop);
@@ -1271,6 +1274,8 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
           }
           if (bleDevice?.gatt?.connected) setBluetoothConnected(true);
         }
+        if (message.type === "started") setBleProgramRunning(true);
+        if (message.type === "completed" || message.type === "stopped") setBleProgramRunning(false);
         for (let index = messageWaiters.length - 1; index >= 0; index--) {
           const waiter = messageWaiters[index];
           if (waiter.predicate(message)) {
@@ -1415,6 +1420,34 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
   }
 
+  async function runSavedProgramBluetooth() {
+    if (!bleDevice?.gatt?.connected || !bleRxCharacteristic) {
+      return toast("먼저 Bluetooth 보트를 연결하세요.");
+    }
+    try {
+      remoteSafetyController?.disconnect();
+      setRemoteVisual("stop");
+      await sendCommandAndWait({ cmd: "run" }, ["started"], 5000, "ble");
+      toast("보드에 저장된 블록 프로그램을 실행했습니다.");
+    } catch (error) {
+      setBleProgramRunning(false);
+      toast(error.message || "저장된 프로그램을 실행하지 못했습니다.");
+    }
+  }
+
+  async function stopSavedProgramBluetooth() {
+    if (!bleDevice?.gatt?.connected || !bleRxCharacteristic) {
+      return toast("먼저 Bluetooth 보트를 연결하세요.");
+    }
+    try {
+      await sendCommandAndWait({ cmd: "stop" }, ["stopped"], 4000, "ble");
+      setRemoteVisual("stop");
+      toast("블록 프로그램을 정지했습니다. 방향키 조종을 계속 사용할 수 있습니다.");
+    } catch (error) {
+      toast(error.message || "블록 프로그램을 정지하지 못했습니다.");
+    }
+  }
+
   async function quickDrive(direction) {
     try {
       if (!serialWriter) return toast("빠른 테스트 전에 USB를 연결하세요.");
@@ -1520,12 +1553,31 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     $("#bleConnectBtn").disabled = connected || !navigator.bluetooth;
     $("#bleDisconnectBtn").disabled = !connected;
     if (!connected) {
+      bleProgramRunning = false;
       remoteSafetyController?.disconnect();
       setRemoteVisual("stop");
       bleWriteTransport = null;
       bleRxCharacteristic = null;
       bleTxCharacteristic = null;
     }
+    updateBleProgramControls();
+  }
+
+  function setBleProgramRunning(running) {
+    bleProgramRunning = running;
+    updateBleProgramControls();
+  }
+
+  function updateBleProgramControls() {
+    const connected = Boolean(bleDevice?.gatt?.connected && bleRxCharacteristic);
+    $("#bleRunProgramBtn").disabled = !connected || bleProgramRunning;
+    $("#bleStopProgramBtn").disabled = !connected || !bleProgramRunning;
+    $("#bleProgramStatus").textContent = !connected
+      ? "Bluetooth 연결 후 저장된 프로그램을 실행할 수 있습니다."
+      : bleProgramRunning
+        ? "저장된 블록 프로그램 실행 중"
+        : "저장된 블록 프로그램 실행 대기";
+    $("#bleProgramStatus").classList.toggle("running", connected && bleProgramRunning);
   }
 
   function appendSerial(text) {
