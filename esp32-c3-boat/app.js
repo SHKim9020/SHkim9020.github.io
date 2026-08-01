@@ -446,6 +446,11 @@
       event.target.value = safeSpeed;
       $("#remoteSpeedValue").textContent = safeSpeed;
     });
+    const remotePad = $(".remote-pad");
+    ["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
+      remotePad?.addEventListener(eventName, event => event.preventDefault());
+    });
+    remotePad?.addEventListener("touchstart", event => event.preventDefault(), { passive: false });
     $$(".test-card .drive-pad button").forEach(button => {
       button.addEventListener("pointerdown", () => quickDrive(button.dataset.drive));
       if (button.dataset.drive !== "stop") {
