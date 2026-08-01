@@ -6,7 +6,7 @@
   class BoatRemoteSafetyController {
     constructor(sendCommand, options = {}) {
       this.sendCommand = sendCommand;
-      this.maxSpeed = options.maxSpeed ?? 150;
+      this.maxSpeed = options.maxSpeed ?? 250;
       this.heartbeatMs = options.heartbeatMs ?? 400;
       this.setIntervalFn = options.setIntervalFn ?? globalThis.setInterval.bind(globalThis);
       this.clearIntervalFn = options.clearIntervalFn ?? globalThis.clearInterval.bind(globalThis);
