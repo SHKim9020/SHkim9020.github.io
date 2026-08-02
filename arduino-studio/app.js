@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.2";
+  const RUNTIME_VERSION = "1.1.3";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -132,11 +132,11 @@
     },
     {
       type: "sensor_button",
-      message0: "푸시버튼 %1 눌림?",
+      message0: "터치센서 %1 감지?",
       args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
       output: "Boolean",
       colour: 155,
-      tooltip: "내부 풀업을 사용합니다. 버튼을 핀과 GND 사이에 연결하세요."
+      tooltip: "터치센서의 디지털 출력이 HIGH(1)이면 참이 됩니다."
     },
     {
       type: "sensor_ultrasonic",
@@ -340,6 +340,18 @@
       colour: 330
     },
     {
+      type: "mp3_play_for",
+      message0: "DFPlayer %1번 파일 %2초 동안 재생",
+      args0: [
+        { type: "input_value", name: "TRACK", check: "Number" },
+        { type: "input_value", name: "SECONDS", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 330
+    },
+    {
       type: "mp3_volume",
       message0: "DFPlayer 볼륨 %1",
       args0: [{ type: "input_value", name: "VOLUME", check: "Number" }],
@@ -356,7 +368,7 @@
     },
     {
       type: "bt_begin",
-      message0: "Bluetooth 시작 RX %1 TX %2 속도 %3",
+      message0: "Bluetooth 시작 Arduino RX %1 TX %2 속도 %3",
       args0: [
         { type: "field_dropdown", name: "RX", options: digitalOptions },
         { type: "field_dropdown", name: "TX", options: digitalOptions },
@@ -364,7 +376,8 @@
       ],
       previousStatement: null,
       nextStatement: null,
-      colour: 260
+      colour: 14,
+      tooltip: "Bluetooth TX를 Arduino RX에, Bluetooth RX를 Arduino TX에 연결합니다."
     },
     {
       type: "bt_send",
@@ -372,19 +385,60 @@
       args0: [{ type: "input_value", name: "VALUE" }],
       previousStatement: null,
       nextStatement: null,
-      colour: 260
+      colour: 14
     },
     {
       type: "bt_available",
-      message0: "Bluetooth 데이터 있음?",
+      message0: "Bluetooth 수신이 들어왔는가?",
       output: "Boolean",
-      colour: 260
+      colour: 14
     },
     {
       type: "bt_read",
-      message0: "Bluetooth 받은 문자열",
+      message0: "Bluetooth 수신값 읽기",
       output: "String",
-      colour: 260
+      colour: 14
+    },
+    {
+      type: "bt_received_item",
+      message0: "Bluetooth 수신된 %1개의 값 중 %2번째 값",
+      args0: [
+        { type: "input_value", name: "COUNT", check: "Number" },
+        { type: "input_value", name: "INDEX", check: "Number" }
+      ],
+      output: "String",
+      inputsInline: true,
+      colour: 14
+    },
+    {
+      type: "bt_value_equals",
+      message0: "Bluetooth 수신값 = %1",
+      args0: [{ type: "input_value", name: "VALUE" }],
+      output: "Boolean",
+      inputsInline: true,
+      colour: 14
+    },
+    {
+      type: "bt_send_many",
+      message0: "Bluetooth로 %1 전송하기 (이어 보내기)",
+      args0: [{ type: "input_value", name: "VALUE" }],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 14,
+      tooltip: "줄바꿈 없이 전송하므로 여러 블록을 이어서 보낼 수 있습니다."
+    },
+    {
+      type: "bt_set_name",
+      message0: "Bluetooth 이름 변경 %1 방식 %2",
+      args0: [
+        { type: "input_value", name: "NAME" },
+        { type: "field_dropdown", name: "MODE", options: [["HC-06 기본", "0"], ["HC-05 AT모드", "1"]] }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 14,
+      tooltip: "연결되지 않은 명령 모드에서 사용합니다. HC-05 AT모드는 KEY/EN 설정과 38400bps가 필요합니다."
     },
     {
       type: "serial_print",
@@ -494,14 +548,19 @@
       { kind: "category", name: "MP3", colour: "330", contents: [
         { kind: "block", type: "mp3_begin", fields: { RX: "10", TX: "11" }, inputs: { VOLUME: numberShadow(20) } },
         { kind: "block", type: "mp3_play", inputs: { TRACK: numberShadow(1) } },
+        { kind: "block", type: "mp3_play_for", inputs: { TRACK: numberShadow(1), SECONDS: numberShadow(5) } },
         { kind: "block", type: "mp3_volume", inputs: { VOLUME: numberShadow(20) } },
         { kind: "block", type: "mp3_stop" }
       ] },
-      { kind: "category", name: "Bluetooth", colour: "260", contents: [
-        { kind: "block", type: "bt_begin" },
-        { kind: "block", type: "bt_send", inputs: { VALUE: textShadow("전진") } },
+      { kind: "category", name: "Bluetooth", colour: "14", contents: [
+        { kind: "block", type: "bt_begin", fields: { RX: "2", TX: "3", BAUD: "9600" } },
         { kind: "block", type: "bt_available" },
-        { kind: "block", type: "bt_read" }
+        { kind: "block", type: "bt_read" },
+        { kind: "block", type: "bt_received_item", inputs: { COUNT: numberShadow(1), INDEX: numberShadow(1) } },
+        { kind: "block", type: "bt_value_equals", inputs: { VALUE: textShadow("1") } },
+        { kind: "block", type: "bt_send", inputs: { VALUE: textShadow("전진") } },
+        { kind: "block", type: "bt_send_many", inputs: { VALUE: textShadow("값") } },
+        { kind: "block", type: "bt_set_name", inputs: { NAME: textShadow("OneMaker") } }
       ] },
       { kind: "category", name: "제어", colour: "25", contents: [
         { kind: "block", type: "control_wait", inputs: { SECONDS: numberShadow(1) } },
@@ -671,7 +730,8 @@
     MOTOR: 6, SERVO: 7, TONE: 8, NO_TONE: 9, LCD_BEGIN: 10, LCD_PRINT: 11,
     LCD_CLEAR: 12, NEO_BEGIN: 13, NEO_SET: 14, NEO_CLEAR: 15, MP3_BEGIN: 16,
     MP3_PLAY: 17, MP3_VOLUME: 18, MP3_STOP: 19, BT_BEGIN: 20, BT_SEND: 21,
-    SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26
+    SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26,
+    BT_SEND_RAW: 27, BT_SET_NAME: 28
   });
 
   const EX = Object.freeze({
@@ -679,7 +739,7 @@
     ULTRASONIC: 7, DHT: 8, DUST: 9, BT_AVAILABLE: 10, BT_READ: 11,
     ADD: 20, SUBTRACT: 21, MULTIPLY: 22, DIVIDE: 23, POWER: 24,
     EQUAL: 30, NOT_EQUAL: 31, LESS: 32, LESS_EQUAL: 33, GREATER: 34,
-    GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43
+    GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43, BT_ITEM: 44
   });
 
   class ByteWriter {
@@ -823,6 +883,16 @@
       case "bt_read":
         writer.u8(EX.BT_READ);
         return;
+      case "bt_received_item":
+        writeExpressionValue(writer, inputBlock(block, "COUNT"), context);
+        writeExpressionValue(writer, inputBlock(block, "INDEX"), context);
+        writer.u8(EX.BT_ITEM);
+        return;
+      case "bt_value_equals":
+        writer.u8(EX.BT_READ);
+        writeExpressionValue(writer, inputBlock(block, "VALUE"), context);
+        writer.u8(EX.EQUAL);
+        return;
       case "my_function_call_value": {
         const definition = context.valueFunctions.get(block.getFieldValue("NAME"));
         if (!definition) {
@@ -964,14 +1034,25 @@
         writer.u8(VM.MP3_BEGIN); pin("RX"); pin("TX"); expression("VOLUME"); return;
       case "mp3_play":
         writer.u8(VM.MP3_PLAY); expression("TRACK"); return;
+      case "mp3_play_for":
+        writer.u8(VM.MP3_PLAY); expression("TRACK");
+        writer.u8(VM.WAIT); expression("SECONDS");
+        writer.u8(VM.MP3_STOP); return;
       case "mp3_volume":
         writer.u8(VM.MP3_VOLUME); expression("VOLUME"); return;
       case "mp3_stop":
         writer.u8(VM.MP3_STOP); return;
       case "bt_begin":
+        if (block.getFieldValue("RX") === block.getFieldValue("TX")) {
+          throw new Error("Bluetooth RX와 TX는 서로 다른 핀을 선택하세요.");
+        }
         writer.u8(VM.BT_BEGIN); pin("RX"); pin("TX"); writer.u16(block.getFieldValue("BAUD")); return;
       case "bt_send":
         writer.u8(VM.BT_SEND); expression("VALUE"); return;
+      case "bt_send_many":
+        writer.u8(VM.BT_SEND_RAW); expression("VALUE"); return;
+      case "bt_set_name":
+        writer.u8(VM.BT_SET_NAME); writer.u8(block.getFieldValue("MODE")); expression("NAME"); return;
       case "serial_print":
         writer.u8(VM.SERIAL_PRINT); expression("VALUE"); return;
       case "my_function_call": {
@@ -1441,6 +1522,14 @@
       case "sensor_dust": return requestValue("DUST", block.getFieldValue("LED_PIN"), block.getFieldValue("ANALOG_PIN"));
       case "bt_available": return Boolean(await requestValue("BTAVAIL"));
       case "bt_read": return requestValue("BTREAD");
+      case "bt_received_item": {
+        const value = String(await requestValue("BTREAD"));
+        const count = clamp(await evaluate(inputBlock(block, "COUNT"), functionDepth), 1, 64);
+        const index = clamp(await evaluate(inputBlock(block, "INDEX"), functionDepth), 1, count);
+        return value.slice(0, count).charAt(index - 1);
+      }
+      case "bt_value_equals":
+        return String(await requestValue("BTREAD")) === String(await evaluate(inputBlock(block, "VALUE"), functionDepth));
       case "my_function_call_value": {
         if (functionDepth > 12) throw new Error("내 블록 호출이 너무 깊습니다.");
         const definition = workspace.getAllBlocks(false).find(candidate =>
@@ -1564,14 +1653,30 @@
         );
       case "mp3_play":
         return sendAction("MP3PLAY", clamp(await evaluate(inputBlock(block, "TRACK"), functionDepth), 1, 2999));
+      case "mp3_play_for":
+        await sendAction("MP3PLAY", clamp(await evaluate(inputBlock(block, "TRACK"), functionDepth), 1, 2999));
+        await sleep(clamp(await evaluate(inputBlock(block, "SECONDS"), functionDepth), 0, 3600) * 1000);
+        if (!runCancelled) await sendAction("MP3STOP");
+        return;
       case "mp3_volume":
         return sendAction("MP3VOL", clamp(await evaluate(inputBlock(block, "VOLUME"), functionDepth), 0, 30));
       case "mp3_stop":
         return sendAction("MP3STOP");
       case "bt_begin":
+        if (block.getFieldValue("RX") === block.getFieldValue("TX")) {
+          throw new Error("Bluetooth RX와 TX는 서로 다른 핀을 선택하세요.");
+        }
         return sendAction("BTBEGIN", block.getFieldValue("RX"), block.getFieldValue("TX"), block.getFieldValue("BAUD"));
       case "bt_send":
         return sendAction("BTSEND", encodeHex(await evaluate(inputBlock(block, "VALUE"), functionDepth)));
+      case "bt_send_many":
+        return sendAction("BTRAW", encodeHex(await evaluate(inputBlock(block, "VALUE"), functionDepth)));
+      case "bt_set_name":
+        return sendAction(
+          "BTNAME",
+          block.getFieldValue("MODE"),
+          encodeHex(await evaluate(inputBlock(block, "NAME"), functionDepth))
+        );
       case "serial_print":
         return sendAction("PRINT", encodeHex(await evaluate(inputBlock(block, "VALUE"), functionDepth)));
       case "my_function_call": {
@@ -1823,7 +1928,7 @@
       case "sensor_analog": return `analogRead(A${block.getFieldValue("PIN")})`;
       case "pin_digital_read": return `readDigitalPin(${block.getFieldValue("PIN")})`;
       case "pin_analog_read": return `analogRead(A${block.getFieldValue("PIN")})`;
-      case "sensor_button": return `readButton(${block.getFieldValue("PIN")})`;
+      case "sensor_button": return `(readDigitalPin(${block.getFieldValue("PIN")}) == 1)`;
       case "sensor_ultrasonic": return `readUltrasonic(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
       case "sensor_dht": {
         const object = dhtName(block.getFieldValue("PIN"), block.getFieldValue("TYPE"));
@@ -1832,6 +1937,8 @@
       case "sensor_dust": return `readDust(${block.getFieldValue("LED_PIN")}, A${block.getFieldValue("ANALOG_PIN")})`;
       case "bt_available": return "(bluetooth.listen(), bluetooth.available() > 0)";
       case "bt_read": return "readBluetoothLine()";
+      case "bt_received_item": return `readBluetoothItem(${cppInput(block, "COUNT")}, ${cppInput(block, "INDEX")})`;
+      case "bt_value_equals": return `(readBluetoothLine() == String(${cppInput(block, "VALUE", '""')}))`;
       case "my_function_call_value":
         return `${functionCppName(block.getFieldValue("NAME"), true)}()`;
       default: return "0";
@@ -1908,10 +2015,16 @@
         return line("initializeMp3();")
           + line(`sendMp3Command(0x06, constrain(${cppInput(block, "VOLUME")}, 0, 30));`);
       case "mp3_play": return line(`sendMp3Command(0x03, ${cppInput(block, "TRACK")});`);
+      case "mp3_play_for":
+        return line(`sendMp3Command(0x03, ${cppInput(block, "TRACK")});`)
+          + line(`delay((unsigned long)max(0.0, (double)(${cppInput(block, "SECONDS")})) * 1000UL);`)
+          + line("sendMp3Command(0x16, 0);");
       case "mp3_volume": return line(`sendMp3Command(0x06, constrain(${cppInput(block, "VOLUME")}, 0, 30));`);
       case "mp3_stop": return line("sendMp3Command(0x16, 0);");
       case "bt_begin": return line(`bluetooth.begin(${block.getFieldValue("BAUD")});`);
       case "bt_send": return line(`bluetooth.println(${cppInput(block, "VALUE", '""')});`);
+      case "bt_send_many": return line(`bluetooth.print(${cppInput(block, "VALUE", '""')});`);
+      case "bt_set_name": return line(`setBluetoothName(String(${cppInput(block, "NAME", '""')}), ${block.getFieldValue("MODE")});`);
       case "serial_print": return line(`Serial.println(${cppInput(block, "VALUE", '""')});`);
       case "my_function_call": return line(`${functionCppName(block.getFieldValue("NAME"))}();`);
       default: return "";
@@ -1961,8 +2074,8 @@
       },
       bluetooth: {
         enabled: [...types].some(type => type.startsWith("bt_")),
-        rx: Number(btBlock?.getFieldValue("RX") || 10),
-        tx: Number(btBlock?.getFieldValue("TX") || 11)
+        rx: Number(btBlock?.getFieldValue("RX") || 2),
+        tx: Number(btBlock?.getFieldValue("TX") || 3)
       },
       mp3: {
         enabled: [...types].some(type => type.startsWith("mp3_")),
@@ -1993,7 +2106,7 @@
     });
 
     const helpers = [];
-    if (hardware.types.has("pin_digital_read")) helpers.push(`
+    if (hardware.types.has("pin_digital_read") || hardware.types.has("sensor_button")) helpers.push(`
 int readDigitalPin(uint8_t pin) {
   pinMode(pin, INPUT);
   return digitalRead(pin);
@@ -2009,11 +2122,6 @@ long readUltrasonic(uint8_t trigPin, uint8_t echoPin) {
   digitalWrite(trigPin, LOW);
   unsigned long duration = pulseIn(echoPin, HIGH, 30000UL);
   return duration ? duration / 58 : 0;
-}`);
-    if (hardware.types.has("sensor_button")) helpers.push(`
-bool readButton(uint8_t pin) {
-  pinMode(pin, INPUT_PULLUP);
-  return digitalRead(pin) == LOW;
 }`);
     if (hardware.types.has("sensor_dust")) helpers.push(`
 int readDust(uint8_t ledPin, uint8_t analogPin) {
@@ -2042,10 +2150,31 @@ void setMotor(uint8_t pin1, uint8_t pin2, int speedValue) {
     analogWrite(pin2, 0);
   }
 }`);
-    if (hardware.bluetooth.enabled && hardware.types.has("bt_read")) helpers.push(`
+    if (hardware.bluetooth.enabled && ["bt_read", "bt_received_item", "bt_value_equals"].some(type => hardware.types.has(type))) helpers.push(`
 String readBluetoothLine() {
   bluetooth.listen();
   return bluetooth.readStringUntil('\\n');
+}
+
+String readBluetoothItem(int count, int index) {
+  String value = readBluetoothLine();
+  count = constrain(count, 1, 64);
+  index = constrain(index, 1, count);
+  value = value.substring(0, min(count, (int)value.length()));
+  return index <= value.length() ? value.substring(index - 1, index) : String("");
+}`);
+    if (hardware.bluetooth.enabled && hardware.types.has("bt_set_name")) helpers.push(`
+void setBluetoothName(const String &name, uint8_t mode) {
+  bluetooth.listen();
+  if (mode == 1) {
+    bluetooth.print("AT+NAME=");
+    bluetooth.print(name);
+    bluetooth.print("\\r\\n");
+  } else {
+    bluetooth.print("AT+NAME");
+    bluetooth.print(name);
+  }
+  delay(1000);
 }`);
     if (hardware.mp3.enabled) helpers.push(`
 void sendMp3Command(uint8_t command, uint16_t parameter) {
