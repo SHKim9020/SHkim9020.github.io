@@ -278,6 +278,7 @@
 
   const api = {
     active: false,
+    mode: "unavailable",
     isAndroid: isAndroid(),
     supported: Boolean(navigator.usb),
     filters: USB_FILTERS,
@@ -288,13 +289,48 @@
 
   if (api.isAndroid && navigator.usb) {
     const serial = new CH340Serial(navigator.usb);
+    const nativeSerial = navigator.serial;
     try {
       Object.defineProperty(navigator, "serial", { configurable: true, enumerable: true, value: serial });
       api.active = navigator.serial === serial;
-      api.serial = serial;
+      if (api.active) api.mode = "navigator";
     } catch (error) {
-      console.warn("OneMaker CH340 WebUSB adapter could not replace navigator.serial:", error);
+      console.info("OneMaker CH340: navigator.serial 교체 대신 메서드 우회를 시도합니다.", error);
     }
+
+    // Android Chrome 150에서는 Bluetooth Web Serial 객체가 교체 불가능한
+    // 속성으로 노출될 수 있다. 이때 객체 자체는 유지하고 장치 선택 메서드만
+    // CH340 WebUSB로 연결해 Arduino 웹 업로더도 같은 경로를 사용하게 한다.
+    if (!api.active && nativeSerial) {
+      const requestPort = serial.requestPort.bind(serial);
+      const getPorts = serial.getPorts.bind(serial);
+      const patchMethods = target => {
+        Object.defineProperties(target, {
+          requestPort: { configurable: true, writable: true, value: requestPort },
+          getPorts: { configurable: true, writable: true, value: getPorts }
+        });
+        return nativeSerial.requestPort === requestPort && nativeSerial.getPorts === getPorts;
+      };
+      try {
+        api.active = patchMethods(nativeSerial);
+      } catch (instanceError) {
+        try {
+          api.active = patchMethods(Object.getPrototypeOf(nativeSerial));
+        } catch (prototypeError) {
+          console.warn("OneMaker CH340 WebUSB adapter activation failed:", instanceError, prototypeError);
+        }
+      }
+      if (api.active) {
+        try {
+          api.mode = "patched";
+          serial.addEventListener("disconnect", () => nativeSerial.dispatchEvent(new Event("disconnect")));
+          serial.addEventListener("connect", () => nativeSerial.dispatchEvent(new Event("connect")));
+        } catch (error) {
+          console.info("OneMaker CH340 연결 이벤트 브리지를 사용할 수 없습니다.", error);
+        }
+      }
+    }
+    api.serial = serial;
   }
 
   window.OneMakerCH340 = api;

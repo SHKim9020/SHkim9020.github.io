@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
 const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 
-function loadDriver() {
+function loadDriver({ lockedSerial = false } = {}) {
   const listeners = new Map();
   const usb = {
     addEventListener(type, listener) { listeners.set(type, listener); },
@@ -18,9 +18,16 @@ function loadDriver() {
     async getDevices() { return this.device ? [this.device] : []; }
   };
   const navigator = { userAgent: "Mozilla/5.0 (Linux; Android 15) Chrome/150", usb };
+  if (lockedSerial) {
+    class LockedSerial extends EventTarget {}
+    LockedSerial.prototype.requestPort = async () => "bluetooth";
+    LockedSerial.prototype.getPorts = async () => [];
+    const nativeSerial = Object.preventExtensions(new LockedSerial());
+    Object.defineProperty(navigator, "serial", { configurable: false, value: nativeSerial });
+  }
   const window = {};
   const context = {
-    navigator, window, console, setTimeout, clearTimeout,
+    navigator, window, console: { ...console, info() {} }, setTimeout, clearTimeout,
     ReadableStream, WritableStream, EventTarget, Event, DOMException, Uint8Array, ArrayBuffer, DataView
   };
   vm.runInNewContext(driverSource, context, { filename: "ch340-webserial.js" });
@@ -45,6 +52,16 @@ test("CH340 divisor calculation covers UNO runtime and bootloader rates", () => 
   assert.equal(api.calculateDivisor(9600), 0xb202);
   assert.equal(api.calculateDivisor(57600), 0x9803);
   assert.equal(api.calculateDivisor(115200), 0xcc03);
+});
+
+test("locked Android navigator.serial falls back to CH340 method patching", async () => {
+  const { api, navigator, usb } = loadDriver({ lockedSerial: true });
+  usb.device = { vendorId: 0x1a86, productId: 0x7523 };
+  assert.equal(api.active, true);
+  assert.equal(api.mode, "patched");
+  const port = await navigator.serial.requestPort();
+  assert.equal(port.getInfo().usbVendorId, 0x1a86);
+  assert.equal(port.getInfo().usbProductId, 0x7523);
 });
 
 test("driver initializes CH340, discovers bulk endpoints, and pulses DTR/RTS", async () => {
@@ -99,7 +116,7 @@ test("driver initializes CH340, discovers bulk endpoints, and pulses DTR/RTS", a
 
 test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.ok(html.indexOf("ch340-webserial.js") < html.indexOf("arduino-web-uploader"));
-  assert.match(sw, /ch340-webserial\.js\?v=1\.0\.0/);
+  assert.match(sw, /ch340-webserial\.js\?v=1\.0\.1/);
   assert.match(app, /OneMakerCH340\?\.active/);
   assert.match(html, /UNO CH340\(1A86:7523\)/);
 });
