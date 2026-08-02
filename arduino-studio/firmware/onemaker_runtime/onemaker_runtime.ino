@@ -7,8 +7,8 @@
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.2
-static const char *RUNTIME_VERSION = "1.1.2";
+// OneMaker Arduino UNO/Nano Runtime 1.1.3
+static const char *RUNTIME_VERSION = "1.1.3";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -47,7 +47,9 @@ enum StatementOpcode : uint8_t {
   OP_JUMP = 23,
   OP_JUMP_IF_FALSE = 24,
   OP_REPEAT_START = 25,
-  OP_REPEAT_END = 26
+  OP_REPEAT_END = 26,
+  OP_BT_SEND_RAW = 27,
+  OP_BT_SET_NAME = 28
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -76,7 +78,8 @@ enum ExpressionOpcode : uint8_t {
   EX_AND = 40,
   EX_OR = 41,
   EX_NOT = 42,
-  EX_CONCAT = 43
+  EX_CONCAT = 43,
+  EX_BT_ITEM = 44
 };
 
 struct VmValue {
@@ -352,6 +355,20 @@ String readBluetoothText() {
   return value;
 }
 
+void setBluetoothName(const String &name, uint8_t mode) {
+  if (!bluetooth || !name.length()) return;
+  bluetooth->listen();
+  if (mode == 1) {
+    bluetooth->print(F("AT+NAME="));
+    bluetooth->print(name);
+    bluetooth->print(F("\r\n"));
+  } else {
+    bluetooth->print(F("AT+NAME"));
+    bluetooth->print(name);
+  }
+  delay(1000);
+}
+
 VmValue evaluateStoredExpression(uint16_t &address) {
   uint8_t expressionLength = programByte(address++);
   uint16_t expressionEnd = address + expressionLength;
@@ -380,8 +397,8 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin));
     } else if (opcode == EX_BUTTON) {
       uint8_t pin = programByte(address++);
-      pinMode(pin, INPUT_PULLUP);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin) == LOW ? 1 : 0);
+      pinMode(pin, INPUT);
+      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin) == HIGH ? 1 : 0);
     } else if (opcode == EX_ULTRASONIC) {
       uint8_t trig = programByte(address++);
       uint8_t echo = programByte(address++);
@@ -427,6 +444,14 @@ VmValue evaluateStoredExpression(uint16_t &address) {
         case EX_AND: result = numberValue(valueBoolean(left) && valueBoolean(right)); break;
         case EX_OR: result = numberValue(valueBoolean(left) || valueBoolean(right)); break;
         case EX_CONCAT: result = textValue(valueText(left) + valueText(right)); break;
+        case EX_BT_ITEM: {
+          int count = constrain((int)a, 1, 64);
+          int index = constrain((int)b, 1, count);
+          String value = readBluetoothText();
+          value = value.substring(0, min(count, (int)value.length()));
+          result = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
+          break;
+        }
         default: break;
       }
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = result;
@@ -599,6 +624,16 @@ void executeStoredProgramStep() {
     } else {
       evaluateStoredExpression(vmProgramCounter);
     }
+  } else if (opcode == OP_BT_SEND_RAW) {
+    if (bluetooth) {
+      bluetooth->listen();
+      bluetooth->print(valueText(evaluateStoredExpression(vmProgramCounter)));
+    } else {
+      evaluateStoredExpression(vmProgramCounter);
+    }
+  } else if (opcode == OP_BT_SET_NAME) {
+    uint8_t mode = programByte(vmProgramCounter++);
+    setBluetoothName(valueText(evaluateStoredExpression(vmProgramCounter)), mode);
   } else if (opcode == OP_SERIAL_PRINT) {
     Serial.print(F("LOG,"));
     Serial.println(valueText(evaluateStoredExpression(vmProgramCounter)));
@@ -704,8 +739,8 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
     sendNumber(id, analogRead(A0 + constrain(tokenInt(args[0]), 0, 5)));
   } else if (!strcmp(operation, "BUTTON") && count >= 1) {
     uint8_t pin = tokenInt(args[0]);
-    pinMode(pin, INPUT_PULLUP);
-    sendNumber(id, digitalRead(pin) == LOW ? 1 : 0);
+    pinMode(pin, INPUT);
+    sendNumber(id, digitalRead(pin) == HIGH ? 1 : 0);
   } else if (!strcmp(operation, "SONAR") && count >= 2) {
     sendNumber(id, readUltrasonic(tokenInt(args[0]), tokenInt(args[1])));
   } else if (!strcmp(operation, "DUST") && count >= 2) {
@@ -794,6 +829,11 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "BTSEND") && count >= 1 && bluetooth) {
     bluetooth->listen();
     bluetooth->println(decodeHex(args[0]));
+  } else if (!strcmp(operation, "BTRAW") && count >= 1 && bluetooth) {
+    bluetooth->listen();
+    bluetooth->print(decodeHex(args[0]));
+  } else if (!strcmp(operation, "BTNAME") && count >= 2) {
+    setBluetoothName(decodeHex(args[1]), constrain(tokenInt(args[0]), 0, 1));
   } else if (!strcmp(operation, "PRINT") && count >= 1) {
     Serial.print(F("LOG,"));
     Serial.println(decodeHex(args[0]));
