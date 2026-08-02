@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.1";
+  const RUNTIME_VERSION = "1.1.2";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -319,7 +319,7 @@
     },
     {
       type: "mp3_begin",
-      message0: "DFPlayer 시작 RX %1 TX %2 볼륨 %3",
+      message0: "DFPlayer 시작 모듈 TX → RX %1 모듈 RX ← TX %2 볼륨 %3",
       args0: [
         { type: "field_dropdown", name: "RX", options: digitalOptions },
         { type: "field_dropdown", name: "TX", options: digitalOptions },
@@ -328,7 +328,8 @@
       previousStatement: null,
       nextStatement: null,
       inputsInline: true,
-      colour: 330
+      colour: 330,
+      tooltip: "DFPlayer TX를 선택한 Arduino RX 핀에, DFPlayer RX를 선택한 Arduino TX 핀에 연결합니다."
     },
     {
       type: "mp3_play",
@@ -491,7 +492,7 @@
         { kind: "block", type: "neo_clear" }
       ] },
       { kind: "category", name: "MP3", colour: "330", contents: [
-        { kind: "block", type: "mp3_begin", inputs: { VOLUME: numberShadow(20) } },
+        { kind: "block", type: "mp3_begin", fields: { RX: "10", TX: "11" }, inputs: { VOLUME: numberShadow(20) } },
         { kind: "block", type: "mp3_play", inputs: { TRACK: numberShadow(1) } },
         { kind: "block", type: "mp3_volume", inputs: { VOLUME: numberShadow(20) } },
         { kind: "block", type: "mp3_stop" }
@@ -552,12 +553,14 @@
   function populateSelects() {
     const digitalHtml = digitalOptions.map(([label, value]) => `<option value="${value}">${label}</option>`).join("");
     const analogHtml = analogOptions.map(([label, value]) => `<option value="${value}">${label}</option>`).join("");
-    ["testPin", "testDigitalPin", "motorPin1", "motorPin2"].forEach(id => { $(`#${id}`).innerHTML = digitalHtml; });
+    ["testPin", "testDigitalPin", "motorPin1", "motorPin2", "mp3RxPin", "mp3TxPin"].forEach(id => { $(`#${id}`).innerHTML = digitalHtml; });
     $("#testAnalogPin").innerHTML = analogHtml;
     $("#testPin").value = "13";
     $("#testDigitalPin").value = "2";
     $("#motorPin1").value = "5";
     $("#motorPin2").value = "6";
+    $("#mp3RxPin").value = "10";
+    $("#mp3TxPin").value = "11";
   }
 
   function bindEvents() {
@@ -601,6 +604,8 @@
     $("#readAnalogBtn").addEventListener("click", async () => showTestResult(await requestValue("AR", $("#testAnalogPin").value)));
     $("#motorRunBtn").addEventListener("click", () => sendAction("MOTOR", $("#motorPin1").value, $("#motorPin2").value, clamp($("#motorSpeed").value, -255, 255)));
     $("#motorStopBtn").addEventListener("click", () => sendAction("MOTOR", $("#motorPin1").value, $("#motorPin2").value, 0));
+    $("#mp3PlayBtn").addEventListener("click", testMp3Playback);
+    $("#mp3StopBtn").addEventListener("click", () => sendAction("MP3STOP"));
     window.addEventListener("beforeunload", () => {
       runCancelled = true;
       if (serialReader) serialReader.cancel().catch(() => {});
@@ -953,6 +958,9 @@
       case "neo_clear":
         writer.u8(VM.NEO_CLEAR); return;
       case "mp3_begin":
+        if (block.getFieldValue("RX") === block.getFieldValue("TX")) {
+          throw new Error("DFPlayer RX와 TX는 서로 다른 핀을 선택하세요.");
+        }
         writer.u8(VM.MP3_BEGIN); pin("RX"); pin("TX"); expression("VOLUME"); return;
       case "mp3_play":
         writer.u8(VM.MP3_PLAY); expression("TRACK"); return;
@@ -1278,6 +1286,27 @@
     }
   }
 
+  async function testMp3Playback() {
+    const rx = $("#mp3RxPin").value;
+    const tx = $("#mp3TxPin").value;
+    if (rx === tx) return toast("MP3 RX와 TX는 서로 다른 핀을 선택하세요.");
+    try {
+      await ensureRuntime();
+      if (runtimeVersion !== RUNTIME_VERSION) {
+        throw new Error(`MP3 안정화가 포함된 런타임 ${RUNTIME_VERSION}을 먼저 설치하세요.`);
+      }
+      const ready = waitForSerialLine(line => line === "MP3_READY", 6500);
+      await sendLine(["C", "MP3BEGIN", rx, tx, clamp($("#mp3Volume").value, 0, 30)].join(","));
+      await ready;
+      await sendAction("MP3PLAY", clamp($("#mp3Track").value, 1, 2999));
+      $("#mp3TestResult").textContent = "재생 명령을 보냈습니다. 소리가 없으면 배선·5V 전원·microSD·파일을 확인하세요.";
+      toast("DFPlayer 초기화 후 재생 명령을 보냈습니다.");
+    } catch (error) {
+      $("#mp3TestResult").textContent = error.message;
+      toast(error.message);
+    }
+  }
+
   async function requestValue(operation, ...args) {
     await ensureRuntime();
     const id = String(requestSequence++);
@@ -1524,8 +1553,15 @@
       case "neo_clear":
         return sendAction("NEOCLEAR");
       case "mp3_begin":
-        await sendAction("MP3BEGIN", block.getFieldValue("RX"), block.getFieldValue("TX"));
-        return sendAction("MP3VOL", clamp(await evaluate(inputBlock(block, "VOLUME"), functionDepth), 0, 30));
+        if (block.getFieldValue("RX") === block.getFieldValue("TX")) {
+          throw new Error("DFPlayer RX와 TX는 서로 다른 핀을 선택하세요.");
+        }
+        return sendAction(
+          "MP3BEGIN",
+          block.getFieldValue("RX"),
+          block.getFieldValue("TX"),
+          clamp(await evaluate(inputBlock(block, "VOLUME"), functionDepth), 0, 30)
+        );
       case "mp3_play":
         return sendAction("MP3PLAY", clamp(await evaluate(inputBlock(block, "TRACK"), functionDepth), 1, 2999));
       case "mp3_volume":
@@ -1869,7 +1905,7 @@
           + line("pixels.show();");
       case "neo_clear": return line("pixels.clear();") + line("pixels.show();");
       case "mp3_begin":
-        return line("mp3Serial.begin(9600);")
+        return line("initializeMp3();")
           + line(`sendMp3Command(0x06, constrain(${cppInput(block, "VOLUME")}, 0, 30));`);
       case "mp3_play": return line(`sendMp3Command(0x03, ${cppInput(block, "TRACK")});`);
       case "mp3_volume": return line(`sendMp3Command(0x06, constrain(${cppInput(block, "VOLUME")}, 0, 30));`);
@@ -1930,8 +1966,8 @@
       },
       mp3: {
         enabled: [...types].some(type => type.startsWith("mp3_")),
-        rx: Number(mp3Block?.getFieldValue("RX") || 8),
-        tx: Number(mp3Block?.getFieldValue("TX") || 9)
+        rx: Number(mp3Block?.getFieldValue("RX") || 10),
+        tx: Number(mp3Block?.getFieldValue("TX") || 11)
       }
     };
   }
@@ -2021,6 +2057,16 @@ void sendMp3Command(uint8_t command, uint16_t parameter) {
   mp3Serial.listen();
   mp3Serial.write(packet, sizeof(packet));
   delay(120);
+}
+
+void initializeMp3() {
+  mp3Serial.begin(9600);
+  mp3Serial.listen();
+  delay(100);
+  sendMp3Command(0x0C, 0);  // DFPlayer reset
+  delay(2200);              // Wait for the microSD card to become ready
+  sendMp3Command(0x09, 2);  // Select TF/microSD card
+  delay(300);
 }`);
 
     const customFunctions = [];

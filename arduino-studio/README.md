@@ -31,6 +31,15 @@ Arduino UNO R3와 ATmega328P Nano를 위한 수업용 Blockly 웹앱입니다.
 - Bluetooth와 DFPlayer를 동시에 사용할 때는 서로 다른 RX/TX 핀을 사용
 - Servo 라이브러리는 Timer1을 사용하므로 D9·D10 PWM과 동시에 사용할 때 주의
 
+## DFPlayer Mini MP3
+
+- 기본 핀은 Arduino RX D10, Arduino TX D11입니다.
+- DFPlayer TX → Arduino D10(RX), DFPlayer RX ← Arduino D11(TX), VCC → 5V, GND → GND로 연결합니다.
+- Arduino TX(D11)와 DFPlayer RX 사이에는 1kΩ 직렬 저항을 권장합니다.
+- microSD는 32GB 이하 FAT16/FAT32로 포맷하고, 먼저 시험할 파일을 `0001.mp3`로 저장합니다.
+- 런타임 1.1.2부터 시작 블록이 DFPlayer를 리셋하고 약 2.2초 동안 microSD 인식을 기다린 뒤 재생합니다.
+- 빠른 테스트 탭의 `초기화 후 재생`으로 배선과 파일을 먼저 확인할 수 있습니다.
+
 ## 펌웨어 빌드
 
 `arduino-studio/firmware/onemaker_runtime/onemaker_runtime.ino`를 GitHub Actions에서 UNO용으로 컴파일하여 `arduino-studio/firmware/onemaker_runtime.hex`를 생성합니다. UNO, Nano, Nano 구형 부트로더는 같은 ATmega328P 애플리케이션 HEX를 사용하며 업로더의 통신 속도만 다릅니다.

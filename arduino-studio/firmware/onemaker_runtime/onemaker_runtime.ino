@@ -7,8 +7,8 @@
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.1
-static const char *RUNTIME_VERSION = "1.1.1";
+// OneMaker Arduino UNO/Nano Runtime 1.1.2
+static const char *RUNTIME_VERSION = "1.1.2";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -240,6 +240,21 @@ void sendMp3Command(uint8_t command, uint16_t parameter) {
   mp3Serial->listen();
   mp3Serial->write(packet, sizeof(packet));
   delay(120);
+}
+
+bool initializeMp3(uint8_t rx, uint8_t tx) {
+  if (rx == tx) return false;
+  if (mp3Serial) delete mp3Serial;
+  mp3Serial = new SoftwareSerial(rx, tx);
+  if (!mp3Serial) return false;
+  mp3Serial->begin(9600);
+  mp3Serial->listen();
+  delay(100);
+  sendMp3Command(0x0C, 0);  // Reset, matching DFRobotDFPlayerMini begin().
+  delay(2200);              // DFPlayer and microSD cold-start time.
+  sendMp3Command(0x09, 2);  // Select TF/microSD card as the playback source.
+  delay(300);
+  return true;
 }
 
 uint8_t programByte(uint16_t address) {
@@ -560,11 +575,8 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_MP3_BEGIN) {
     uint8_t rx = programByte(vmProgramCounter++);
     uint8_t tx = programByte(vmProgramCounter++);
-    if (mp3Serial) delete mp3Serial;
-    mp3Serial = new SoftwareSerial(rx, tx);
-    mp3Serial->begin(9600);
     long volume = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
-    sendMp3Command(0x06, clampLong(volume, 0, 30));
+    if (initializeMp3(rx, tx)) sendMp3Command(0x06, clampLong(volume, 0, 30));
   } else if (opcode == OP_MP3_PLAY) {
     long track = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     sendMp3Command(0x03, track < 1 ? 1 : track);
@@ -762,9 +774,13 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     pixels->clear();
     pixels->show();
   } else if (!strcmp(operation, "MP3BEGIN") && count >= 2) {
-    if (mp3Serial) delete mp3Serial;
-    mp3Serial = new SoftwareSerial(tokenInt(args[0]), tokenInt(args[1]));
-    mp3Serial->begin(9600);
+    int volume = count >= 3 ? constrain(tokenInt(args[2]), 0, 30) : 20;
+    if (initializeMp3(tokenInt(args[0]), tokenInt(args[1]))) {
+      sendMp3Command(0x06, volume);
+      Serial.println(F("MP3_READY"));
+    } else {
+      Serial.println(F("ERROR,mp3-pins"));
+    }
   } else if (!strcmp(operation, "MP3PLAY") && count >= 1) {
     sendMp3Command(0x03, max(1, tokenInt(args[0])));
   } else if (!strcmp(operation, "MP3VOL") && count >= 1) {

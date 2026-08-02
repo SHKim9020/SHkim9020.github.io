@@ -144,6 +144,18 @@
           </div>
           <div class="button-row"><button id="motorRunBtn" class="primary">회전</button><button id="motorStopBtn" class="danger-soft">정지</button></div>
         </div>
+        <div class="test-card">
+          <h3>DFPlayer Mini MP3 테스트</h3>
+          <div class="form-grid">
+            <label>Arduino RX <select id="mp3RxPin"></select></label>
+            <label>Arduino TX <select id="mp3TxPin"></select></label>
+            <label>음악 번호 <input id="mp3Track" type="number" min="1" max="2999" value="1"></label>
+            <label>볼륨 <input id="mp3Volume" type="number" min="0" max="30" value="20"></label>
+          </div>
+          <div class="button-row"><button id="mp3PlayBtn" class="primary">초기화 후 재생</button><button id="mp3StopBtn" class="danger-soft">정지</button></div>
+          <output id="mp3TestResult">DFPlayer TX→Arduino RX, DFPlayer RX←Arduino TX에 연결하세요.</output>
+          <p class="mode-limit">VCC는 5V, GND는 공통으로 연결하고 Arduino TX와 DFPlayer RX 사이에는 1kΩ 직렬 저항을 권장합니다. microSD는 FAT16/32로 포맷하고 0001.mp3 파일을 넣으세요.</p>
+        </div>
       </section>
 
       <section class="tab-panel code-panel" data-panel="code">
@@ -169,17 +181,17 @@
     <form method="dialog" class="dialog-card firmware-card">
       <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
       <span class="step-chip">보드당 처음 1번</span>
-      <h2>OneMaker Arduino 런타임 1.1.1 설치</h2>
-      <p>기존 1.1.0이 설치된 보드도 LCD·PWM·모터 실행 수정이 포함된 1.1.1을 다시 설치해야 합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
+      <h2>OneMaker Arduino 런타임 1.1.2 설치</h2>
+      <p>DFPlayer 초기화·microSD 인식 안정화가 포함된 1.1.2를 다시 설치해야 합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
       <div class="firmware-options">
-        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.1.hex" board="uno" verify>
-          Arduino UNO에 1.1.1 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.2.hex" board="uno" verify>
+          Arduino UNO에 1.1.2 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.1.hex" board="nano" verify>
-          Nano에 1.1.1 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.2.hex" board="nano" verify>
+          Nano에 1.1.2 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.1.hex" board="nanoOldBootloader" verify>
-          Nano 구형 부트로더에 1.1.1 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="./firmware/onemaker_runtime-1.1.2.hex" board="nanoOldBootloader" verify>
+          Nano 구형 부트로더에 1.1.2 설치 <span class="upload-progress"></span>
         </button>
       </div>
       <ol class="mini-steps">
@@ -208,6 +220,6 @@
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
-  <script src="app.js?v=1.2.4"></script>
+  <script src="app.js?v=1.2.5"></script>
 </body>
 </html>
