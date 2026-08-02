@@ -27,6 +27,7 @@
   let selectedBlockId = null;
   let copiedBlockState = null;
   let toastTimer;
+  let deferredInstallPrompt = null;
   let requestSequence = 1;
   let runCancelled = false;
   let running = false;
@@ -607,6 +608,7 @@
     if (!workspace.getAllBlocks(false).length) loadExample(false);
     refreshCode();
     updateBrowserSupport();
+    initPwaInstall();
   }
 
   function populateSelects() {
@@ -637,6 +639,9 @@
     $("#openBtn").addEventListener("click", () => $("#openFile").click());
     $("#openFile").addEventListener("change", openProject);
     $("#firmwareBtn").addEventListener("click", openFirmwareDialog);
+    $("#pwaInstallBtn").addEventListener("click", installPwa);
+    $("#closePwaInstallDialogBtn").addEventListener("click", () => $("#pwaInstallDialog").close());
+    $("#confirmPwaInstallDialogBtn").addEventListener("click", () => $("#pwaInstallDialog").close());
     $("#connectBtn").addEventListener("click", toggleSerialConnection);
     $("#saveBoardBtn").addEventListener("click", saveProgramToBoard);
     $("#closeSaveBoardDialogBtn").addEventListener("click", () => $("#saveBoardDialog").close());
@@ -672,6 +677,46 @@
     if ("serial" in navigator) {
       navigator.serial.addEventListener("disconnect", () => closeSerialState());
     }
+  }
+
+  function isStandaloneApp() {
+    return window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || window.navigator.standalone === true;
+  }
+
+  function initPwaInstall() {
+    const installButton = $("#pwaInstallBtn");
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (isAndroid && !isStandaloneApp()) installButton.hidden = false;
+
+    window.addEventListener("beforeinstallprompt", event => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      if (!isStandaloneApp()) installButton.hidden = false;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      installButton.hidden = true;
+      toast("OneMaker Arduino Studio가 홈 화면에 설치되었습니다.");
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(error => console.warn("PWA service worker:", error));
+      });
+    }
+  }
+
+  async function installPwa() {
+    if (isStandaloneApp()) return toast("이미 앱으로 실행 중입니다.");
+    if (!deferredInstallPrompt) {
+      $("#pwaInstallDialog").showModal();
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if (choice.outcome !== "accepted") $("#pwaInstallDialog").showModal();
   }
 
   function activateTab(name) {

@@ -4,8 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#152b43">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="application-name" content="OneMaker Arduino Studio">
   <title>OneMaker Arduino UNO·Nano Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.2.1">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css?v=1.2.2">
 </head>
 <body>
   <header class="topbar">
@@ -18,6 +25,7 @@
       <input id="projectName" value="나의 아두이노 프로젝트" maxlength="40">
     </label>
     <div class="top-actions">
+      <button id="pwaInstallBtn" class="install-app" type="button" hidden>⬇ 앱 설치</button>
       <button id="exampleBtn" class="ghost">예제</button>
       <button id="saveBtn" class="ghost">저장</button>
       <button id="openBtn" class="ghost">열기</button>
@@ -203,6 +211,22 @@
     </form>
   </dialog>
 
+  <dialog id="pwaInstallDialog">
+    <div class="dialog-card pwa-install-card">
+      <button id="closePwaInstallDialogBtn" class="dialog-close" type="button" aria-label="닫기">×</button>
+      <span class="step-chip install-chip">Android · Chrome</span>
+      <img src="icons/icon-192.png" width="88" height="88" alt="OneMaker Arduino Studio 앱 아이콘">
+      <h2>홈 화면에 앱 설치</h2>
+      <ol class="install-steps">
+        <li>Chrome 오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li>
+        <li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 선택합니다.</li>
+        <li>홈 화면의 OneMaker 아이콘으로 실행합니다.</li>
+      </ol>
+      <p class="android-limit"><b>참고:</b> 설치된 앱은 주소창 없이 전체화면으로 실행됩니다. Android에서는 블록 작성·저장·열기를 사용할 수 있으며, USB 런타임 설치와 보드 저장은 Web Serial을 지원하는 PC·크롬북 Chrome에서 진행하세요.</p>
+      <button id="confirmPwaInstallDialogBtn" class="primary wide" type="button">확인</button>
+    </div>
+  </dialog>
+
   <dialog id="saveBoardDialog">
     <div class="dialog-card save-board-card">
       <span class="step-chip upload-chip">USB 없이 단독 실행</span>
@@ -220,6 +244,6 @@
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
-  <script src="app.js?v=1.2.7"></script>
+  <script src="app.js?v=1.2.8"></script>
 </body>
 </html>
