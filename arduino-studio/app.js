@@ -759,13 +759,19 @@
 
   function updateBrowserSupport() {
     const supported = "serial" in navigator;
+    const androidCh340 = window.OneMakerCH340?.active;
     $("#connectBtn").disabled = !supported;
     $("#saveBoardBtn").disabled = !supported;
-    if (!supported) $("#connectionStatus").textContent = "Chrome·Edge 필요";
+    if (androidCh340) {
+      $("#connectBtn").lastChild.textContent = "② CH340 USB 연결";
+      $("#connectionStatus").textContent = "Android CH340 준비";
+    } else if (!supported) {
+      $("#connectionStatus").textContent = "Chrome·Edge 필요";
+    }
   }
 
   function openFirmwareDialog() {
-    if (!("serial" in navigator)) return toast("PC·크롬북의 Chrome 또는 Edge에서 설치할 수 있습니다.");
+    if (!("serial" in navigator)) return toast("Chrome에서 USB 기능을 사용할 수 없습니다.");
     if (serialConnected) return toast("먼저 USB 연결을 끊은 뒤 런타임을 설치하세요.");
     $("#firmwareDialog").showModal();
   }
@@ -1249,7 +1255,7 @@
       await disconnectSerial();
       return;
     }
-    if (!("serial" in navigator)) return toast("Chrome 또는 Edge의 Web Serial 환경이 필요합니다.");
+    if (!("serial" in navigator)) return toast("Chrome의 Web Serial 또는 CH340 WebUSB 환경이 필요합니다.");
     try {
       serialPort = await navigator.serial.requestPort();
       await serialPort.open({ baudRate: 115200, bufferSize: 1024 });
@@ -1274,9 +1280,18 @@
       }
     } catch (error) {
       console.error(error);
-      if (error.name !== "NotFoundError") toast(`USB 연결 실패: ${error.message}`);
+      if (error.name !== "NotFoundError") toast(formatUsbError(error));
       await disconnectSerial().catch(() => {});
     }
+  }
+
+  function formatUsbError(error) {
+    const androidCh340 = window.OneMakerCH340?.active;
+    if (!androidCh340) return `USB 연결 실패: ${error.message}`;
+    if (error.name === "SecurityError") return "CH340 USB 권한이 거부되었습니다. Android USB 창을 닫고 앱에서 다시 연결하세요.";
+    if (error.name === "NetworkError") return "CH340를 열지 못했습니다. 다른 USB 앱을 완전히 종료하고 케이블을 다시 연결하세요.";
+    if (error.name === "NotSupportedError") return `지원하지 않는 CH340 구성입니다: ${error.message}`;
+    return `CH340 USB 연결 실패: ${error.message}`;
   }
 
   async function disconnectSerial() {
@@ -1319,7 +1334,9 @@
     $("#connectionStatus").className = `status ${connected ? "connected" : "disconnected"}`;
     $("#connectBtn").classList.toggle("primary", connected);
     $("#connectBtn .dot").classList.toggle("on", connected);
-    $("#connectBtn").lastChild.textContent = connected ? " 연결 끊기" : "② USB 연결";
+    $("#connectBtn").lastChild.textContent = connected
+      ? " 연결 끊기"
+      : (window.OneMakerCH340?.active ? "② CH340 USB 연결" : "② USB 연결");
   }
 
   async function readSerialLoop() {
