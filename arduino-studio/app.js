@@ -764,7 +764,10 @@
     $("#saveBoardBtn").disabled = !supported;
     if (androidCh340) {
       $("#connectBtn").lastChild.textContent = "② CH340 USB 연결";
-      $("#connectionStatus").textContent = "Android CH340 준비";
+      $("#connectionStatus").textContent = `Android CH340 준비${window.OneMakerCH340.mode === "patched" ? " · 호환 모드" : ""}`;
+    } else if (window.OneMakerCH340?.isAndroid && window.OneMakerCH340?.supported) {
+      $("#connectBtn").lastChild.textContent = "② CH340 USB 점검";
+      $("#connectionStatus").textContent = "CH340 활성화 실패";
     } else if (!supported) {
       $("#connectionStatus").textContent = "Chrome·Edge 필요";
     }
