@@ -1,6 +1,6 @@
 {
   "name": "OneMaker ESP32-C3 Boat Runtime",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "home_assistant_domain": "onemaker_boat",
   "new_install_prompt_erase": true,
   "builds": [
@@ -8,7 +8,7 @@
       "chipFamily": "ESP32-C3",
       "parts": [
         {
-          "path": "https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/esp32-c3-boat/firmware/boat_runtime-1.4.6.merged.bin",
+          "path": "https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/esp32-c3-boat/firmware/boat_runtime-1.4.7.merged.bin",
           "offset": 0
         }
       ]
