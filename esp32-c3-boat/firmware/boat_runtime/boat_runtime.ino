@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.6: independent left/right remote motor trim.
+// OneMaker Boat Runtime 1.4.7: reliable HuskyLens face-ID polling and automatic sensor activation.
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -70,6 +70,7 @@ bool webRoutesRegistered = false;
 bool wifiRestorePending = false;
 unsigned long wifiRestoreStartedAt = 0;
 bool huskyReady = false;
+String activeHuskyAlgorithm = "";
 bool stopRequested = false;
 double remoteSpeed = 0;
 int remoteLeftSpeed = 0;
@@ -376,10 +377,14 @@ void applyConfig(JsonVariantConst value) {
   config.invertLeft = value["invertLeft"] | false;
   config.invertRight = value["invertRight"] | true;
   config.ledActiveLow = value["ledActiveLow"] | true;
-  config.huskyEnabled = value["husky"]["enabled"] | false;
+  bool newHuskyEnabled = value["husky"]["enabled"] | false;
   int newSda = value["husky"]["sda"] | DEFAULT_HUSKY_SDA;
   int newScl = value["husky"]["scl"] | DEFAULT_HUSKY_SCL;
-  if (newSda != config.huskySda || newScl != config.huskyScl) huskyReady = false;
+  if (newHuskyEnabled != config.huskyEnabled || newSda != config.huskySda || newScl != config.huskyScl) {
+    huskyReady = false;
+    activeHuskyAlgorithm = "";
+  }
+  config.huskyEnabled = newHuskyEnabled;
   config.huskySda = newSda;
   config.huskyScl = newScl;
 
@@ -440,26 +445,50 @@ bool ensureHusky() {
   if (!config.huskyEnabled) return false;
   if (huskyReady) return true;
   Wire.begin(config.huskySda, config.huskyScl);
+  Wire.setClock(100000);
+  delay(100);
   huskyReady = huskylens.begin(Wire);
   if (!huskyReady) emit("husky", "HuskyLens 연결을 확인하세요.");
   return huskyReady;
 }
 
 bool fetchHuskyResult(int id, HUSKYLENSResult &result) {
-  if (!ensureHusky() || !huskylens.requestBlocks(id) || !huskylens.available()) return false;
-  result = huskylens.read();
-  return true;
+  if (!ensureHusky()) {
+    delay(100);
+    return false;
+  }
+  if (!huskylens.request()) {
+    huskyReady = false;
+    activeHuskyAlgorithm = "";
+    delay(100);
+    return false;
+  }
+  while (huskylens.available()) {
+    HUSKYLENSResult candidate = huskylens.read();
+    if (candidate.command == COMMAND_RETURN_BLOCK && candidate.ID == id) {
+      result = candidate;
+      return true;
+    }
+  }
+  delay(50);
+  return false;
 }
 
 void setHuskyAlgorithm(const String &algorithm) {
   if (!ensureHusky()) return;
-  if (algorithm == "object_tracking") huskylens.writeAlgorithm(ALGORITHM_OBJECT_TRACKING);
-  else if (algorithm == "object_recognition") huskylens.writeAlgorithm(ALGORITHM_OBJECT_RECOGNITION);
-  else if (algorithm == "color_recognition") huskylens.writeAlgorithm(ALGORITHM_COLOR_RECOGNITION);
-  else if (algorithm == "line_tracking") huskylens.writeAlgorithm(ALGORITHM_LINE_TRACKING);
-  else if (algorithm == "face_recognition") huskylens.writeAlgorithm(ALGORITHM_FACE_RECOGNITION);
-  else if (algorithm == "tag_recognition") huskylens.writeAlgorithm(ALGORITHM_TAG_RECOGNITION);
-  else if (algorithm == "object_classification") huskylens.writeAlgorithm(ALGORITHM_OBJECT_CLASSIFICATION);
+  if (activeHuskyAlgorithm == algorithm) return;
+  bool changed = false;
+  if (algorithm == "object_tracking") changed = huskylens.writeAlgorithm(ALGORITHM_OBJECT_TRACKING);
+  else if (algorithm == "object_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_OBJECT_RECOGNITION);
+  else if (algorithm == "color_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_COLOR_RECOGNITION);
+  else if (algorithm == "line_tracking") changed = huskylens.writeAlgorithm(ALGORITHM_LINE_TRACKING);
+  else if (algorithm == "face_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_FACE_RECOGNITION);
+  else if (algorithm == "tag_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_TAG_RECOGNITION);
+  else if (algorithm == "object_classification") changed = huskylens.writeAlgorithm(ALGORITHM_OBJECT_CLASSIFICATION);
+  if (changed) {
+    activeHuskyAlgorithm = algorithm;
+    delay(300);
+  }
 }
 
 double evaluateNumber(JsonVariantConst expression);
@@ -818,7 +847,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.6";
+    response["runtime"] = "OneMaker Boat 1.4.7";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -959,7 +988,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.6";
+    status["runtime"] = "1.4.7";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -1004,7 +1033,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.6 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.7 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH) && loadActiveProgram()) {
     bool waitForBluetoothStart = activeProgram["config"]["waitForBluetoothStart"] | false;
