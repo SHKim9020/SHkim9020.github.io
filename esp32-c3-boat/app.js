@@ -14,6 +14,7 @@
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
   const STABLE_BLE_FIRMWARE_MIN = [1, 4, 6];
   const BLUETOOTH_START_FIRMWARE_MIN = [1, 4, 5];
+  const HUSKYLENS_FIRMWARE_MIN = [1, 4, 7];
 
   let workspace;
   let serialPort;
@@ -405,6 +406,7 @@
     workspace.addChangeListener(event => {
       if (event.type === Blockly.Events.SELECTED) selectedBlockId = event.newElementId || null;
       if (event.isUiEvent) return;
+      if (workspaceUsesHusky()) $("#huskyEnabled").checked = true;
       codeManuallyEdited = false;
       refreshGeneratedCode();
       scheduleAutosave();
@@ -507,6 +509,7 @@
   }
 
   function config() {
+    const usesHusky = workspaceUsesHusky();
     return {
       boatNumber: Number($("#boatNumber").value),
       pins: {
@@ -521,11 +524,15 @@
       ledActiveLow: true,
       waitForBluetoothStart: $("#waitForBluetoothStart").checked,
       husky: {
-        enabled: $("#huskyEnabled").checked,
+        enabled: $("#huskyEnabled").checked || usesHusky,
         sda: Number($("#huskySda").value),
         scl: Number($("#huskyScl").value)
       }
     };
+  }
+
+  function workspaceUsesHusky() {
+    return Boolean(workspace) && workspace.getAllBlocks(false).some(block => block.type.startsWith("husky_"));
   }
 
   function runtimeVersion(runtime = boardRuntime) {
@@ -970,22 +977,48 @@ const int HUSKY_SDA = ${cfg.husky.sda};
 const int HUSKY_SCL = ${cfg.husky.scl};
 HUSKYLENS huskylens;
 bool huskyReady = false;
+String activeHuskyAlgorithm = "";
 double remoteSpeed = 0;
 
 bool ensureHusky() {
   if (huskyReady) return true;
   Wire.begin(HUSKY_SDA, HUSKY_SCL);
+  Wire.setClock(100000);
+  delay(100);
   huskyReady = huskylens.begin(Wire);
   return huskyReady;
 }
 
+bool fetchHuskyResult(int id, HUSKYLENSResult &result) {
+  if (!ensureHusky()) {
+    delay(100);
+    return false;
+  }
+  if (!huskylens.request()) {
+    huskyReady = false;
+    activeHuskyAlgorithm = "";
+    delay(100);
+    return false;
+  }
+  while (huskylens.available()) {
+    HUSKYLENSResult candidate = huskylens.read();
+    if (candidate.command == COMMAND_RETURN_BLOCK && candidate.ID == id) {
+      result = candidate;
+      return true;
+    }
+  }
+  delay(50);
+  return false;
+}
+
 bool huskySeen(int id) {
-  return ensureHusky() && huskylens.requestBlocks(id) && huskylens.available();
+  HUSKYLENSResult result;
+  return fetchHuskyResult(id, result);
 }
 
 int huskyValue(int id, const String &field) {
-  if (!ensureHusky() || !huskylens.requestBlocks(id) || !huskylens.available()) return 0;
-  HUSKYLENSResult result = huskylens.read();
+  HUSKYLENSResult result;
+  if (!fetchHuskyResult(id, result)) return 0;
   if (field == "x") return result.xCenter;
   if (field == "y") return result.yCenter;
   if (field == "width") return result.width;
@@ -994,13 +1027,19 @@ int huskyValue(int id, const String &field) {
 
 void setHuskyAlgorithm(const String &algorithm) {
   if (!ensureHusky()) return;
-  if (algorithm == "object_tracking") huskylens.writeAlgorithm(ALGORITHM_OBJECT_TRACKING);
-  else if (algorithm == "object_recognition") huskylens.writeAlgorithm(ALGORITHM_OBJECT_RECOGNITION);
-  else if (algorithm == "color_recognition") huskylens.writeAlgorithm(ALGORITHM_COLOR_RECOGNITION);
-  else if (algorithm == "line_tracking") huskylens.writeAlgorithm(ALGORITHM_LINE_TRACKING);
-  else if (algorithm == "face_recognition") huskylens.writeAlgorithm(ALGORITHM_FACE_RECOGNITION);
-  else if (algorithm == "tag_recognition") huskylens.writeAlgorithm(ALGORITHM_TAG_RECOGNITION);
-  else if (algorithm == "object_classification") huskylens.writeAlgorithm(ALGORITHM_OBJECT_CLASSIFICATION);
+  if (activeHuskyAlgorithm == algorithm) return;
+  bool changed = false;
+  if (algorithm == "object_tracking") changed = huskylens.writeAlgorithm(ALGORITHM_OBJECT_TRACKING);
+  else if (algorithm == "object_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_OBJECT_RECOGNITION);
+  else if (algorithm == "color_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_COLOR_RECOGNITION);
+  else if (algorithm == "line_tracking") changed = huskylens.writeAlgorithm(ALGORITHM_LINE_TRACKING);
+  else if (algorithm == "face_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_FACE_RECOGNITION);
+  else if (algorithm == "tag_recognition") changed = huskylens.writeAlgorithm(ALGORITHM_TAG_RECOGNITION);
+  else if (algorithm == "object_classification") changed = huskylens.writeAlgorithm(ALGORITHM_OBJECT_CLASSIFICATION);
+  if (changed) {
+    activeHuskyAlgorithm = algorithm;
+    delay(300);
+  }
 }
 ` : "\ndouble remoteSpeed = 0;\n";
     return `// OneMaker ESP32-C3 Boat Studio
@@ -1398,6 +1437,10 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       if (settings.waitForBluetoothStart && !supportsFirmware(BLUETOOTH_START_FIRMWARE_MIN)) {
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
         throw new Error(`Bluetooth 시작 대기 기능은 펌웨어 1.4.5가 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
+      }
+      if (workspaceUsesHusky() && !supportsFirmware(HUSKYLENS_FIRMWARE_MIN)) {
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+        throw new Error(`HuskyLens 얼굴 인식 기능은 펌웨어 1.4.7이 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
       }
       const program = compileRuntimeProgram();
       const handlers = compileRuntimeHandlers();
