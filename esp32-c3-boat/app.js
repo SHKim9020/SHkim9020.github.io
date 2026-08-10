@@ -443,7 +443,11 @@
     $("#resetPinsBtn").addEventListener("click", resetPins);
     $("#copyCodeBtn").addEventListener("click", copyCode);
     $("#downloadInoBtn").addEventListener("click", downloadIno);
-    $("#codeView").addEventListener("input", () => { codeManuallyEdited = true; });
+    $("#codeView").addEventListener("input", () => {
+      codeManuallyEdited = true;
+      refreshCodeHighlight();
+    });
+    $("#codeView").addEventListener("scroll", syncCodeHighlightScroll);
     $("#clearSerialBtn").addEventListener("click", () => { $("#serialOutput").textContent = ""; });
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
@@ -502,11 +506,13 @@
         setConnected(false);
       });
     }
+    initSidePanelResize();
   }
 
   function activateTab(tabName) {
     $$(".side-tabs button").forEach(button => button.classList.toggle("active", button.dataset.tab === tabName));
     $$(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === tabName));
+    if (tabName === "code") refreshCodeHighlight();
   }
 
   function config() {
@@ -885,11 +891,11 @@
     }
   }
 
-  function cppStatements(firstBlock, depth = 1) {
+  function cppStatements(firstBlock, depth = 1, stopBlock = null) {
     let block = firstBlock;
     let code = "";
     const indent = "  ".repeat(depth);
-    while (block) {
+    while (block && block !== stopBlock) {
       switch (block.type) {
         case "boat_move":
           code += `${indent}driveBoat("${block.getFieldValue("DIRECTION")}", constrain(${cppExpression(block.getInputTargetBlock("SPEED"))}, 0, 255));\n`;
@@ -919,7 +925,7 @@
           code += `${indent}}\n`;
           break;
         case "control_forever":
-          code += `${indent}while (true) {\n${cppStatements(block.getInputTargetBlock("DO"), depth + 1)}${indent}}\n`;
+          code += cppStatements(block.getInputTargetBlock("DO"), depth);
           break;
         case "controls_if": {
           let index = 0;
@@ -953,10 +959,33 @@
     return code;
   }
 
+  function arduinoProgramSections() {
+    const first = firstStatementBlock();
+    let foreverBlock = null;
+    let cursor = first;
+    while (cursor) {
+      if (cursor.type === "control_forever") {
+        foreverBlock = cursor;
+        break;
+      }
+      cursor = cursor.getNextBlock();
+    }
+    if (!foreverBlock) {
+      return {
+        setup: cppStatements(first, 1),
+        loop: ""
+      };
+    }
+    return {
+      setup: cppStatements(first, 1, foreverBlock),
+      loop: cppStatements(foreverBlock.getInputTargetBlock("DO"), 1)
+    };
+  }
+
   function generateCpp() {
     const cfg = config();
     const variables = workspace.getVariableMap().getAllVariables().map(variable => `double ${cppVariable(variable.name)} = 0;`).join("\n");
-    const body = cppStatements(firstStatementBlock(), 1) || "  // 왼쪽에서 블록을 가져와 프로그램을 만드세요.\n";
+    const sections = arduinoProgramSections();
     const procedureBlocks = workspace.getTopBlocks(true)
       .filter(block => block.type === "my_function_def" || block.type === "my_function_def_value");
     const procedureDeclarations = procedureBlocks.map(block => {
@@ -1127,16 +1156,51 @@ void setup() {
   digitalWrite(LED_PIN, LED_OFF);
   stopBoat();
   delay(500);
+${sections.setup}
 }
 
 void loop() {
-${body}  while (true) delay(1000); // 한 번 실행 후 대기
+${sections.loop || "  delay(10);\n"}}
 }
 `;
   }
 
+  function generateVisibleCpp() {
+    const variables = workspace.getVariableMap().getAllVariables()
+      .map(variable => `double ${cppVariable(variable.name)} = 0;`)
+      .join("\n");
+    const sections = arduinoProgramSections();
+    const procedureBlocks = workspace.getTopBlocks(true)
+      .filter(block => block.type === "my_function_def" || block.type === "my_function_def_value");
+    const procedures = procedureBlocks.map(block => {
+      const returnType = block.type === "my_function_def_value" ? "double" : "void";
+      const statements = cppStatements(block.getInputTargetBlock("DO"), 1);
+      const returnLine = block.type === "my_function_def_value"
+        ? `  return ${cppExpression(block.getInputTargetBlock("RETURN"))};\n`
+        : "";
+      return `${returnType} ${cppFunction(functionName(block))}() {\n${statements}${returnLine}}\n`;
+    }).join("\n");
+    const remoteHandlers = workspace.getTopBlocks(true)
+      .filter(block => block.type === "remote_when")
+      .map(block => `void remote_${block.getFieldValue("BUTTON")}() {\n${cppStatements(block.getNextBlock(), 1)}}\n`)
+      .join("\n");
+    const setupCode = sections.setup || "  // 시작할 때 한 번 실행할 블록이 없습니다.\n";
+    const loopCode = sections.loop || "  // '계속 반복하기' 블록을 연결하세요.\n  delay(10);\n";
+
+    return `// 블록에서 생성된 Arduino C++ 코드
+// 보트 제어용 내부 함수는 화면에서 숨겨집니다.
+
+${variables ? `${variables}\n\n` : ""}${procedures ? `${procedures}\n` : ""}${remoteHandlers ? `${remoteHandlers}\n` : ""}void setup() {
+${setupCode}}
+
+void loop() {
+${loopCode}}
+`;
+  }
+
   function refreshGeneratedCode() {
-    if (!codeManuallyEdited) $("#codeView").value = generateCpp();
+    if (!codeManuallyEdited) $("#codeView").value = generateVisibleCpp();
+    refreshCodeHighlight();
   }
 
   async function prepareBoardHandshake(preferredTransport) {
@@ -1678,6 +1742,167 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     link.download = filename;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function escapeCodeHtml(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function highlightCpp(source) {
+    const keywords = new Set([
+      "if", "else", "for", "while", "do", "switch", "case", "break", "continue",
+      "return", "const", "static", "volatile", "class", "struct", "public", "private",
+      "true", "false", "nullptr", "new", "delete"
+    ]);
+    const types = new Set([
+      "void", "bool", "char", "byte", "short", "int", "long", "float", "double",
+      "unsigned", "signed", "String", "size_t", "uint8_t", "uint16_t", "uint32_t"
+    ]);
+    const builtins = new Set([
+      "pinMode", "digitalWrite", "digitalRead", "analogWrite", "analogRead", "delay",
+      "delayMicroseconds", "pulseIn", "constrain", "millis", "micros", "Serial",
+      "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP"
+    ]);
+    let output = "";
+    let index = 0;
+    let lineStart = true;
+    const span = (className, token) => `<span class="${className}">${escapeCodeHtml(token)}</span>`;
+
+    while (index < source.length) {
+      if (lineStart) {
+        let marker = index;
+        while (source[marker] === " " || source[marker] === "\t") marker++;
+        if (source[marker] === "#") {
+          output += escapeCodeHtml(source.slice(index, marker));
+          let end = source.indexOf("\n", marker);
+          if (end < 0) end = source.length;
+          output += span("cpp-preprocessor", source.slice(marker, end));
+          index = end;
+          lineStart = false;
+          continue;
+        }
+      }
+      if (source.startsWith("//", index)) {
+        let end = source.indexOf("\n", index);
+        if (end < 0) end = source.length;
+        output += span("cpp-comment", source.slice(index, end));
+        index = end;
+        lineStart = false;
+        continue;
+      }
+      if (source.startsWith("/*", index)) {
+        const close = source.indexOf("*/", index + 2);
+        const end = close < 0 ? source.length : close + 2;
+        const token = source.slice(index, end);
+        output += span("cpp-comment", token);
+        lineStart = token.endsWith("\n");
+        index = end;
+        continue;
+      }
+      const character = source[index];
+      if (character === '"' || character === "'") {
+        const quote = character;
+        let end = index + 1;
+        while (end < source.length) {
+          if (source[end] === "\\") end += 2;
+          else if (source[end++] === quote) break;
+        }
+        output += span("cpp-string", source.slice(index, end));
+        index = end;
+        lineStart = false;
+        continue;
+      }
+      const number = source.slice(index).match(/^(?:0x[\da-fA-F]+|\d+(?:\.\d+)?)/);
+      if (number) {
+        output += span("cpp-number", number[0]);
+        index += number[0].length;
+        lineStart = false;
+        continue;
+      }
+      const identifier = source.slice(index).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+      if (identifier) {
+        const token = identifier[0];
+        let className = "";
+        if (keywords.has(token)) className = "cpp-keyword";
+        else if (types.has(token)) className = "cpp-type";
+        else if (builtins.has(token)) className = "cpp-builtin";
+        else if (/^\s*\(/.test(source.slice(index + token.length))) className = "cpp-function";
+        output += className ? span(className, token) : escapeCodeHtml(token);
+        index += token.length;
+        lineStart = false;
+        continue;
+      }
+      output += escapeCodeHtml(character);
+      index++;
+      lineStart = character === "\n";
+    }
+    return output;
+  }
+
+  function refreshCodeHighlight() {
+    const editor = $("#codeView");
+    const highlight = $("#codeHighlight code");
+    if (!editor || !highlight) return;
+    highlight.innerHTML = `${highlightCpp(editor.value)}\n`;
+    syncCodeHighlightScroll();
+  }
+
+  function syncCodeHighlightScroll() {
+    const editor = $("#codeView");
+    const highlight = $("#codeHighlight");
+    if (!editor || !highlight) return;
+    highlight.scrollTop = editor.scrollTop;
+    highlight.scrollLeft = editor.scrollLeft;
+  }
+
+  function initSidePanelResize() {
+    const handle = $("#sideResizeHandle");
+    if (!handle) return;
+    const storageKey = "onemaker-boat-side-panel-width";
+    const clampWidth = value => {
+      const maximum = Math.min(900, window.innerWidth - 590);
+      return Math.max(340, Math.min(maximum, value));
+    };
+    const applyWidth = value => {
+      if (window.innerWidth <= 850) return;
+      const width = clampWidth(value);
+      document.documentElement.style.setProperty("--side-panel-width", `${width}px`);
+      handle.setAttribute("aria-valuenow", String(Math.round(width)));
+      Blockly.svgResize(workspace);
+    };
+    const savedWidth = Number(localStorage.getItem(storageKey));
+    if (Number.isFinite(savedWidth) && savedWidth > 0) applyWidth(savedWidth);
+
+    handle.addEventListener("pointerdown", event => {
+      if (window.innerWidth <= 850) return;
+      event.preventDefault();
+      handle.setPointerCapture?.(event.pointerId);
+      document.body.classList.add("resizing-side-panel");
+    });
+    handle.addEventListener("pointermove", event => {
+      if (!document.body.classList.contains("resizing-side-panel")) return;
+      const width = clampWidth(window.innerWidth - event.clientX - 10);
+      applyWidth(width);
+      localStorage.setItem(storageKey, String(Math.round(width)));
+    });
+    const finishResize = event => {
+      document.body.classList.remove("resizing-side-panel");
+      if (event?.pointerId !== undefined) handle.releasePointerCapture?.(event.pointerId);
+    };
+    handle.addEventListener("pointerup", finishResize);
+    handle.addEventListener("pointercancel", finishResize);
+    handle.addEventListener("dblclick", () => {
+      localStorage.removeItem(storageKey);
+      applyWidth(390);
+    });
+    handle.addEventListener("keydown", event => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--side-panel-width")) || 390;
+      const width = clampWidth(current + (event.key === "ArrowLeft" ? 30 : -30));
+      applyWidth(width);
+      localStorage.setItem(storageKey, String(Math.round(width)));
+    });
   }
 
   function safeName(value) {
