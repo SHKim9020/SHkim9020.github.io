@@ -24,6 +24,7 @@ test("text tab displays compact block code and hides boat runtime helpers", () =
   assert.match(visibleGenerator, /보트 제어용 내부 함수는 화면에서 숨겨집니다/);
   assert.doesNotMatch(visibleGenerator, /void setChannel|void setDrive|long readSonarCm/);
   assert.match(appSource, /#codeView"\)\.value = generateVisibleCpp\(\)/);
+  assert.match(appSource, /downloadBlob\(generateCpp\(\),/);
 });
 
 test("C++ editor has syntax highlighting and a draggable left resize handle", () => {
