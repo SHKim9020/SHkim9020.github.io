@@ -15,6 +15,7 @@
   const STABLE_BLE_FIRMWARE_MIN = [1, 4, 6];
   const BLUETOOTH_START_FIRMWARE_MIN = [1, 4, 5];
   const HUSKYLENS_FIRMWARE_MIN = [1, 4, 7];
+  const DEEP_PROGRAM_FIRMWARE_MIN = [1, 4, 8];
 
   let workspace;
   let serialPort;
@@ -1429,6 +1430,12 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
     }
   }
 
+  function jsonNestingDepth(value) {
+    if (value === null || typeof value !== "object") return 0;
+    const children = Array.isArray(value) ? value : Object.values(value);
+    return 1 + children.reduce((depth, child) => Math.max(depth, jsonNestingDepth(child)), 0);
+  }
+
   async function uploadAndRun() {
     try {
       if (!serialWriter && !bleRxCharacteristic) await connectSerial();
@@ -1446,12 +1453,16 @@ ${body}  while (true) delay(1000); // 한 번 실행 후 대기
       const handlers = compileRuntimeHandlers();
       const functions = compileRuntimeFunctions();
       if (!program.length && !Object.keys(handlers).length) throw new Error("실행할 시작 또는 리모컨 이벤트 블록이 없습니다.");
+      const payload = { config: settings, program, handlers, functions };
+      if (jsonNestingDepth(payload) > 10 && !supportsFirmware(DEEP_PROGRAM_FIRMWARE_MIN)) {
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+        throw new Error(`중첩된 조건·계산 블록은 펌웨어 1.4.8이 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
+      }
       showProgress("보드에 저장 중", "블록 프로그램을 ESP32-C3로 보내고 있습니다.", 25);
       const stopPromise = waitForMessage(message => message.type === "stopped", 2500).catch(() => null);
       await writeLine(JSON.stringify({ cmd: "stop" }));
       await stopPromise;
       await sleep(200);
-      const payload = { config: settings, program, handlers, functions };
       await sendProgram(payload);
       showProgress("실행 준비 완료", "프로그램을 시작합니다.", 80);
       await sendCommandAndWait({ cmd: "run" }, ["started"], 5000);
