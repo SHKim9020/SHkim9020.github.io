@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#12314a">
   <title>OneMaker ESP32-C3 Boat Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.4.15">
+  <link rel="stylesheet" href="style.css?v=1.4.16">
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </head>
 <body>
@@ -63,6 +63,7 @@
     </section>
 
     <aside class="side-pane">
+      <div id="sideResizeHandle" class="side-resize-handle" role="separator" aria-label="오른쪽 패널 너비 조절" aria-orientation="vertical" tabindex="0" title="좌우로 드래그해 패널 너비를 조절하세요"></div>
       <nav class="side-tabs" aria-label="오른쪽 패널">
         <button class="active" data-tab="board">보드</button>
         <button data-tab="remote">원격조종</button>
@@ -243,10 +244,13 @@
 
       <section class="tab-panel code-panel" data-panel="code">
         <div class="panel-head">
-          <div><h3>Arduino C++</h3><p>블록이 바뀌면 자동 생성됩니다. 직접 수정한 코드는 INO 다운로드에 반영됩니다.</p></div>
+          <div><h3>Arduino C++</h3><p>블록에 해당하는 변수·setup()·loop()·내 블록만 표시합니다.</p></div>
           <div><button id="copyCodeBtn">복사</button><button id="downloadInoBtn">INO 다운로드</button></div>
         </div>
-        <textarea id="codeView" spellcheck="false" aria-label="Arduino C++ 코드"></textarea>
+        <div class="code-editor">
+          <pre id="codeHighlight" aria-hidden="true"><code></code></pre>
+          <textarea id="codeView" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Arduino C++ 코드"></textarea>
+        </div>
       </section>
 
       <section class="tab-panel serial-panel" data-panel="serial">
@@ -275,7 +279,7 @@
       <h2>수업용 펌웨어 설치</h2>
       <p>ESP32-C3의 <b>BOOT</b> 버튼을 누른 채 <b>RESET</b>을 한 번 누르고, 아래 설치 버튼을 선택하세요.</p>
       <div class="install-box">
-          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.15">
+          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.16">
           <button slot="activate" class="primary install-activate">ESP32-C3 펌웨어 설치</button>
           <span slot="unsupported">이 기능은 PC·크롬북의 Chrome/Edge에서 사용할 수 있습니다.</span>
         </esp-web-install-button>
@@ -307,6 +311,6 @@
   <script src="ble-transport.js?v=1.4.6"></script>
   <script src="remote-safety.js?v=1.4.13"></script>
   <script src="remote-handler.js?v=1.4.10"></script>
-  <script src="app.js?v=1.4.15"></script>
+  <script src="app.js?v=1.4.16"></script>
 </body>
 </html>
