@@ -1731,8 +1731,8 @@ ${loopCode}}
   }
 
   function downloadIno() {
-    downloadBlob($("#codeView").value, `${safeName($("#projectName").value)}.ino`, "text/plain;charset=utf-8");
-    toast("INO 파일을 다운로드했습니다.");
+    downloadBlob(generateCpp(), `${safeName($("#projectName").value)}.ino`, "text/plain;charset=utf-8");
+    toast("숨겨진 보트 제어 함수를 포함한 전체 INO 파일을 다운로드했습니다.");
   }
 
   function downloadBlob(content, filename, type) {
