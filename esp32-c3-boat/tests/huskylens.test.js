@@ -31,14 +31,14 @@ test("HuskyLens polling is throttled and algorithm switching is cached", () => {
   }
 });
 
-test("runtime and installer consistently target firmware 1.4.7", () => {
+test("runtime and installer consistently target firmware 1.4.8", () => {
   const manifest = JSON.parse(fs.readFileSync(
     path.join(__dirname, "..", "firmware", "manifest.json"),
     "utf8"
   ));
-  assert.equal(manifest.version, "1.4.7");
-  assert.match(manifest.builds[0].parts[0].path, /boat_runtime-1\.4\.7\.merged\.bin$/);
-  assert.match(runtimeSource, /OneMaker Boat 1\.4\.7/);
+  assert.equal(manifest.version, "1.4.8");
+  assert.match(manifest.builds[0].parts[0].path, /boat_runtime-1\.4\.8\.merged\.bin$/);
+  assert.match(runtimeSource, /OneMaker Boat 1\.4\.8/);
   assert.match(appSource, /HUSKYLENS_FIRMWARE_MIN\s*=\s*\[1,\s*4,\s*7\]/);
   assert.match(appSource, /HuskyLens 얼굴 인식 기능은 펌웨어 1\.4\.7이 필요합니다/);
 });
