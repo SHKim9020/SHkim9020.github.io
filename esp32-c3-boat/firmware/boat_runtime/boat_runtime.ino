@@ -14,7 +14,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.7: reliable HuskyLens face-ID polling and automatic sensor activation.
+// OneMaker Boat Runtime 1.4.8: accept deeply nested Blockly program JSON safely.
+const uint8_t PROGRAM_JSON_NESTING_LIMIT = 32;
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const char *BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
@@ -746,7 +747,11 @@ bool loadActiveProgram() {
   File file = LittleFS.open(PROGRAM_PATH, "r");
   if (!file) return false;
   activeProgram.clear();
-  DeserializationError error = deserializeJson(activeProgram, file);
+  DeserializationError error = deserializeJson(
+    activeProgram,
+    file,
+    DeserializationOption::NestingLimit(PROGRAM_JSON_NESTING_LIMIT)
+  );
   file.close();
   if (error) {
     emit("error", error.c_str());
@@ -810,7 +815,11 @@ void handleRemote(const String &button, int speed, int leftSpeed, int rightSpeed
 
 bool parseIncomingLine(const String &line, bool allowCommands) {
   JsonDocument document;
-  DeserializationError error = deserializeJson(document, line);
+  DeserializationError error = deserializeJson(
+    document,
+    line,
+    DeserializationOption::NestingLimit(PROGRAM_JSON_NESTING_LIMIT)
+  );
   if (error) {
     if (allowCommands) emit("error", String("JSON 명령 오류: ") + error.c_str());
     return false;
@@ -847,7 +856,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.7";
+    response["runtime"] = "OneMaker Boat 1.4.8";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -940,7 +949,11 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
       return false;
     }
     JsonDocument stored;
-    DeserializationError uploadError = deserializeJson(stored, uploadBuffer);
+    DeserializationError uploadError = deserializeJson(
+      stored,
+      uploadBuffer,
+      DeserializationOption::NestingLimit(PROGRAM_JSON_NESTING_LIMIT)
+    );
     uploadBuffer = "";
     uploadExpectedSize = 0;
     uploadNextIndex = 0;
@@ -988,7 +1001,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.7";
+    status["runtime"] = "1.4.8";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -1033,7 +1046,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.7 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.8 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH) && loadActiveProgram()) {
     bool waitForBluetoothStart = activeProgram["config"]["waitForBluetoothStart"] | false;
