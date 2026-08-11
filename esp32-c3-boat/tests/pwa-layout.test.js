@@ -40,5 +40,11 @@ test("app is installable as a standalone PWA with icons", () => {
   assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /serviceWorker\.register/);
-  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.20/);
+  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.21/);
+});
+
+test("board, remote control, and serial monitor expose stable scrollbars", () => {
+  assert.match(css, /\.tab-panel\[data-panel="board"\],\.tab-panel\[data-panel="remote"\]\{[^}]*overflow-y:scroll[^}]*scrollbar-gutter:stable/);
+  assert.match(css, /#serialOutput\{[^}]*overflow-y:scroll[^}]*scrollbar-gutter:stable/);
+  assert.match(css, /#serialOutput::\-webkit-scrollbar\{width:12px/);
 });
