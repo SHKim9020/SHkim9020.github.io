@@ -40,5 +40,5 @@ test("app is installable as a standalone PWA with icons", () => {
   assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /serviceWorker\.register/);
-  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.19/);
+  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.20/);
 });
