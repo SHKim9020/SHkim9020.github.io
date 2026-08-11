@@ -36,8 +36,8 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .class-strip li:not(:last-child):after{content:"";width:34px;height:1px;background:#d6dee5;margin:0 9px}
 .class-strip li.active{color:var(--navy);font-weight:800}.class-strip li.active:before{background:var(--yellow);color:var(--navy)}
 .status{font-size:11px;padding:5px 9px;border-radius:20px;background:#eef2f5;color:#6e7983}.status.connected{background:#dff8ed;color:#08784e}
-.app-shell{height:calc(100% - 110px);display:grid;grid-template-columns:minmax(460px,1fr) minmax(340px,var(--side-panel-width));gap:10px;padding:10px;min-width:0}
-.editor-pane,.side-pane{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+.app-shell{height:calc(100% - 110px);display:grid;grid-template-columns:minmax(460px,1fr) minmax(340px,var(--side-panel-width));grid-template-rows:minmax(0,1fr);gap:10px;padding:10px;min-width:0;min-height:0}
+.editor-pane,.side-pane{height:100%;min-height:0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
 .editor-pane{display:flex;flex-direction:column;min-width:0}
 .editor-toolbar{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 9px;gap:10px;background:#fbfcfd}
 .toolbar-group{display:flex;gap:5px}.toolbar-group button{padding:6px 9px;font-size:12px;background:#edf1f4}
@@ -51,7 +51,7 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .side-resize-handle{position:absolute;z-index:15;left:-7px;top:7px;bottom:7px;width:13px;cursor:col-resize;touch-action:none;outline:0}
 .side-resize-handle:after{content:"";position:absolute;left:5px;top:45%;width:3px;height:38px;border-radius:4px;background:#b8c7d1;box-shadow:0 0 0 3px #fff;transition:.15s}
 .side-resize-handle:hover:after,.side-resize-handle:focus:after,body.resizing-side-panel .side-resize-handle:after{background:var(--blue);height:54px;top:42%}
-.side-tabs{height:44px;display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line);background:#f6f8fa}
+.side-tabs{height:44px;flex:0 0 44px;display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line);background:#f6f8fa}
 .side-tabs button{border-radius:0;background:transparent;color:#77828d;border-bottom:3px solid transparent}
 .side-tabs button.active{color:var(--navy);background:#fff;border-bottom-color:var(--yellow)}
 .tab-panel{display:none;overflow:auto;min-height:0;flex:1;padding:11px}.tab-panel.active{display:block}
