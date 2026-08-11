@@ -1230,12 +1230,32 @@ ${loopCode}}
     refreshCodeHighlight();
   }
 
-  async function prepareBoardHandshake(preferredTransport) {
+  async function prepareBoardHandshake(preferredTransport, timeout = 6000) {
     // A saved forever-loop accepts stop/remote commands while it is running, but
     // Saved forever-loops do not answer hello until the stop command has yielded them.
     await writeLine(JSON.stringify({ cmd: "stop" }), preferredTransport);
     await sleep(300);
-    return sendCommandAndWait({ cmd: "hello" }, ["hello"], 6000, preferredTransport);
+    return sendCommandAndWait({ cmd: "hello" }, ["hello"], timeout, preferredTransport);
+  }
+
+  async function ensureBoardRuntime(preferredTransport = null) {
+    if (runtimeVersion()) return boardRuntime;
+    const transport = preferredTransport || (serialWriter ? "serial" : (bleRxCharacteristic ? "ble" : null));
+    if (!transport) throw new Error("먼저 USB 또는 Bluetooth로 보드와 연결하세요.");
+
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const hello = await prepareBoardHandshake(transport, attempt === 0 ? 4500 : 6500);
+        if (!boardRuntime && hello?.runtime) boardRuntime = String(hello.runtime);
+        if (!boardUploadProtocol && hello?.uploadProtocol) boardUploadProtocol = String(hello.uploadProtocol);
+        if (runtimeVersion()) return boardRuntime;
+      } catch (error) {
+        lastError = error;
+      }
+      await sleep(350);
+    }
+    throw new Error(`보드 펌웨어 버전을 확인하지 못했습니다. USB 연결을 끊고 다시 연결한 뒤 시도하세요.${lastError?.message ? ` (${lastError.message})` : ""}`);
   }
 
   async function connectSerial() {
@@ -1244,7 +1264,13 @@ ${loopCode}}
       return;
     }
     if (serialPort?.readable && serialPort?.writable) {
-      toast("이미 ESP32-C3와 연결되어 있습니다.");
+      try {
+        await ensureBoardRuntime("serial");
+        setConnected(true);
+        toast(`ESP32-C3 USB 연결 확인 · 펌웨어 ${runtimeVersionText()}`);
+      } catch (error) {
+        toast(error.message);
+      }
       return;
     }
     try {
@@ -1267,8 +1293,13 @@ ${loopCode}}
       }
     } catch (error) {
       console.error(error);
-      setConnected(false);
-      toast(error.name === "NotFoundError" ? "연결할 장치를 선택하지 않았습니다." : `연결 실패: ${error.message}`);
+      const portStillOpen = Boolean(serialWriter && serialPort?.readable && serialPort?.writable);
+      setConnected(portStillOpen);
+      toast(error.name === "NotFoundError"
+        ? "연결할 장치를 선택하지 않았습니다."
+        : portStillOpen
+          ? "USB는 연결됐지만 보드 응답이 늦습니다. ‘보드에 저장·실행’을 다시 누르면 재확인합니다."
+          : `연결 실패: ${error.message}`);
     }
   }
 
@@ -1531,6 +1562,10 @@ ${loopCode}}
     try {
       if (!serialWriter && !bleRxCharacteristic) await connectSerial();
       if (!serialWriter && !bleRxCharacteristic) return;
+      if (!runtimeVersion()) {
+        toast("보드 펌웨어 버전을 다시 확인하고 있습니다.");
+        await ensureBoardRuntime(serialWriter ? "serial" : "ble");
+      }
       const settings = config();
       if (settings.waitForBluetoothStart && !supportsFirmware(BLUETOOTH_START_FIRMWARE_MIN)) {
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
