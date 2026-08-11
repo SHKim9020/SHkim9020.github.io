@@ -25,8 +25,10 @@ test("installed desktop app restores the top controls after a responsive scroll"
   assert.doesNotMatch(JSON.stringify(manifest), /window-controls-overlay/);
   assert.match(app, /function resetDesktopViewport\(\)/);
   assert.match(app, /history\.scrollRestoration = "manual"/);
-  assert.match(app, /window\.scrollTo\(0, 0\)/);
-  assert.match(app, /window\.addEventListener\("pageshow", reset\)/);
+  assert.match(app, /document\.body\.addEventListener\("scroll", reset/);
+  assert.match(app, /blocklyArea\?\.addEventListener\("pointerdown", resetAfterFocus, true\)/);
+  assert.match(app, /blocklyArea\?\.addEventListener\("focusin", resetAfterFocus, true\)/);
+  assert.match(css, /html,body\{overflow:clip;scroll-behavior:auto/);
   assert.match(css, /@media\(display-mode:window-controls-overlay\)/);
 });
 
@@ -38,5 +40,5 @@ test("app is installable as a standalone PWA with icons", () => {
   assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /serviceWorker\.register/);
-  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.18/);
+  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.19/);
 });
