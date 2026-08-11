@@ -4,8 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#12314a">
+  <meta name="description" content="ESP32-C3 스마트선박 수업용 블록 코딩과 원격조종 웹앱">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Boat Studio">
   <title>OneMaker ESP32-C3 Boat Studio</title>
-  <link rel="stylesheet" href="style.css?v=1.4.16">
+  <link rel="manifest" href="manifest.webmanifest?v=1.4.17">
+  <link rel="icon" href="icons/boat-studio-192.png?v=1.4.17" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="icons/boat-studio-192.png?v=1.4.17">
+  <link rel="stylesheet" href="style.css?v=1.4.17">
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </head>
 <body>
@@ -23,6 +31,7 @@
       <button id="saveBtn" class="ghost">저장</button>
       <button id="openBtn" class="ghost">열기</button>
       <input id="openFile" type="file" accept=".json,.omc3" hidden>
+      <button id="installAppBtn" class="install-app-btn" hidden>앱 설치</button>
       <button id="firmwareBtn" class="outline">① 펌웨어 설치</button>
       <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
       <button id="uploadBtn" class="primary">③ 보드에 저장·실행</button>
@@ -279,7 +288,7 @@
       <h2>수업용 펌웨어 설치</h2>
       <p>ESP32-C3의 <b>BOOT</b> 버튼을 누른 채 <b>RESET</b>을 한 번 누르고, 아래 설치 버튼을 선택하세요.</p>
       <div class="install-box">
-          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.16">
+          <esp-web-install-button manifest="./firmware/manifest.json?v=1.4.17">
           <button slot="activate" class="primary install-activate">ESP32-C3 펌웨어 설치</button>
           <span slot="unsupported">이 기능은 PC·크롬북의 Chrome/Edge에서 사용할 수 있습니다.</span>
         </esp-web-install-button>
@@ -311,6 +320,6 @@
   <script src="ble-transport.js?v=1.4.6"></script>
   <script src="remote-safety.js?v=1.4.13"></script>
   <script src="remote-handler.js?v=1.4.10"></script>
-  <script src="app.js?v=1.4.16"></script>
+  <script src="app.js?v=1.4.17"></script>
 </body>
 </html>
