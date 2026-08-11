@@ -36,7 +36,7 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 .class-strip li:not(:last-child):after{content:"";width:34px;height:1px;background:#d6dee5;margin:0 9px}
 .class-strip li.active{color:var(--navy);font-weight:800}.class-strip li.active:before{background:var(--yellow);color:var(--navy)}
 .status{font-size:11px;padding:5px 9px;border-radius:20px;background:#eef2f5;color:#6e7983}.status.connected{background:#dff8ed;color:#08784e}
-.app-shell{height:calc(100% - 110px);display:grid;grid-template-columns:minmax(560px,1fr) minmax(340px,var(--side-panel-width));gap:10px;padding:10px}
+.app-shell{height:calc(100% - 110px);display:grid;grid-template-columns:minmax(460px,1fr) minmax(340px,var(--side-panel-width));gap:10px;padding:10px;min-width:0}
 .editor-pane,.side-pane{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
 .editor-pane{display:flex;flex-direction:column;min-width:0}
 .editor-toolbar{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 9px;gap:10px;background:#fbfcfd}
@@ -102,7 +102,8 @@ button:hover{filter:brightness(.98);box-shadow:0 3px 12px #102c4020}
 #codeHighlight{z-index:1;pointer-events:none;color:#d9e6eb;background:#10232e}
 #codeHighlight code{font:inherit}
 #codeView{z-index:2;resize:none;outline:0;background:transparent;color:transparent;caret-color:#fff;-webkit-text-fill-color:transparent}
-#codeView::selection{background:#3b6f8c99}
+#codeView:focus{box-shadow:inset 0 0 0 2px #4b9ed0}
+#codeView::selection{background:#3b6f8c;color:#fff;-webkit-text-fill-color:#fff}
 .cpp-comment{color:#7fa67d;font-style:italic}.cpp-preprocessor{color:#d78ad7}.cpp-keyword{color:#66aee8;font-weight:700}.cpp-type{color:#55d6cf}.cpp-function{color:#f2c66d}.cpp-builtin{color:#e99d69}.cpp-string{color:#a9d18e}.cpp-number{color:#b7a5e8}
 #serialOutput{flex:1;margin:0;padding:12px;background:#101c25;color:#b8f6d5;overflow:auto;white-space:pre-wrap;font:11px/1.5 "Cascadia Code",Consolas,monospace}
 .serial-send{display:flex;padding:8px;border-top:1px solid var(--line);gap:6px}.serial-send input{flex:1;border:1px solid var(--line);border-radius:7px;padding:8px;min-width:0}.serial-send button{background:var(--blue);color:#fff}
@@ -112,7 +113,7 @@ dialog{border:0;padding:0;background:transparent;max-width:min(92vw,480px);overf
 @keyframes spin{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#172936;color:#fff;padding:10px 16px;border-radius:9px;box-shadow:var(--shadow);font-size:12px;z-index:100;transition:.25s}#toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:1180px){
-  .topbar{gap:8px}.brand{min-width:175px}.project-name{display:none}.top-actions button{font-size:11px;padding:8px}.app-shell{grid-template-columns:minmax(500px,1fr) minmax(340px,var(--side-panel-width))}
+  .topbar{gap:8px}.brand{min-width:175px}.project-name{display:none}.top-actions button{font-size:11px;padding:8px}.app-shell{grid-template-columns:minmax(420px,1fr) minmax(340px,var(--side-panel-width))}
 }
 @media(max-width:850px){
   html,body{overflow:auto;height:auto;min-height:100%}.topbar{height:auto;min-height:62px;flex-wrap:wrap;padding:9px 11px}.brand{min-width:180px}.top-actions{width:100%;overflow-x:auto;padding-bottom:3px;margin:0}.class-strip{display:none}.app-shell{height:auto;min-height:900px;display:block;padding:7px}.editor-pane{height:620px;margin-bottom:8px}.side-pane{height:700px;overflow:hidden}.side-resize-handle{display:none}.toolbar-hint{display:none}

@@ -35,6 +35,7 @@
   let selectedBlockId = null;
   let copiedBlockState = null;
   let codeManuallyEdited = false;
+  let deferredInstallPrompt = null;
   let toastTimer;
   const messageWaiters = [];
 
@@ -384,6 +385,7 @@
     if (!workspace.getAllBlocks(false).length) loadExample(false);
     refreshGeneratedCode();
     updateBrowserSupport();
+    initPwaInstall();
   }
 
   function populatePinSelects() {
@@ -1860,8 +1862,10 @@ ${loopCode}}
     if (!handle) return;
     const storageKey = "onemaker-boat-side-panel-width";
     const clampWidth = value => {
-      const maximum = Math.min(900, window.innerWidth - 590);
-      return Math.max(340, Math.min(maximum, value));
+      const shellWidth = document.querySelector(".app-shell")?.clientWidth || window.innerWidth;
+      const minimumEditorWidth = window.innerWidth <= 1180 ? 420 : 460;
+      const maximum = Math.max(340, Math.min(900, shellWidth - minimumEditorWidth - 10));
+      return Math.max(340, Math.min(maximum, Number(value) || 390));
     };
     const applyWidth = value => {
       if (window.innerWidth <= 850) return;
@@ -1872,6 +1876,11 @@ ${loopCode}}
     };
     const savedWidth = Number(localStorage.getItem(storageKey));
     if (Number.isFinite(savedWidth) && savedWidth > 0) applyWidth(savedWidth);
+    window.addEventListener("resize", () => {
+      if (window.innerWidth <= 850) return;
+      const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--side-panel-width")) || 390;
+      applyWidth(current);
+    });
 
     handle.addEventListener("pointerdown", event => {
       if (window.innerWidth <= 850) return;
@@ -1903,6 +1912,43 @@ ${loopCode}}
       applyWidth(width);
       localStorage.setItem(storageKey, String(Math.round(width)));
     });
+  }
+
+  function initPwaInstall() {
+    const installButton = $("#installAppBtn");
+    if (!installButton) return;
+
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    installButton.hidden = standalone;
+
+    window.addEventListener("beforeinstallprompt", event => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installButton.hidden = false;
+    });
+
+    installButton.addEventListener("click", async () => {
+      if (!deferredInstallPrompt) {
+        toast("Chrome 메뉴의 ‘홈 화면에 추가’ 또는 ‘앱 설치’를 선택하세요.");
+        return;
+      }
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      installButton.hidden = true;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      installButton.hidden = true;
+      toast("Boat Studio 앱이 설치되었습니다.");
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js?v=1.4.17").catch(error => {
+        console.warn("Service worker registration failed", error);
+      });
+    }
   }
 
   function safeName(value) {
