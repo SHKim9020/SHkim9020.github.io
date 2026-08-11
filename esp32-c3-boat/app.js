@@ -393,15 +393,24 @@
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
     const reset = () => {
       if (window.innerWidth <= 850) return;
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+      if (document.documentElement.scrollTop) document.documentElement.scrollTop = 0;
+      if (document.body.scrollTop) document.body.scrollTop = 0;
     };
-    reset();
-    requestAnimationFrame(reset);
-    window.addEventListener("resize", reset);
-    window.addEventListener("orientationchange", reset);
-    window.addEventListener("pageshow", reset);
+    const resetAfterFocus = () => {
+      reset();
+      requestAnimationFrame(reset);
+      setTimeout(reset, 0);
+    };
+    resetAfterFocus();
+    window.addEventListener("resize", resetAfterFocus);
+    window.addEventListener("orientationchange", resetAfterFocus);
+    window.addEventListener("pageshow", resetAfterFocus);
+    window.addEventListener("scroll", reset, { passive: true });
+    document.body.addEventListener("scroll", reset, { passive: true });
+    const blocklyArea = document.querySelector("#blocklyDiv");
+    blocklyArea?.addEventListener("pointerdown", resetAfterFocus, true);
+    blocklyArea?.addEventListener("focusin", resetAfterFocus, true);
   }
 
   function populatePinSelects() {
@@ -1961,7 +1970,7 @@ ${loopCode}}
     });
 
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./sw.js?v=1.4.18").catch(error => {
+      navigator.serviceWorker.register("./sw.js?v=1.4.19").catch(error => {
         console.warn("Service worker registration failed", error);
       });
     }
