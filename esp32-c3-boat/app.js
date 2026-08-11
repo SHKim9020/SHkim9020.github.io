@@ -354,6 +354,7 @@
   };
 
   function init() {
+    resetDesktopViewport();
     populatePinSelects();
     workspace = Blockly.inject("blocklyDiv", {
       toolbox,
@@ -386,6 +387,21 @@
     refreshGeneratedCode();
     updateBrowserSupport();
     initPwaInstall();
+  }
+
+  function resetDesktopViewport() {
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    const reset = () => {
+      if (window.innerWidth <= 850) return;
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    reset();
+    requestAnimationFrame(reset);
+    window.addEventListener("resize", reset);
+    window.addEventListener("orientationchange", reset);
+    window.addEventListener("pageshow", reset);
   }
 
   function populatePinSelects() {
@@ -1945,7 +1961,7 @@ ${loopCode}}
     });
 
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./sw.js?v=1.4.17").catch(error => {
+      navigator.serviceWorker.register("./sw.js?v=1.4.18").catch(error => {
         console.warn("Service worker registration failed", error);
       });
     }

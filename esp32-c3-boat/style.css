@@ -118,3 +118,9 @@ dialog{border:0;padding:0;background:transparent;max-width:min(92vw,480px);overf
 @media(max-width:850px){
   html,body{overflow:auto;height:auto;min-height:100%}.topbar{height:auto;min-height:62px;flex-wrap:wrap;padding:9px 11px}.brand{min-width:180px}.top-actions{width:100%;overflow-x:auto;padding-bottom:3px;margin:0}.class-strip{display:none}.app-shell{height:auto;min-height:900px;display:block;padding:7px}.editor-pane{height:620px;margin-bottom:8px}.side-pane{height:700px;overflow:hidden}.side-resize-handle{display:none}.toolbar-hint{display:none}
 }
+@media(min-width:851px){
+  html,body{scroll-behavior:auto;overscroll-behavior:none}
+}
+@media(display-mode:window-controls-overlay){
+  body{padding-top:env(titlebar-area-height,32px)}
+}
