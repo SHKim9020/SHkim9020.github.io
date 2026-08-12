@@ -3,7 +3,6 @@
 #include <Wire.h>
 #include <Servo.h>
 #include <SoftwareSerial.h>
-#include <DHT.h>
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -125,9 +124,6 @@ bool oledReady = false;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
-DHT *dht = nullptr;
-int8_t dhtPin = -1;
-uint8_t dhtType = 0;
 
 int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
@@ -403,17 +399,28 @@ String valueText(const VmValue &value) {
 }
 
 float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
-  uint8_t sensorType = type == 22 ? DHT22 : DHT11;
-  if (!dht || dhtPin != pin || dhtType != sensorType) {
-    if (dht) delete dht;
-    dht = new DHT(pin, sensorType);
-    dhtPin = pin;
-    dhtType = sensorType;
-    dht->begin();
-    delay(20);
+  uint8_t data[5] = {0, 0, 0, 0, 0};
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+  delay(type == 22 ? 2 : 20);
+  digitalWrite(pin, HIGH);
+  delayMicroseconds(30);
+  pinMode(pin, INPUT_PULLUP);
+  if (!pulseIn(pin, LOW, 1000UL) || !pulseIn(pin, HIGH, 1000UL)) return -999;
+  for (uint8_t bit = 0; bit < 40; bit++) {
+    if (!pulseIn(pin, LOW, 1000UL)) return -999;
+    unsigned long highTime = pulseIn(pin, HIGH, 1000UL);
+    if (!highTime) return -999;
+    data[bit >> 3] <<= 1;
+    if (highTime > 40) data[bit >> 3] |= 1;
   }
-  float value = humidity ? dht->readHumidity() : dht->readTemperature();
-  return isnan(value) ? -999 : value;
+  if ((uint8_t)(data[0] + data[1] + data[2] + data[3]) != data[4]) return -999;
+  if (type == 22) {
+    uint16_t raw = ((uint16_t)data[humidity ? 0 : 2] << 8) | data[humidity ? 1 : 3];
+    float value = (raw & 0x7FFF) * 0.1f;
+    return (!humidity && (raw & 0x8000)) ? -value : value;
+  }
+  return humidity ? data[0] + data[1] * 0.1f : data[2] + data[3] * 0.1f;
 }
 
 String readBluetoothText() {

@@ -36,5 +36,7 @@ test("UNO and both Nano bootloader upload paths use runtime 1.1.4", () => {
     assert.match(html, new RegExp(`board="${board}"`));
   }
   assert.doesNotMatch(workflow, /U8g2/);
+  assert.doesNotMatch(runtime, /#include <DHT\.h>/);
+  assert.match(runtime, /pulseIn\(pin, LOW, 1000UL\)/);
   assert.match(workflow, /--fqbn "arduino:avr:uno"/);
 });
