@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.5";
+  const RUNTIME_VERSION = "1.1.6";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -345,6 +345,24 @@
       colour: 290
     },
     {
+      type: "neo_fill",
+      message0: "네오픽셀 모든 LED 색 %1 밝기 %2",
+      args0: [
+        { type: "field_dropdown", name: "COLOR", options: [
+          ["🔴 빨강", "255,0,0"], ["🟠 주황", "255,80,0"],
+          ["🟡 노랑", "255,255,0"], ["🟢 초록", "0,255,0"],
+          ["🔵 하늘", "0,255,255"], ["🔷 파랑", "0,0,255"],
+          ["🟣 보라", "128,0,255"], ["⚪ 흰색", "255,255,255"]
+        ] },
+        { type: "input_value", name: "BRIGHTNESS", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 290,
+      tooltip: "연결된 모든 네오픽셀을 대표색으로 켭니다. 밝기는 0(꺼짐)~255(최대)입니다."
+    },
+    {
       type: "neo_clear",
       message0: "네오픽셀 모두 끄기",
       previousStatement: null,
@@ -581,6 +599,7 @@
       ] },
       { kind: "category", name: "네오픽셀", colour: "290", contents: [
         { kind: "block", type: "neo_begin", inputs: { COUNT: numberShadow(8) } },
+        { kind: "block", type: "neo_fill", fields: { COLOR: "255,0,0" }, inputs: { BRIGHTNESS: numberShadow(128) } },
         { kind: "block", type: "neo_set", inputs: { INDEX: numberShadow(0), R: numberShadow(255), G: numberShadow(0), B: numberShadow(0) } },
         { kind: "block", type: "neo_clear" }
       ] },
@@ -1043,6 +1062,25 @@
 
   function compileStatement(block, writer, context) {
     const expression = name => writeCompiledExpression(writer, inputBlock(block, name), context);
+    const numberExpression = value => {
+      const compiled = new ByteWriter();
+      compiled.u8(EX.NUMBER);
+      compiled.f32(value);
+      writer.u8(compiled.position);
+      writer.append(compiled.bytes);
+    };
+    const scaledNeoChannel = base => {
+      if (!base) return numberExpression(0);
+      const compiled = new ByteWriter();
+      writeExpressionValue(compiled, inputBlock(block, "BRIGHTNESS"), context);
+      if (base !== 255) {
+        compiled.u8(EX.NUMBER);
+        compiled.f32(base / 255);
+        compiled.u8(EX.MULTIPLY);
+      }
+      writer.u8(compiled.position);
+      writer.append(compiled.bytes);
+    };
     const pin = name => writer.u8(block.getFieldValue(name));
     switch (block.type) {
       case "control_wait":
@@ -1123,6 +1161,11 @@
         writer.u8(VM.NEO_BEGIN); pin("PIN"); expression("COUNT"); return;
       case "neo_set":
         writer.u8(VM.NEO_SET); expression("INDEX"); expression("R"); expression("G"); expression("B"); return;
+      case "neo_fill": {
+        const [red, green, blue] = block.getFieldValue("COLOR").split(",").map(Number);
+        writer.u8(VM.NEO_SET); numberExpression(255);
+        scaledNeoChannel(red); scaledNeoChannel(green); scaledNeoChannel(blue); return;
+      }
       case "neo_clear":
         writer.u8(VM.NEO_CLEAR); return;
       case "mp3_begin":
@@ -1759,6 +1802,11 @@
           clamp(await evaluate(inputBlock(block, "G"), functionDepth), 0, 255),
           clamp(await evaluate(inputBlock(block, "B"), functionDepth), 0, 255)
         );
+      case "neo_fill": {
+        const brightness = clamp(await evaluate(inputBlock(block, "BRIGHTNESS"), functionDepth), 0, 255);
+        const color = block.getFieldValue("COLOR").split(",").map(Number);
+        return sendAction("NEOSET", 255, ...color.map(channel => Math.round(channel * brightness / 255)));
+      }
       case "neo_clear":
         return sendAction("NEOCLEAR");
       case "mp3_begin":
@@ -2141,6 +2189,12 @@
       case "neo_set":
         return line(`pixels.setPixelColor(${cppInput(block, "INDEX")}, pixels.Color(${cppInput(block, "R")}, ${cppInput(block, "G")}, ${cppInput(block, "B")}));`)
           + line("pixels.show();");
+      case "neo_fill": {
+        const brightness = `constrain(${cppInput(block, "BRIGHTNESS")}, 0, 255)`;
+        const channels = block.getFieldValue("COLOR").split(",").map(Number)
+          .map(channel => channel === 255 ? brightness : channel ? `((${brightness}) * ${channel}L / 255)` : "0");
+        return line(`pixels.fill(pixels.Color(${channels.join(", ")}));`) + line("pixels.show();");
+      }
       case "neo_clear": return line("pixels.clear();") + line("pixels.show();");
       case "mp3_begin":
         return line("initializeMp3();")

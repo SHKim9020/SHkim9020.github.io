@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.5
-static const char *RUNTIME_VERSION = "1.1.5";
+// OneMaker Arduino UNO/Nano Runtime 1.1.6
+static const char *RUNTIME_VERSION = "1.1.6";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -750,8 +750,9 @@ void executeStoredProgramStep() {
     int green = valueNumber(evaluateStoredExpression(vmProgramCounter));
     int blue = valueNumber(evaluateStoredExpression(vmProgramCounter));
     if (pixels && pixels->numPixels()) {
-      pixels->setPixelColor(constrain(index, 0, pixels->numPixels() - 1),
-        pixels->Color(constrain(red, 0, 255), constrain(green, 0, 255), constrain(blue, 0, 255)));
+      uint32_t color = pixels->Color(constrain(red, 0, 255), constrain(green, 0, 255), constrain(blue, 0, 255));
+      if (index == 255) pixels->fill(color);
+      else pixels->setPixelColor(constrain(index, 0, pixels->numPixels() - 1), color);
       pixels->show();
     }
   } else if (opcode == OP_NEO_CLEAR) {
@@ -956,14 +957,14 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     pixels->clear();
     pixels->show();
   } else if (!strcmp(operation, "NEOSET") && count >= 4 && pixels) {
-    pixels->setPixelColor(
-      constrain(tokenInt(args[0]), 0, pixels->numPixels() - 1),
-      pixels->Color(
+    int index = tokenInt(args[0]);
+    uint32_t color = pixels->Color(
         constrain(tokenInt(args[1]), 0, 255),
         constrain(tokenInt(args[2]), 0, 255),
         constrain(tokenInt(args[3]), 0, 255)
-      )
-    );
+      );
+    if (index == 255) pixels->fill(color);
+    else pixels->setPixelColor(constrain(index, 0, pixels->numPixels() - 1), color);
     pixels->show();
   } else if (!strcmp(operation, "NEOCLEAR") && pixels) {
     pixels->clear();
