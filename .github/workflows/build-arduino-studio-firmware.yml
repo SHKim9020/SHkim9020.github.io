@@ -39,11 +39,17 @@ jobs:
           arduino-cli compile \
             --clean \
             --fqbn "arduino:avr:uno" \
+            --build-property "compiler.c.extra_flags=-mcall-prologues" \
+            --build-property "compiler.cpp.extra_flags=-mcall-prologues" \
+            --build-property "compiler.c.elf.extra_flags=-Wl,--relax" \
             --output-dir "$RUNNER_TEMP/onemaker-arduino-uno" \
             arduino-studio/firmware/onemaker_runtime
           arduino-cli compile \
             --clean \
             --fqbn "arduino:avr:nano:cpu=atmega328" \
+            --build-property "compiler.c.extra_flags=-mcall-prologues" \
+            --build-property "compiler.cpp.extra_flags=-mcall-prologues" \
+            --build-property "compiler.c.elf.extra_flags=-Wl,--relax" \
             --output-dir "$RUNNER_TEMP/onemaker-arduino-nano" \
             arduino-studio/firmware/onemaker_runtime
           cmp "$RUNNER_TEMP/onemaker-arduino-uno/onemaker_runtime.ino.hex" \
