@@ -842,14 +842,12 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
     storedProgramValid = false;
     EEPROM.update(0, 0);
     if (receivingProgram) Serial.println(F("PROGRAM_READY"));
-    else Serial.println(F("ERR"));
   } else if (!strcmp(operation, "DATA") && count >= 2 && receivingProgram) {
     uint16_t offset = tokenInt(args[0]);
     const char *hex = args[1];
     uint16_t byteCount = strlen(hex) / 2;
     if (offset + byteCount > incomingProgramLength) {
       receivingProgram = false;
-      Serial.println(F("ERR"));
       return;
     }
     for (uint16_t index = 0; index < byteCount; index++) {
@@ -861,7 +859,6 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "SAVE") && receivingProgram) {
     if (storedProgramChecksum(incomingProgramLength) != incomingChecksum) {
       receivingProgram = false;
-      Serial.println(F("ERR"));
       return;
     }
     EEPROM.update(1, PROGRAM_MAGIC_1);
@@ -976,8 +973,6 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     if (initializeMp3(tokenInt(args[0]), tokenInt(args[1]))) {
       sendMp3Command(0x06, volume);
       Serial.println(F("MP3_READY"));
-    } else {
-      Serial.println(F("ERR"));
     }
   } else if (!strcmp(operation, "MP3PLAY") && count >= 1) {
     sendMp3Command(0x03, max(1, tokenInt(args[0])));
