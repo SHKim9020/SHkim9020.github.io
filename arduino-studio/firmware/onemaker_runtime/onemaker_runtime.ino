@@ -274,6 +274,7 @@ const uint8_t OLED_FONT_3X5[][3] PROGMEM = {
   {31,17,31},{0,31,0},{29,21,23},{21,21,31},{7,4,31},
   {23,21,29},{31,21,29},{1,1,31},{31,21,31},{23,21,31}
 };
+const uint8_t OLED_DOUBLE_4[] PROGMEM = {0,3,12,15,48,51,60,63,192,195,204,207,240,243,252,255};
 
 void oledCommand(uint8_t command) {
   Wire.beginTransmission(oledAddress);
@@ -341,13 +342,9 @@ void oledPrint(const String &value, uint8_t column, uint8_t row) {
         Wire.beginTransmission(oledAddress);
         Wire.write(0x40);
         for (uint8_t column = 0; column < 3; column++) {
-          uint16_t expanded = glyph[column];
-          expanded = (expanded | expanded << 4) & 0x0F0F;
-          expanded = (expanded | expanded << 2) & 0x3333;
-          expanded = (expanded | expanded << 1) & 0x5555;
-          expanded |= expanded << 1;
-          Wire.write(expanded >> (half * 8));
-          Wire.write(expanded >> (half * 8));
+          uint8_t expanded = half ? (glyph[column] & 16 ? 3 : 0) : pgm_read_byte(&OLED_DOUBLE_4[glyph[column] & 15]);
+          Wire.write(expanded);
+          Wire.write(expanded);
         }
         Wire.write(0); Wire.write(0);
         Wire.endTransmission();
@@ -827,7 +824,7 @@ void executeStoredProgramStep() {
     }
   } else {
     storedProgramValid = false;
-    Serial.println(F("ERR,OP"));
+    Serial.println(F("ERR"));
   }
 }
 
@@ -843,14 +840,14 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
     storedProgramValid = false;
     EEPROM.update(0, 0);
     if (receivingProgram) Serial.println(F("PROGRAM_READY"));
-    else Serial.println(F("ERR,SIZE"));
+    else Serial.println(F("ERR"));
   } else if (!strcmp(operation, "DATA") && count >= 2 && receivingProgram) {
     uint16_t offset = tokenInt(args[0]);
     const char *hex = args[1];
     uint16_t byteCount = strlen(hex) / 2;
     if (offset + byteCount > incomingProgramLength) {
       receivingProgram = false;
-      Serial.println(F("ERR,RANGE"));
+      Serial.println(F("ERR"));
       return;
     }
     for (uint16_t index = 0; index < byteCount; index++) {
@@ -862,7 +859,7 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "SAVE") && receivingProgram) {
     if (storedProgramChecksum(incomingProgramLength) != incomingChecksum) {
       receivingProgram = false;
-      Serial.println(F("ERR,CHECK"));
+      Serial.println(F("ERR"));
       return;
     }
     EEPROM.update(1, PROGRAM_MAGIC_1);
@@ -882,12 +879,12 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "RUN")) {
     stopOutputs();
     loadStoredProgram();
-    Serial.println(storedProgramValid ? F("OK,RUN") : F("ERR,EMPTY"));
+    Serial.println(storedProgramValid ? F("OK") : F("ERR"));
   } else if (!strcmp(operation, "CLEAR")) {
     EEPROM.update(0, 0);
     storedProgramValid = false;
     stopOutputs();
-    Serial.println(F("OK,CLEAR"));
+    Serial.println(F("OK"));
   }
 }
 
@@ -978,7 +975,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
       sendMp3Command(0x06, volume);
       Serial.println(F("MP3_READY"));
     } else {
-      Serial.println(F("ERR,MP3"));
+      Serial.println(F("ERR"));
     }
   } else if (!strcmp(operation, "MP3PLAY") && count >= 1) {
     sendMp3Command(0x03, max(1, tokenInt(args[0])));
@@ -1058,7 +1055,7 @@ void loop() {
       inputLine[inputLength++] = character;
     } else {
       inputLength = 0;
-      Serial.println(F("ERR,LONG"));
+      Serial.println(F("ERR"));
     }
   }
   executeStoredProgramStep();

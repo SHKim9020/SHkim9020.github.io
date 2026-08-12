@@ -29,7 +29,7 @@ test("OLED works in stored, live, and generated INO modes", () => {
   assert.match(runtime, /OLED_FONT_3X5/);
   assert.match(runtime, /void oledBegin/);
   assert.match(runtime, /oledScale = scale == 2 \? 2 : 1/);
-  assert.match(runtime, /uint16_t expanded/);
+  assert.match(runtime, /OLED_DOUBLE_4/);
   assert.doesNotMatch(runtime, /character >= 'A'/);
 });
 
