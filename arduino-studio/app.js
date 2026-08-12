@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.3";
+  const RUNTIME_VERSION = "1.1.4";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -286,6 +286,38 @@
       colour: 185
     },
     {
+      type: "oled_begin",
+      message0: "0.96 OLED 시작 주소 %1",
+      args0: [
+        { type: "field_dropdown", name: "ADDRESS", options: [["0x3C", "60"], ["0x3D", "61"]] }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 195,
+      tooltip: "SSD1306 128×64 I²C OLED를 시작합니다. UNO·Nano는 SDA A4, SCL A5에 연결합니다."
+    },
+    {
+      type: "oled_print",
+      message0: "OLED 행 %1 열 %2에 %3 출력",
+      args0: [
+        { type: "input_value", name: "ROW", check: "Number" },
+        { type: "input_value", name: "COL", check: "Number" },
+        { type: "input_value", name: "VALUE" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 195,
+      tooltip: "행 0~7, 열 0~15에 값을 표시합니다. 보드 저장 모드는 숫자와 . - : % 기호에 최적화되어 있습니다."
+    },
+    {
+      type: "oled_clear",
+      message0: "OLED 화면 지우기",
+      previousStatement: null,
+      nextStatement: null,
+      colour: 195
+    },
+    {
       type: "neo_begin",
       message0: "네오픽셀 시작 핀 %1 LED 개수 %2",
       args0: [
@@ -541,6 +573,11 @@
         { kind: "block", type: "lcd_print", inputs: { ROW: numberShadow(0), COL: numberShadow(0), VALUE: textShadow("안녕하세요") } },
         { kind: "block", type: "lcd_clear" }
       ] },
+      { kind: "category", name: "0.96 OLED", colour: "195", contents: [
+        { kind: "block", type: "oled_begin" },
+        { kind: "block", type: "oled_print", inputs: { ROW: numberShadow(0), COL: numberShadow(0), VALUE: numberShadow(123) } },
+        { kind: "block", type: "oled_clear" }
+      ] },
       { kind: "category", name: "네오픽셀", colour: "290", contents: [
         { kind: "block", type: "neo_begin", inputs: { COUNT: numberShadow(8) } },
         { kind: "block", type: "neo_set", inputs: { INDEX: numberShadow(0), R: numberShadow(255), G: numberShadow(0), B: numberShadow(0) } },
@@ -785,7 +822,7 @@
     LCD_CLEAR: 12, NEO_BEGIN: 13, NEO_SET: 14, NEO_CLEAR: 15, MP3_BEGIN: 16,
     MP3_PLAY: 17, MP3_VOLUME: 18, MP3_STOP: 19, BT_BEGIN: 20, BT_SEND: 21,
     SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26,
-    BT_SEND_RAW: 27, BT_SET_NAME: 28
+    BT_SEND_RAW: 27, BT_SET_NAME: 28, OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31
   });
 
   const EX = Object.freeze({
@@ -1075,6 +1112,12 @@
         writer.u8(VM.LCD_PRINT); expression("ROW"); expression("COL"); expression("VALUE"); return;
       case "lcd_clear":
         writer.u8(VM.LCD_CLEAR); return;
+      case "oled_begin":
+        writer.u8(VM.OLED_BEGIN); pin("ADDRESS"); return;
+      case "oled_print":
+        writer.u8(VM.OLED_PRINT); expression("ROW"); expression("COL"); expression("VALUE"); return;
+      case "oled_clear":
+        writer.u8(VM.OLED_CLEAR); return;
       case "neo_begin":
         writer.u8(VM.NEO_BEGIN); pin("PIN"); expression("COUNT"); return;
       case "neo_set":
@@ -1219,7 +1262,7 @@
       $("#saveBoardProgress").value = 100;
       $("#saveBoardTitle").textContent = "저장 및 실행 완료";
       $("#saveBoardMessage").textContent = "이제 USB를 분리해도 전원을 켜면 프로그램이 자동으로 실행됩니다.";
-      setSaveBoardResult("success", `저장 크기 ${program.bytes.length}/${EEPROM_PROGRAM_LIMIT}바이트 · I²C LCD, 네오픽셀, MP3, Bluetooth 포함`);
+      setSaveBoardResult("success", `저장 크기 ${program.bytes.length}/${EEPROM_PROGRAM_LIMIT}바이트 · I²C LCD, OLED, 네오픽셀, MP3, Bluetooth 포함`);
       toast("보드에 저장했습니다. 프로그램이 바로 실행됩니다.");
     } catch (error) {
       console.error(error);
@@ -1694,6 +1737,17 @@
         );
       case "lcd_clear":
         return sendAction("LCDCLEAR");
+      case "oled_begin":
+        return sendAction("OLEDBEGIN", block.getFieldValue("ADDRESS"));
+      case "oled_print":
+        return sendAction(
+          "OLEDPRINT",
+          clamp(await evaluate(inputBlock(block, "ROW"), functionDepth), 0, 7),
+          clamp(await evaluate(inputBlock(block, "COL"), functionDepth), 0, 15),
+          encodeHex(await evaluate(inputBlock(block, "VALUE"), functionDepth))
+        );
+      case "oled_clear":
+        return sendAction("OLEDCLEAR");
       case "neo_begin":
         return sendAction("NEOBEGIN", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "COUNT"), functionDepth), 1, 60));
       case "neo_set":
@@ -2071,6 +2125,15 @@
         return line(`lcd.setCursor(${cppInput(block, "COL")}, ${cppInput(block, "ROW")});`)
           + line(`lcd.print(${cppInput(block, "VALUE", '""')});`);
       case "lcd_clear": return line("lcd.clear();");
+      case "oled_begin":
+        return line("Wire.begin();")
+          + line(`oled.begin(&Adafruit128x64, 0x${Number(block.getFieldValue("ADDRESS")).toString(16).toUpperCase()});`)
+          + line("oled.setFont(System5x7);")
+          + line("oled.clear();");
+      case "oled_print":
+        return line(`oled.setCursor(constrain(${cppInput(block, "COL")}, 0, 15) * 6, constrain(${cppInput(block, "ROW")}, 0, 7));`)
+          + line(`oled.print(${cppInput(block, "VALUE", '\"\"')});`);
+      case "oled_clear": return line("oled.clear();");
       case "neo_begin": return line("pixels.begin();") + line("pixels.clear();") + line("pixels.show();");
       case "neo_set":
         return line(`pixels.setPixelColor(${cppInput(block, "INDEX")}, pixels.Color(${cppInput(block, "R")}, ${cppInput(block, "G")}, ${cppInput(block, "B")}));`)
@@ -2132,6 +2195,9 @@
         columns: lcdColumns || 16,
         rows: lcdRows || 2
       },
+      oled: {
+        enabled: [...types].some(type => type.startsWith("oled_"))
+      },
       neo: {
         enabled: [...types].some(type => type.startsWith("neo_")),
         pin: Number(neoBlock?.getFieldValue("PIN") || 6),
@@ -2156,6 +2222,7 @@
     if (hardware.dht.length) includes.push("#include <DHT.h>");
     if (hardware.servoPins.length) includes.push("#include <Servo.h>");
     if (hardware.lcd.enabled) includes.push("#include <Wire.h>", "#include <LiquidCrystal_I2C.h>");
+    if (hardware.oled.enabled) includes.push("#include <Wire.h>", "#include <SSD1306Ascii.h>", "#include <SSD1306AsciiWire.h>");
     if (hardware.neo.enabled) includes.push("#include <Adafruit_NeoPixel.h>");
     if (hardware.bluetooth.enabled || hardware.mp3.enabled) includes.push("#include <SoftwareSerial.h>");
 
@@ -2163,6 +2230,7 @@
     hardware.dht.forEach(({ pin, type }) => globals.push(`DHT ${dhtName(pin, type)}(${pin}, DHT${type});`));
     hardware.servoPins.forEach(pin => globals.push(`Servo ${cppIdentifier(pin, "servo")};`));
     if (hardware.lcd.enabled) globals.push(`LiquidCrystal_I2C lcd(0x${hardware.lcd.address.toString(16).toUpperCase()}, ${hardware.lcd.columns}, ${hardware.lcd.rows});`);
+    if (hardware.oled.enabled) globals.push("SSD1306AsciiWire oled;");
     if (hardware.neo.enabled) globals.push(`Adafruit_NeoPixel pixels(${hardware.neo.count}, ${hardware.neo.pin}, NEO_GRB + NEO_KHZ800);`);
     if (hardware.bluetooth.enabled) globals.push(`SoftwareSerial bluetooth(${hardware.bluetooth.rx}, ${hardware.bluetooth.tx}); // Arduino RX, TX`);
     if (hardware.mp3.enabled) globals.push(`SoftwareSerial mp3Serial(${hardware.mp3.rx}, ${hardware.mp3.tx}); // Arduino RX, TX`);

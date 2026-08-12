@@ -3,12 +3,10 @@
 #include <Wire.h>
 #include <Servo.h>
 #include <SoftwareSerial.h>
-#include <DHT.h>
-#include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.3
-static const char *RUNTIME_VERSION = "1.1.3";
+// OneMaker Arduino UNO/Nano Runtime 1.1.4
+static const char *RUNTIME_VERSION = "1.1.4";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -49,7 +47,10 @@ enum StatementOpcode : uint8_t {
   OP_REPEAT_START = 25,
   OP_REPEAT_END = 26,
   OP_BT_SEND_RAW = 27,
-  OP_BT_SET_NAME = 28
+  OP_BT_SET_NAME = 28,
+  OP_OLED_BEGIN = 29,
+  OP_OLED_PRINT = 30,
+  OP_OLED_CLEAR = 31
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -116,13 +117,14 @@ uint16_t incomingSetupLength = 0;
 uint16_t incomingChecksum = 0;
 bool receivingProgram = false;
 
-LiquidCrystal_I2C *lcd = nullptr;
+uint8_t lcdAddress = 0x27;
+uint8_t lcdColumns = 16;
+bool lcdReady = false;
+uint8_t oledAddress = 0x3C;
+bool oledReady = false;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
-DHT *dht = nullptr;
-int8_t dhtPin = -1;
-uint8_t dhtType = 0;
 
 int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
@@ -150,7 +152,7 @@ void printHex(const String &value) {
 }
 
 void sendReady() {
-  Serial.print(F("READY,OneMaker Arduino Runtime,"));
+  Serial.print(F("READY,OM,"));
   Serial.println(RUNTIME_VERSION);
 }
 
@@ -265,6 +267,128 @@ uint8_t programByte(uint16_t address) {
   return EEPROM.read(PROGRAM_HEADER_SIZE + address);
 }
 
+// Tiny 3x5 digit font keeps the UNO/Nano runtime inside 32 KB flash.
+// Entries are three vertical columns, least-significant bit at the top.
+const uint8_t OLED_FONT_3X5[][3] PROGMEM = {
+  {31,17,31},{0,31,0},{29,21,23},{21,21,31},{7,4,31},
+  {23,21,29},{31,21,29},{1,1,31},{31,21,31},{23,21,31}
+};
+
+void oledCommand(uint8_t command) {
+  Wire.beginTransmission(oledAddress);
+  Wire.write(0x00);
+  Wire.write(command);
+  Wire.endTransmission();
+}
+
+void oledSetCursor(uint8_t column, uint8_t row) {
+  uint8_t x = constrain(column, 0, 31) * 4;
+  oledCommand(0xB0 | constrain(row, 0, 7));
+  oledCommand(x & 0x0F);
+  oledCommand(0x10 | (x >> 4));
+}
+
+void oledClear() {
+  if (!oledReady) return;
+  for (uint8_t page = 0; page < 8; page++) {
+    oledSetCursor(0, page);
+    for (uint8_t chunk = 0; chunk < 8; chunk++) {
+      Wire.beginTransmission(oledAddress);
+      Wire.write(0x40);
+      for (uint8_t index = 0; index < 16; index++) Wire.write(0);
+      Wire.endTransmission();
+    }
+  }
+  oledSetCursor(0, 0);
+}
+
+void oledBegin(uint8_t address) {
+  static const uint8_t initCommands[] PROGMEM = {
+    0xAE,0xD5,0x80,0xA8,0x3F,0xD3,0x00,0x40,0x8D,0x14,0x20,0x02,
+    0xA1,0xC8,0xDA,0x12,0x81,0xCF,0xD9,0xF1,0xDB,0x40,0xA4,0xA6,0xAF
+  };
+  oledAddress = address;
+  Wire.begin();
+  for (uint8_t index = 0; index < sizeof(initCommands); index++) oledCommand(pgm_read_byte(&initCommands[index]));
+  oledReady = true;
+  oledClear();
+}
+
+void oledPrint(const String &value) {
+  if (!oledReady) return;
+  for (uint8_t index = 0; index < value.length(); index++) {
+    char character = value[index];
+    uint8_t glyph[3] = {0, 0, 0};
+    if (character >= '0' && character <= '9') {
+      for (uint8_t column = 0; column < 3; column++) glyph[column] = pgm_read_byte(&OLED_FONT_3X5[character - '0'][column]);
+    } else if (character == '-') glyph[0] = glyph[1] = glyph[2] = 4;
+    else if (character == '.') glyph[1] = 16;
+    else if (character == ':') glyph[1] = 10;
+    else if (character == '%') { glyph[0] = 25; glyph[1] = 4; glyph[2] = 19; }
+    Wire.beginTransmission(oledAddress);
+    Wire.write(0x40);
+    Wire.write(glyph, 3);
+    Wire.write(0);
+    Wire.endTransmission();
+  }
+}
+
+void lcdExpander(uint8_t value) {
+  Wire.beginTransmission(lcdAddress);
+  Wire.write(value | 0x08); // Backlight on.
+  Wire.endTransmission();
+}
+
+void lcdPulse(uint8_t value) {
+  lcdExpander(value | 0x04);
+  delayMicroseconds(1);
+  lcdExpander(value & ~0x04);
+  delayMicroseconds(50);
+}
+
+void lcdWrite4(uint8_t value, uint8_t mode = 0) {
+  uint8_t output = (value & 0xF0) | mode;
+  lcdExpander(output);
+  lcdPulse(output);
+}
+
+void lcdSend(uint8_t value, uint8_t mode = 0) {
+  lcdWrite4(value, mode);
+  lcdWrite4(value << 4, mode);
+}
+
+void lcdClear() {
+  if (!lcdReady) return;
+  lcdSend(0x01);
+  delayMicroseconds(2000);
+}
+
+void lcdBegin(uint8_t address, uint8_t columns, uint8_t rows) {
+  lcdAddress = address;
+  lcdColumns = columns;
+  Wire.begin();
+  delay(50);
+  lcdWrite4(0x30); delayMicroseconds(4500);
+  lcdWrite4(0x30); delayMicroseconds(4500);
+  lcdWrite4(0x30); delayMicroseconds(150);
+  lcdWrite4(0x20);
+  lcdSend(rows > 1 ? 0x28 : 0x20);
+  lcdSend(0x0C);
+  lcdSend(0x06);
+  lcdReady = true;
+  lcdClear();
+}
+
+void lcdSetCursor(uint8_t column, uint8_t row) {
+  static const uint8_t rowOffsets[] = {0x00, 0x40, 0x14, 0x54};
+  lcdSend(0x80 | (constrain(column, 0, lcdColumns - 1) + rowOffsets[constrain(row, 0, 3)]));
+}
+
+void lcdPrint(const String &value) {
+  if (!lcdReady) return;
+  for (uint8_t index = 0; index < value.length(); index++) lcdSend(value[index], 0x01);
+}
+
 uint16_t programWord(uint16_t &address) {
   uint16_t value = programByte(address++);
   value |= (uint16_t)programByte(address++) << 8;
@@ -324,17 +448,28 @@ String valueText(const VmValue &value) {
 }
 
 float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
-  uint8_t sensorType = type == 22 ? DHT22 : DHT11;
-  if (!dht || dhtPin != pin || dhtType != sensorType) {
-    if (dht) delete dht;
-    dht = new DHT(pin, sensorType);
-    dhtPin = pin;
-    dhtType = sensorType;
-    dht->begin();
-    delay(20);
+  uint8_t data[5] = {0, 0, 0, 0, 0};
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+  delay(type == 22 ? 2 : 20);
+  digitalWrite(pin, HIGH);
+  delayMicroseconds(30);
+  pinMode(pin, INPUT_PULLUP);
+  if (!pulseIn(pin, LOW, 1000UL) || !pulseIn(pin, HIGH, 1000UL)) return -999;
+  for (uint8_t bit = 0; bit < 40; bit++) {
+    if (!pulseIn(pin, LOW, 1000UL)) return -999;
+    unsigned long highTime = pulseIn(pin, HIGH, 1000UL);
+    if (!highTime) return -999;
+    data[bit >> 3] <<= 1;
+    if (highTime > 40) data[bit >> 3] |= 1;
   }
-  float value = humidity ? dht->readHumidity() : dht->readTemperature();
-  return isnan(value) ? -999 : value;
+  if ((uint8_t)(data[0] + data[1] + data[2] + data[3]) != data[4]) return -999;
+  if (type == 22) {
+    uint16_t raw = ((uint16_t)data[humidity ? 0 : 2] << 8) | data[humidity ? 1 : 3];
+    float value = (raw & 0x7FFF) * 0.1f;
+    return (!humidity && (raw & 0x8000)) ? -value : value;
+  }
+  return humidity ? data[0] + data[1] * 0.1f : data[2] + data[3] * 0.1f;
 }
 
 String readBluetoothText() {
@@ -556,23 +691,26 @@ void executeStoredProgramStep() {
     uint8_t address = programByte(vmProgramCounter++);
     uint8_t columns = programByte(vmProgramCounter++);
     uint8_t rows = programByte(vmProgramCounter++);
-    if (lcd) delete lcd;
-    lcd = new LiquidCrystal_I2C(address, columns, rows);
-    lcd->init();
-    lcd->backlight();
-    lcd->clear();
+    lcdBegin(address, columns, rows);
   } else if (opcode == OP_LCD_PRINT) {
     long rowValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     long columnValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     uint8_t row = clampLong(rowValue, 0, 3);
     uint8_t column = clampLong(columnValue, 0, 19);
     String value = valueText(evaluateStoredExpression(vmProgramCounter));
-    if (lcd) {
-      lcd->setCursor(column, row);
-      lcd->print(value);
-    }
+    if (lcdReady) { lcdSetCursor(column, row); lcdPrint(value); }
   } else if (opcode == OP_LCD_CLEAR) {
-    if (lcd) lcd->clear();
+    lcdClear();
+  } else if (opcode == OP_OLED_BEGIN) {
+    uint8_t address = programByte(vmProgramCounter++);
+    oledBegin(address);
+  } else if (opcode == OP_OLED_PRINT) {
+    long row = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 7);
+    long column = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 15);
+    String value = valueText(evaluateStoredExpression(vmProgramCounter));
+    if (oledReady) { oledSetCursor(column, row); oledPrint(value); }
+  } else if (opcode == OP_OLED_CLEAR) {
+    oledClear();
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
     long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
@@ -665,7 +803,7 @@ void executeStoredProgramStep() {
     }
   } else {
     storedProgramValid = false;
-    Serial.println(F("PROGRAM_ERROR,invalid-opcode"));
+    Serial.println(F("ERR,OP"));
   }
 }
 
@@ -681,14 +819,14 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
     storedProgramValid = false;
     EEPROM.update(0, 0);
     if (receivingProgram) Serial.println(F("PROGRAM_READY"));
-    else Serial.println(F("PROGRAM_ERROR,size"));
+    else Serial.println(F("ERR,SIZE"));
   } else if (!strcmp(operation, "DATA") && count >= 2 && receivingProgram) {
     uint16_t offset = tokenInt(args[0]);
     const char *hex = args[1];
     uint16_t byteCount = strlen(hex) / 2;
     if (offset + byteCount > incomingProgramLength) {
       receivingProgram = false;
-      Serial.println(F("PROGRAM_ERROR,range"));
+      Serial.println(F("ERR,RANGE"));
       return;
     }
     for (uint16_t index = 0; index < byteCount; index++) {
@@ -700,7 +838,7 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "SAVE") && receivingProgram) {
     if (storedProgramChecksum(incomingProgramLength) != incomingChecksum) {
       receivingProgram = false;
-      Serial.println(F("PROGRAM_ERROR,checksum"));
+      Serial.println(F("ERR,CHECK"));
       return;
     }
     EEPROM.update(1, PROGRAM_MAGIC_1);
@@ -720,12 +858,12 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "RUN")) {
     stopOutputs();
     loadStoredProgram();
-    Serial.println(storedProgramValid ? F("PROGRAM_RUNNING") : F("PROGRAM_ERROR,empty"));
+    Serial.println(storedProgramValid ? F("OK,RUN") : F("ERR,EMPTY"));
   } else if (!strcmp(operation, "CLEAR")) {
     EEPROM.update(0, 0);
     storedProgramValid = false;
     stopOutputs();
-    Serial.println(F("PROGRAM_CLEARED"));
+    Serial.println(F("OK,CLEAR"));
   }
 }
 
@@ -779,16 +917,19 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "NOTONE") && count >= 1) {
     noTone(tokenInt(args[0]));
   } else if (!strcmp(operation, "LCDBEGIN") && count >= 3) {
-    if (lcd) delete lcd;
-    lcd = new LiquidCrystal_I2C(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
-    lcd->init();
-    lcd->backlight();
-    lcd->clear();
-  } else if (!strcmp(operation, "LCDPRINT") && count >= 3 && lcd) {
-    lcd->setCursor(tokenInt(args[1]), tokenInt(args[0]));
-    lcd->print(decodeHex(args[2]));
-  } else if (!strcmp(operation, "LCDCLEAR") && lcd) {
-    lcd->clear();
+    lcdBegin(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
+  } else if (!strcmp(operation, "LCDPRINT") && count >= 3 && lcdReady) {
+    lcdSetCursor(tokenInt(args[1]), tokenInt(args[0]));
+    lcdPrint(decodeHex(args[2]));
+  } else if (!strcmp(operation, "LCDCLEAR") && lcdReady) {
+    lcdClear();
+  } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
+    oledBegin(tokenInt(args[0], 60));
+  } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oledReady) {
+    oledSetCursor(constrain(tokenInt(args[1]), 0, 15), constrain(tokenInt(args[0]), 0, 7));
+    oledPrint(decodeHex(args[2]));
+  } else if (!strcmp(operation, "OLEDCLEAR") && oledReady) {
+    oledClear();
   } else if (!strcmp(operation, "NEOBEGIN") && count >= 2) {
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(constrain(tokenInt(args[1]), 1, 60), tokenInt(args[0]), NEO_GRB + NEO_KHZ800);
@@ -814,7 +955,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
       sendMp3Command(0x06, volume);
       Serial.println(F("MP3_READY"));
     } else {
-      Serial.println(F("ERROR,mp3-pins"));
+      Serial.println(F("ERR,MP3"));
     }
   } else if (!strcmp(operation, "MP3PLAY") && count >= 1) {
     sendMp3Command(0x03, max(1, tokenInt(args[0])));
@@ -894,7 +1035,7 @@ void loop() {
       inputLine[inputLength++] = character;
     } else {
       inputLength = 0;
-      Serial.println(F("ERROR,line-too-long"));
+      Serial.println(F("ERR,LONG"));
     }
   }
   executeStoredProgramStep();
