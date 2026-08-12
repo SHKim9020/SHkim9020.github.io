@@ -6,9 +6,10 @@
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
+#include <U8x8lib.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.3
-static const char *RUNTIME_VERSION = "1.1.3";
+// OneMaker Arduino UNO/Nano Runtime 1.1.4
+static const char *RUNTIME_VERSION = "1.1.4";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -49,7 +50,10 @@ enum StatementOpcode : uint8_t {
   OP_REPEAT_START = 25,
   OP_REPEAT_END = 26,
   OP_BT_SEND_RAW = 27,
-  OP_BT_SET_NAME = 28
+  OP_BT_SET_NAME = 28,
+  OP_OLED_BEGIN = 29,
+  OP_OLED_PRINT = 30,
+  OP_OLED_CLEAR = 31
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -117,6 +121,7 @@ uint16_t incomingChecksum = 0;
 bool receivingProgram = false;
 
 LiquidCrystal_I2C *lcd = nullptr;
+U8X8_SSD1306_128X64_NONAME_HW_I2C *oled = nullptr;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
@@ -573,6 +578,26 @@ void executeStoredProgramStep() {
     }
   } else if (opcode == OP_LCD_CLEAR) {
     if (lcd) lcd->clear();
+  } else if (opcode == OP_OLED_BEGIN) {
+    uint8_t address = programByte(vmProgramCounter++);
+    if (oled) delete oled;
+    oled = new U8X8_SSD1306_128X64_NONAME_HW_I2C(U8X8_PIN_NONE);
+    if (oled) {
+      oled->setI2CAddress(address << 1);
+      oled->begin();
+      oled->setFont(u8x8_font_chroma48medium8_r);
+      oled->clearDisplay();
+    }
+  } else if (opcode == OP_OLED_PRINT) {
+    long row = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 7);
+    long column = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 15);
+    String value = valueText(evaluateStoredExpression(vmProgramCounter));
+    if (oled) {
+      oled->setCursor(column, row);
+      oled->print(value);
+    }
+  } else if (opcode == OP_OLED_CLEAR) {
+    if (oled) oled->clearDisplay();
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
     long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
@@ -789,6 +814,20 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     lcd->print(decodeHex(args[2]));
   } else if (!strcmp(operation, "LCDCLEAR") && lcd) {
     lcd->clear();
+  } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
+    if (oled) delete oled;
+    oled = new U8X8_SSD1306_128X64_NONAME_HW_I2C(U8X8_PIN_NONE);
+    if (oled) {
+      oled->setI2CAddress(tokenInt(args[0], 60) << 1);
+      oled->begin();
+      oled->setFont(u8x8_font_chroma48medium8_r);
+      oled->clearDisplay();
+    }
+  } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oled) {
+    oled->setCursor(constrain(tokenInt(args[1]), 0, 15), constrain(tokenInt(args[0]), 0, 7));
+    oled->print(decodeHex(args[2]));
+  } else if (!strcmp(operation, "OLEDCLEAR") && oled) {
+    oled->clearDisplay();
   } else if (!strcmp(operation, "NEOBEGIN") && count >= 2) {
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(constrain(tokenInt(args[1]), 1, 60), tokenInt(args[0]), NEO_GRB + NEO_KHZ800);
