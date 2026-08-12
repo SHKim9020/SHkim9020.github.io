@@ -274,7 +274,6 @@ const uint8_t OLED_FONT_3X5[][3] PROGMEM = {
   {31,17,31},{0,31,0},{29,21,23},{21,21,31},{7,4,31},
   {23,21,29},{31,21,29},{1,1,31},{31,21,31},{23,21,31}
 };
-const uint8_t OLED_DOUBLE_4[] PROGMEM = {0,3,12,15,48,51,60,63,192,195,204,207,240,243,252,255};
 
 void oledCommand(uint8_t command) {
   Wire.beginTransmission(oledAddress);
@@ -342,7 +341,11 @@ void oledPrint(const String &value, uint8_t column, uint8_t row) {
         Wire.beginTransmission(oledAddress);
         Wire.write(0x40);
         for (uint8_t column = 0; column < 3; column++) {
-          uint8_t expanded = half ? (glyph[column] & 16 ? 3 : 0) : pgm_read_byte(&OLED_DOUBLE_4[glyph[column] & 15]);
+          uint8_t expanded = glyph[column] & 15;
+          expanded = (expanded | expanded << 2) & 0x33;
+          expanded = (expanded | expanded << 1) & 0x55;
+          expanded |= expanded << 1;
+          if (half) expanded = glyph[column] & 16 ? 3 : 0;
           Wire.write(expanded);
           Wire.write(expanded);
         }
@@ -824,7 +827,6 @@ void executeStoredProgramStep() {
     }
   } else {
     storedProgramValid = false;
-    Serial.println(F("ERR"));
   }
 }
 
@@ -944,8 +946,8 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     lcdPrint(decodeHex(args[2]));
   } else if (!strcmp(operation, "LCDCLEAR") && lcdReady) {
     lcdClear();
-  } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
-    oledBegin(tokenInt(args[0], 60), count >= 2 ? tokenInt(args[1], 1) : 1);
+  } else if (!strcmp(operation, "OLEDBEGIN") && count >= 2) {
+    oledBegin(tokenInt(args[0], 60), tokenInt(args[1], 1));
   } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oledReady) {
     oledPrint(decodeHex(args[2]), tokenInt(args[1]), tokenInt(args[0]));
   } else if (!strcmp(operation, "OLEDCLEAR") && oledReady) {
@@ -1053,10 +1055,7 @@ void loop() {
       inputLength = 0;
     } else if (inputLength < MAX_LINE - 1) {
       inputLine[inputLength++] = character;
-    } else {
-      inputLength = 0;
-      Serial.println(F("ERR"));
-    }
+    } else inputLength = 0;
   }
   executeStoredProgramStep();
 }
