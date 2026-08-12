@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.5
-static const char *RUNTIME_VERSION = "1.1.5";
+// OneMaker Arduino UNO/Nano Runtime 1.1.6
+static const char *RUNTIME_VERSION = "1.1.6";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -355,6 +355,15 @@ void oledPrint(const String &value, uint8_t column, uint8_t row) {
       x += 8;
     }
   }
+}
+
+void neoSet(int index, int red, int green, int blue) {
+  if (!pixels || !pixels->numPixels()) return;
+  uint8_t first = index == 255 ? 0 : constrain(index, 0, pixels->numPixels() - 1);
+  uint8_t end = index == 255 ? pixels->numPixels() : first + 1;
+  uint32_t color = pixels->Color(constrain(red, 0, 255), constrain(green, 0, 255), constrain(blue, 0, 255));
+  while (first < end) pixels->setPixelColor(first++, color);
+  pixels->show();
 }
 
 void lcdExpander(uint8_t value) {
@@ -749,11 +758,7 @@ void executeStoredProgramStep() {
     int red = valueNumber(evaluateStoredExpression(vmProgramCounter));
     int green = valueNumber(evaluateStoredExpression(vmProgramCounter));
     int blue = valueNumber(evaluateStoredExpression(vmProgramCounter));
-    if (pixels && pixels->numPixels()) {
-      pixels->setPixelColor(constrain(index, 0, pixels->numPixels() - 1),
-        pixels->Color(constrain(red, 0, 255), constrain(green, 0, 255), constrain(blue, 0, 255)));
-      pixels->show();
-    }
+    neoSet(index, red, green, blue);
   } else if (opcode == OP_NEO_CLEAR) {
     if (pixels) {
       pixels->clear();
@@ -956,15 +961,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     pixels->clear();
     pixels->show();
   } else if (!strcmp(operation, "NEOSET") && count >= 4 && pixels) {
-    pixels->setPixelColor(
-      constrain(tokenInt(args[0]), 0, pixels->numPixels() - 1),
-      pixels->Color(
-        constrain(tokenInt(args[1]), 0, 255),
-        constrain(tokenInt(args[2]), 0, 255),
-        constrain(tokenInt(args[3]), 0, 255)
-      )
-    );
-    pixels->show();
+    neoSet(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]), tokenInt(args[3]));
   } else if (!strcmp(operation, "NEOCLEAR") && pixels) {
     pixels->clear();
     pixels->show();
