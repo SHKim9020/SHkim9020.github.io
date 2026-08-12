@@ -15,24 +15,28 @@ test("OLED toolbox exposes begin, print, and clear blocks", () => {
   }
   assert.match(app, /name: "0\.96 OLED"/);
   assert.match(app, /\[\["0x3C", "60"\], \["0x3D", "61"\]\]/);
+  assert.match(app, /name: "SIZE", options: \[\["1배", "1"\], \["2배", "2"\]\]/);
 });
 
 test("OLED works in stored, live, and generated INO modes", () => {
   assert.match(app, /OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31/);
   assert.match(app, /sendAction\("OLEDBEGIN"/);
+  assert.match(app, /oled\.set\$\{block\.getFieldValue\("SIZE"\) === "2" \? "2" : "1"\}X/);
   assert.match(app, /sendAction\([\s\S]*"OLEDPRINT"/);
   assert.match(app, /#include <SSD1306Ascii\.h>/);
   assert.match(runtime, /OP_OLED_BEGIN = 29/);
   assert.match(runtime, /"OLEDPRINT"/);
   assert.match(runtime, /OLED_FONT_3X5/);
   assert.match(runtime, /void oledBegin/);
+  assert.match(runtime, /oledScale = scale == 2 \? 2 : 1/);
+  assert.match(runtime, /expanded \|= expanded << 1/);
   assert.doesNotMatch(runtime, /character >= 'A'/);
 });
 
-test("UNO and both Nano bootloader upload paths use runtime 1.1.4", () => {
-  assert.match(app, /const RUNTIME_VERSION = "1\.1\.4"/);
-  assert.match(runtime, /RUNTIME_VERSION = "1\.1\.4"/);
-  assert.equal((html.match(/onemaker_runtime-1\.1\.4\.hex/g) || []).length, 3);
+test("UNO and both Nano bootloader upload paths use runtime 1.1.5", () => {
+  assert.match(app, /const RUNTIME_VERSION = "1\.1\.5"/);
+  assert.match(runtime, /RUNTIME_VERSION = "1\.1\.5"/);
+  assert.equal((html.match(/onemaker_runtime-1\.1\.5\.hex/g) || []).length, 3);
   for (const board of ["uno", "nano", "nanoOldBootloader"]) {
     assert.match(html, new RegExp(`board="${board}"`));
   }
