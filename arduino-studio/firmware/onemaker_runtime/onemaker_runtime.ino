@@ -123,8 +123,6 @@ bool lcdReady = false;
 uint8_t oledAddress = 0x3C;
 bool oledReady = false;
 uint8_t oledScale = 1;
-uint8_t oledX = 0;
-uint8_t oledPage = 0;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
@@ -290,12 +288,6 @@ void oledRawCursor(uint8_t x, uint8_t page) {
   oledCommand(0x10 | (x >> 4));
 }
 
-void oledSetCursor(uint8_t column, uint8_t row) {
-  oledX = constrain(column, 0, 15) * 4 * oledScale;
-  oledPage = oledScale == 2 ? constrain(row, 0, 3) * 2 : constrain(row, 0, 7);
-  oledRawCursor(oledX, oledPage);
-}
-
 void oledClear() {
   if (!oledReady) return;
   for (uint8_t page = 0; page < 8; page++) {
@@ -307,7 +299,7 @@ void oledClear() {
       Wire.endTransmission();
     }
   }
-  oledSetCursor(0, 0);
+  oledRawCursor(0, 0);
 }
 
 void oledBegin(uint8_t address, uint8_t scale) {
@@ -323,8 +315,11 @@ void oledBegin(uint8_t address, uint8_t scale) {
   oledClear();
 }
 
-void oledPrint(const String &value) {
+void oledPrint(const String &value, uint8_t column, uint8_t row) {
   if (!oledReady) return;
+  uint8_t x = constrain(column, 0, 15) * 4 * oledScale;
+  uint8_t page = oledScale == 2 ? constrain(row, 0, 3) * 2 : constrain(row, 0, 7);
+  oledRawCursor(x, page);
   for (uint8_t index = 0; index < value.length(); index++) {
     char character = value[index];
     uint8_t glyph[3] = {0, 0, 0};
@@ -340,22 +335,24 @@ void oledPrint(const String &value) {
       Wire.write(glyph, 3);
       Wire.write(0);
       Wire.endTransmission();
-      oledX += 4;
     } else {
       for (uint8_t half = 0; half < 2; half++) {
-        oledRawCursor(oledX, oledPage + half);
+        oledRawCursor(x, page + half);
         Wire.beginTransmission(oledAddress);
         Wire.write(0x40);
         for (uint8_t column = 0; column < 3; column++) {
-          uint16_t expanded = 0;
-          for (uint8_t bit = 0; bit < 5; bit++) if (glyph[column] & (1 << bit)) expanded |= (uint16_t)3 << (bit * 2);
+          uint16_t expanded = glyph[column];
+          expanded = (expanded | expanded << 4) & 0x0F0F;
+          expanded = (expanded | expanded << 2) & 0x3333;
+          expanded = (expanded | expanded << 1) & 0x5555;
+          expanded |= expanded << 1;
           Wire.write(expanded >> (half * 8));
           Wire.write(expanded >> (half * 8));
         }
         Wire.write(0); Wire.write(0);
         Wire.endTransmission();
       }
-      oledX += 8;
+      x += 8;
     }
   }
 }
@@ -735,7 +732,7 @@ void executeStoredProgramStep() {
     long row = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 7);
     long column = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 15);
     String value = valueText(evaluateStoredExpression(vmProgramCounter));
-    if (oledReady) { oledSetCursor(column, row); oledPrint(value); }
+    oledPrint(value, column, row);
   } else if (opcode == OP_OLED_CLEAR) {
     oledClear();
   } else if (opcode == OP_NEO_BEGIN) {
@@ -953,8 +950,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
     oledBegin(tokenInt(args[0], 60), count >= 2 ? tokenInt(args[1], 1) : 1);
   } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oledReady) {
-    oledSetCursor(constrain(tokenInt(args[1]), 0, 15), constrain(tokenInt(args[0]), 0, 7));
-    oledPrint(decodeHex(args[2]));
+    oledPrint(decodeHex(args[2]), tokenInt(args[1]), tokenInt(args[0]));
   } else if (!strcmp(operation, "OLEDCLEAR") && oledReady) {
     oledClear();
   } else if (!strcmp(operation, "NEOBEGIN") && count >= 2) {
