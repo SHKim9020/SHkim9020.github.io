@@ -38,6 +38,8 @@ test("UNO and both Nano bootloader upload paths use runtime 1.1.4", () => {
   }
   assert.doesNotMatch(workflow, /U8g2/);
   assert.doesNotMatch(runtime, /#include <DHT\.h>/);
+  assert.doesNotMatch(runtime, /#include <LiquidCrystal_I2C\.h>/);
   assert.match(runtime, /pulseIn\(pin, LOW, 1000UL\)/);
   assert.match(workflow, /--fqbn "arduino:avr:uno"/);
+  assert.match(workflow, /--fqbn "arduino:avr:nano:cpu=atmega328"/);
 });

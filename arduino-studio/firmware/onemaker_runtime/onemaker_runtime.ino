@@ -3,7 +3,6 @@
 #include <Wire.h>
 #include <Servo.h>
 #include <SoftwareSerial.h>
-#include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 
 // OneMaker Arduino UNO/Nano Runtime 1.1.4
@@ -118,7 +117,9 @@ uint16_t incomingSetupLength = 0;
 uint16_t incomingChecksum = 0;
 bool receivingProgram = false;
 
-LiquidCrystal_I2C *lcd = nullptr;
+uint8_t lcdAddress = 0x27;
+uint8_t lcdColumns = 16;
+bool lcdReady = false;
 uint8_t oledAddress = 0x3C;
 bool oledReady = false;
 Adafruit_NeoPixel *pixels = nullptr;
@@ -330,6 +331,62 @@ void oledPrint(const String &value) {
     Wire.write(0);
     Wire.endTransmission();
   }
+}
+
+void lcdExpander(uint8_t value) {
+  Wire.beginTransmission(lcdAddress);
+  Wire.write(value | 0x08); // Backlight on.
+  Wire.endTransmission();
+}
+
+void lcdPulse(uint8_t value) {
+  lcdExpander(value | 0x04);
+  delayMicroseconds(1);
+  lcdExpander(value & ~0x04);
+  delayMicroseconds(50);
+}
+
+void lcdWrite4(uint8_t value, uint8_t mode = 0) {
+  uint8_t output = (value & 0xF0) | mode;
+  lcdExpander(output);
+  lcdPulse(output);
+}
+
+void lcdSend(uint8_t value, uint8_t mode = 0) {
+  lcdWrite4(value, mode);
+  lcdWrite4(value << 4, mode);
+}
+
+void lcdClear() {
+  if (!lcdReady) return;
+  lcdSend(0x01);
+  delayMicroseconds(2000);
+}
+
+void lcdBegin(uint8_t address, uint8_t columns, uint8_t rows) {
+  lcdAddress = address;
+  lcdColumns = columns;
+  Wire.begin();
+  delay(50);
+  lcdWrite4(0x30); delayMicroseconds(4500);
+  lcdWrite4(0x30); delayMicroseconds(4500);
+  lcdWrite4(0x30); delayMicroseconds(150);
+  lcdWrite4(0x20);
+  lcdSend(rows > 1 ? 0x28 : 0x20);
+  lcdSend(0x0C);
+  lcdSend(0x06);
+  lcdReady = true;
+  lcdClear();
+}
+
+void lcdSetCursor(uint8_t column, uint8_t row) {
+  static const uint8_t rowOffsets[] = {0x00, 0x40, 0x14, 0x54};
+  lcdSend(0x80 | (constrain(column, 0, lcdColumns - 1) + rowOffsets[constrain(row, 0, 3)]));
+}
+
+void lcdPrint(const String &value) {
+  if (!lcdReady) return;
+  for (uint8_t index = 0; index < value.length(); index++) lcdSend(value[index], 0x01);
 }
 
 uint16_t programWord(uint16_t &address) {
@@ -634,23 +691,16 @@ void executeStoredProgramStep() {
     uint8_t address = programByte(vmProgramCounter++);
     uint8_t columns = programByte(vmProgramCounter++);
     uint8_t rows = programByte(vmProgramCounter++);
-    if (lcd) delete lcd;
-    lcd = new LiquidCrystal_I2C(address, columns, rows);
-    lcd->init();
-    lcd->backlight();
-    lcd->clear();
+    lcdBegin(address, columns, rows);
   } else if (opcode == OP_LCD_PRINT) {
     long rowValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     long columnValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     uint8_t row = clampLong(rowValue, 0, 3);
     uint8_t column = clampLong(columnValue, 0, 19);
     String value = valueText(evaluateStoredExpression(vmProgramCounter));
-    if (lcd) {
-      lcd->setCursor(column, row);
-      lcd->print(value);
-    }
+    if (lcdReady) { lcdSetCursor(column, row); lcdPrint(value); }
   } else if (opcode == OP_LCD_CLEAR) {
-    if (lcd) lcd->clear();
+    lcdClear();
   } else if (opcode == OP_OLED_BEGIN) {
     uint8_t address = programByte(vmProgramCounter++);
     oledBegin(address);
@@ -867,16 +917,12 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "NOTONE") && count >= 1) {
     noTone(tokenInt(args[0]));
   } else if (!strcmp(operation, "LCDBEGIN") && count >= 3) {
-    if (lcd) delete lcd;
-    lcd = new LiquidCrystal_I2C(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
-    lcd->init();
-    lcd->backlight();
-    lcd->clear();
-  } else if (!strcmp(operation, "LCDPRINT") && count >= 3 && lcd) {
-    lcd->setCursor(tokenInt(args[1]), tokenInt(args[0]));
-    lcd->print(decodeHex(args[2]));
-  } else if (!strcmp(operation, "LCDCLEAR") && lcd) {
-    lcd->clear();
+    lcdBegin(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
+  } else if (!strcmp(operation, "LCDPRINT") && count >= 3 && lcdReady) {
+    lcdSetCursor(tokenInt(args[1]), tokenInt(args[0]));
+    lcdPrint(decodeHex(args[2]));
+  } else if (!strcmp(operation, "LCDCLEAR") && lcdReady) {
+    lcdClear();
   } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
     oledBegin(tokenInt(args[0], 60));
   } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oledReady) {

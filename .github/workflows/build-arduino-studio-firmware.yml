@@ -31,20 +31,26 @@ jobs:
           arduino-cli core install arduino:avr
           arduino-cli lib install "Servo"
           arduino-cli lib install "Adafruit NeoPixel"
-          arduino-cli lib install "LiquidCrystal I2C"
 
-      - name: Compile UNO/Nano runtime
+      - name: Compile UNO and Nano runtime
         run: |
-          rm -rf "$RUNNER_TEMP/onemaker-arduino-build"
-          mkdir -p "$RUNNER_TEMP/onemaker-arduino-build"
+          rm -rf "$RUNNER_TEMP/onemaker-arduino-uno" "$RUNNER_TEMP/onemaker-arduino-nano"
+          mkdir -p "$RUNNER_TEMP/onemaker-arduino-uno" "$RUNNER_TEMP/onemaker-arduino-nano"
           arduino-cli compile \
             --clean \
             --fqbn "arduino:avr:uno" \
-            --output-dir "$RUNNER_TEMP/onemaker-arduino-build" \
+            --output-dir "$RUNNER_TEMP/onemaker-arduino-uno" \
             arduino-studio/firmware/onemaker_runtime
-          cp "$RUNNER_TEMP/onemaker-arduino-build/onemaker_runtime.ino.hex" \
+          arduino-cli compile \
+            --clean \
+            --fqbn "arduino:avr:nano:cpu=atmega328" \
+            --output-dir "$RUNNER_TEMP/onemaker-arduino-nano" \
+            arduino-studio/firmware/onemaker_runtime
+          cmp "$RUNNER_TEMP/onemaker-arduino-uno/onemaker_runtime.ino.hex" \
+            "$RUNNER_TEMP/onemaker-arduino-nano/onemaker_runtime.ino.hex"
+          cp "$RUNNER_TEMP/onemaker-arduino-nano/onemaker_runtime.ino.hex" \
             arduino-studio/firmware/onemaker_runtime.hex
-          cp "$RUNNER_TEMP/onemaker-arduino-build/onemaker_runtime.ino.hex" \
+          cp "$RUNNER_TEMP/onemaker-arduino-nano/onemaker_runtime.ino.hex" \
             arduino-studio/firmware/onemaker_runtime-1.1.4.hex
 
       - name: Verify runtime image
