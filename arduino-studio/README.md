@@ -36,6 +36,7 @@ PWA 앱은 블록 작성·프로젝트 저장·열기를 지원합니다. Androi
 - PWM: D3, D5, D6, D9, D10, D11
 - I²C LCD: A4 SDA, A5 SCL
 - 0.96 OLED: A4 SDA, A5 SCL, 기본 주소 0x3C(일부 제품 0x3D), 문자 위치는 행 0~7·열 0~15
+- OLED의 보드 저장·단독 실행 모드는 Nano 메모리 한계 때문에 숫자와 `. - : %` 기호에 최적화했습니다. INO 다운로드 코드는 영문도 출력할 수 있습니다.
 - 아날로그 입력: A0~A5
 - Bluetooth 기본 핀은 Arduino RX D2, Arduino TX D3이며 모듈 TX → D2, 모듈 RX ← D3로 교차 연결
 - Bluetooth와 DFPlayer를 동시에 사용할 때는 서로 다른 RX/TX 핀을 사용

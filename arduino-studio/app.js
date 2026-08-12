@@ -308,7 +308,7 @@
       nextStatement: null,
       inputsInline: true,
       colour: 195,
-      tooltip: "행 0~7, 열 0~15에 영문·숫자를 표시합니다."
+      tooltip: "행 0~7, 열 0~15에 값을 표시합니다. 보드 저장 모드는 숫자와 . - : % 기호에 최적화되어 있습니다."
     },
     {
       type: "oled_clear",
@@ -575,7 +575,7 @@
       ] },
       { kind: "category", name: "0.96 OLED", colour: "195", contents: [
         { kind: "block", type: "oled_begin" },
-        { kind: "block", type: "oled_print", inputs: { ROW: numberShadow(0), COL: numberShadow(0), VALUE: textShadow("HELLO") } },
+        { kind: "block", type: "oled_print", inputs: { ROW: numberShadow(0), COL: numberShadow(0), VALUE: numberShadow(123) } },
         { kind: "block", type: "oled_clear" }
       ] },
       { kind: "category", name: "네오픽셀", colour: "290", contents: [

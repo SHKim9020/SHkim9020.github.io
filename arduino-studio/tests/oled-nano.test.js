@@ -26,6 +26,7 @@ test("OLED works in stored, live, and generated INO modes", () => {
   assert.match(runtime, /"OLEDPRINT"/);
   assert.match(runtime, /OLED_FONT_3X5/);
   assert.match(runtime, /void oledBegin/);
+  assert.doesNotMatch(runtime, /character >= 'A'/);
 });
 
 test("UNO and both Nano bootloader upload paths use runtime 1.1.4", () => {
