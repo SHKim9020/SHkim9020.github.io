@@ -357,6 +357,15 @@ void oledPrint(const String &value, uint8_t column, uint8_t row) {
   }
 }
 
+void neoSet(int index, int red, int green, int blue) {
+  if (!pixels || !pixels->numPixels()) return;
+  uint8_t first = index == 255 ? 0 : constrain(index, 0, pixels->numPixels() - 1);
+  uint8_t end = index == 255 ? pixels->numPixels() : first + 1;
+  uint32_t color = pixels->Color(constrain(red, 0, 255), constrain(green, 0, 255), constrain(blue, 0, 255));
+  while (first < end) pixels->setPixelColor(first++, color);
+  pixels->show();
+}
+
 void lcdExpander(uint8_t value) {
   Wire.beginTransmission(lcdAddress);
   Wire.write(value | 0x08); // Backlight on.
@@ -749,12 +758,7 @@ void executeStoredProgramStep() {
     int red = valueNumber(evaluateStoredExpression(vmProgramCounter));
     int green = valueNumber(evaluateStoredExpression(vmProgramCounter));
     int blue = valueNumber(evaluateStoredExpression(vmProgramCounter));
-    if (pixels && pixels->numPixels()) {
-      uint32_t color = pixels->Color(constrain(red, 0, 255), constrain(green, 0, 255), constrain(blue, 0, 255));
-      if (index == 255) pixels->fill(color);
-      else pixels->setPixelColor(constrain(index, 0, pixels->numPixels() - 1), color);
-      pixels->show();
-    }
+    neoSet(index, red, green, blue);
   } else if (opcode == OP_NEO_CLEAR) {
     if (pixels) {
       pixels->clear();
@@ -957,15 +961,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     pixels->clear();
     pixels->show();
   } else if (!strcmp(operation, "NEOSET") && count >= 4 && pixels) {
-    int index = tokenInt(args[0]);
-    uint32_t color = pixels->Color(
-        constrain(tokenInt(args[1]), 0, 255),
-        constrain(tokenInt(args[2]), 0, 255),
-        constrain(tokenInt(args[3]), 0, 255)
-      );
-    if (index == 255) pixels->fill(color);
-    else pixels->setPixelColor(constrain(index, 0, pixels->numPixels() - 1), color);
-    pixels->show();
+    neoSet(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]), tokenInt(args[3]));
   } else if (!strcmp(operation, "NEOCLEAR") && pixels) {
     pixels->clear();
     pixels->show();

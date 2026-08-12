@@ -20,6 +20,6 @@ test("all-LED block works in stored, live, and generated INO modes", () => {
   assert.match(app, /writer\.u8\(VM\.NEO_SET\); numberExpression\(255\)/);
   assert.match(app, /sendAction\("NEOSET", 255/);
   assert.match(app, /pixels\.fill\(pixels\.Color/);
-  assert.match(runtime, /if \(index == 255\) pixels->fill\(color\)/);
-  assert.match(runtime, /else pixels->setPixelColor/);
+  assert.match(runtime, /uint8_t first = index == 255 \? 0/);
+  assert.match(runtime, /while \(first < end\) pixels->setPixelColor/);
 });
