@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.4
-static const char *RUNTIME_VERSION = "1.1.4";
+// OneMaker Arduino UNO/Nano Runtime 1.1.5
+static const char *RUNTIME_VERSION = "1.1.5";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -122,6 +122,9 @@ uint8_t lcdColumns = 16;
 bool lcdReady = false;
 uint8_t oledAddress = 0x3C;
 bool oledReady = false;
+uint8_t oledScale = 1;
+uint8_t oledX = 0;
+uint8_t oledPage = 0;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
@@ -281,17 +284,22 @@ void oledCommand(uint8_t command) {
   Wire.endTransmission();
 }
 
-void oledSetCursor(uint8_t column, uint8_t row) {
-  uint8_t x = constrain(column, 0, 31) * 4;
-  oledCommand(0xB0 | constrain(row, 0, 7));
+void oledRawCursor(uint8_t x, uint8_t page) {
+  oledCommand(0xB0 | page);
   oledCommand(x & 0x0F);
   oledCommand(0x10 | (x >> 4));
+}
+
+void oledSetCursor(uint8_t column, uint8_t row) {
+  oledX = constrain(column, 0, 15) * 4 * oledScale;
+  oledPage = oledScale == 2 ? constrain(row, 0, 3) * 2 : constrain(row, 0, 7);
+  oledRawCursor(oledX, oledPage);
 }
 
 void oledClear() {
   if (!oledReady) return;
   for (uint8_t page = 0; page < 8; page++) {
-    oledSetCursor(0, page);
+    oledRawCursor(0, page);
     for (uint8_t chunk = 0; chunk < 8; chunk++) {
       Wire.beginTransmission(oledAddress);
       Wire.write(0x40);
@@ -302,12 +310,13 @@ void oledClear() {
   oledSetCursor(0, 0);
 }
 
-void oledBegin(uint8_t address) {
+void oledBegin(uint8_t address, uint8_t scale) {
   static const uint8_t initCommands[] PROGMEM = {
     0xAE,0xD5,0x80,0xA8,0x3F,0xD3,0x00,0x40,0x8D,0x14,0x20,0x02,
     0xA1,0xC8,0xDA,0x12,0x81,0xCF,0xD9,0xF1,0xDB,0x40,0xA4,0xA6,0xAF
   };
   oledAddress = address;
+  oledScale = scale == 2 ? 2 : 1;
   Wire.begin();
   for (uint8_t index = 0; index < sizeof(initCommands); index++) oledCommand(pgm_read_byte(&initCommands[index]));
   oledReady = true;
@@ -325,11 +334,29 @@ void oledPrint(const String &value) {
     else if (character == '.') glyph[1] = 16;
     else if (character == ':') glyph[1] = 10;
     else if (character == '%') { glyph[0] = 25; glyph[1] = 4; glyph[2] = 19; }
-    Wire.beginTransmission(oledAddress);
-    Wire.write(0x40);
-    Wire.write(glyph, 3);
-    Wire.write(0);
-    Wire.endTransmission();
+    if (oledScale == 1) {
+      Wire.beginTransmission(oledAddress);
+      Wire.write(0x40);
+      Wire.write(glyph, 3);
+      Wire.write(0);
+      Wire.endTransmission();
+      oledX += 4;
+    } else {
+      for (uint8_t half = 0; half < 2; half++) {
+        oledRawCursor(oledX, oledPage + half);
+        Wire.beginTransmission(oledAddress);
+        Wire.write(0x40);
+        for (uint8_t column = 0; column < 3; column++) {
+          uint16_t expanded = 0;
+          for (uint8_t bit = 0; bit < 5; bit++) if (glyph[column] & (1 << bit)) expanded |= (uint16_t)3 << (bit * 2);
+          Wire.write(expanded >> (half * 8));
+          Wire.write(expanded >> (half * 8));
+        }
+        Wire.write(0); Wire.write(0);
+        Wire.endTransmission();
+      }
+      oledX += 8;
+    }
   }
 }
 
@@ -703,7 +730,7 @@ void executeStoredProgramStep() {
     lcdClear();
   } else if (opcode == OP_OLED_BEGIN) {
     uint8_t address = programByte(vmProgramCounter++);
-    oledBegin(address);
+    oledBegin(address, programByte(vmProgramCounter++));
   } else if (opcode == OP_OLED_PRINT) {
     long row = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 7);
     long column = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 15);
@@ -924,7 +951,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "LCDCLEAR") && lcdReady) {
     lcdClear();
   } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
-    oledBegin(tokenInt(args[0], 60));
+    oledBegin(tokenInt(args[0], 60), count >= 2 ? tokenInt(args[1], 1) : 1);
   } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oledReady) {
     oledSetCursor(constrain(tokenInt(args[1]), 0, 15), constrain(tokenInt(args[0]), 0, 7));
     oledPrint(decodeHex(args[2]));

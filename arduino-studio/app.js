@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.4";
+  const RUNTIME_VERSION = "1.1.5";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -287,14 +287,15 @@
     },
     {
       type: "oled_begin",
-      message0: "0.96 OLED 시작 주소 %1",
+      message0: "0.96 OLED 시작 주소 %1 글자 크기 %2",
       args0: [
-        { type: "field_dropdown", name: "ADDRESS", options: [["0x3C", "60"], ["0x3D", "61"]] }
+        { type: "field_dropdown", name: "ADDRESS", options: [["0x3C", "60"], ["0x3D", "61"]] },
+        { type: "field_dropdown", name: "SIZE", options: [["1배", "1"], ["2배", "2"]] }
       ],
       previousStatement: null,
       nextStatement: null,
       colour: 195,
-      tooltip: "SSD1306 128×64 I²C OLED를 시작합니다. UNO·Nano는 SDA A4, SCL A5에 연결합니다."
+      tooltip: "SSD1306 128×64 I²C OLED를 시작합니다. 2배 크기는 행 0~3에서 사용합니다. UNO·Nano는 SDA A4, SCL A5에 연결합니다."
     },
     {
       type: "oled_print",
@@ -1113,7 +1114,7 @@
       case "lcd_clear":
         writer.u8(VM.LCD_CLEAR); return;
       case "oled_begin":
-        writer.u8(VM.OLED_BEGIN); pin("ADDRESS"); return;
+        writer.u8(VM.OLED_BEGIN); pin("ADDRESS"); writer.u8(block.getFieldValue("SIZE") || 1); return;
       case "oled_print":
         writer.u8(VM.OLED_PRINT); expression("ROW"); expression("COL"); expression("VALUE"); return;
       case "oled_clear":
@@ -1738,7 +1739,7 @@
       case "lcd_clear":
         return sendAction("LCDCLEAR");
       case "oled_begin":
-        return sendAction("OLEDBEGIN", block.getFieldValue("ADDRESS"));
+        return sendAction("OLEDBEGIN", block.getFieldValue("ADDRESS"), block.getFieldValue("SIZE") || 1);
       case "oled_print":
         return sendAction(
           "OLEDPRINT",
@@ -2129,9 +2130,11 @@
         return line("Wire.begin();")
           + line(`oled.begin(&Adafruit128x64, 0x${Number(block.getFieldValue("ADDRESS")).toString(16).toUpperCase()});`)
           + line("oled.setFont(System5x7);")
+          + line(`oled.set${block.getFieldValue("SIZE") === "2" ? "2" : "1"}X();`)
+          + line(`oledTextScale = ${block.getFieldValue("SIZE") === "2" ? "2" : "1"};`)
           + line("oled.clear();");
       case "oled_print":
-        return line(`oled.setCursor(constrain(${cppInput(block, "COL")}, 0, 15) * 6, constrain(${cppInput(block, "ROW")}, 0, 7));`)
+        return line(`oled.setCursor(constrain(${cppInput(block, "COL")}, 0, oledTextScale == 2 ? 10 : 15) * 6 * oledTextScale, constrain(${cppInput(block, "ROW")}, 0, oledTextScale == 2 ? 3 : 7) * oledTextScale);`)
           + line(`oled.print(${cppInput(block, "VALUE", '\"\"')});`);
       case "oled_clear": return line("oled.clear();");
       case "neo_begin": return line("pixels.begin();") + line("pixels.clear();") + line("pixels.show();");
@@ -2230,7 +2233,7 @@
     hardware.dht.forEach(({ pin, type }) => globals.push(`DHT ${dhtName(pin, type)}(${pin}, DHT${type});`));
     hardware.servoPins.forEach(pin => globals.push(`Servo ${cppIdentifier(pin, "servo")};`));
     if (hardware.lcd.enabled) globals.push(`LiquidCrystal_I2C lcd(0x${hardware.lcd.address.toString(16).toUpperCase()}, ${hardware.lcd.columns}, ${hardware.lcd.rows});`);
-    if (hardware.oled.enabled) globals.push("SSD1306AsciiWire oled;");
+    if (hardware.oled.enabled) globals.push("SSD1306AsciiWire oled;", "uint8_t oledTextScale = 1;");
     if (hardware.neo.enabled) globals.push(`Adafruit_NeoPixel pixels(${hardware.neo.count}, ${hardware.neo.pin}, NEO_GRB + NEO_KHZ800);`);
     if (hardware.bluetooth.enabled) globals.push(`SoftwareSerial bluetooth(${hardware.bluetooth.rx}, ${hardware.bluetooth.tx}); // Arduino RX, TX`);
     if (hardware.mp3.enabled) globals.push(`SoftwareSerial mp3Serial(${hardware.mp3.rx}, ${hardware.mp3.tx}); // Arduino RX, TX`);

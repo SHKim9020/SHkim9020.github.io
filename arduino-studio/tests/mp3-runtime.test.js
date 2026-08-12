@@ -20,12 +20,12 @@ test("runtime performs reset, cold-start wait, and microSD selection", () => {
   assert.match(runtime, /MP3_READY/);
 });
 
-test("web app and firmware require runtime 1.1.4", () => {
-  assert.match(app, /const RUNTIME_VERSION = "1\.1\.4"/);
-  assert.match(runtime, /RUNTIME_VERSION = "1\.1\.4"/);
-  assert.match(html, /onemaker_runtime-1\.1\.4\.hex/g);
-  assert.match(html, /app\.js\?v=1\.4\.0/);
-  assert.match(html, /https:\/\/raw\.githubusercontent\.com\/SHKim9020\/SHkim9020\.github\.io\/main\/arduino-studio\/firmware\/onemaker_runtime-1\.1\.4\.hex/);
+test("web app and firmware require runtime 1.1.5", () => {
+  assert.match(app, /const RUNTIME_VERSION = "1\.1\.5"/);
+  assert.match(runtime, /RUNTIME_VERSION = "1\.1\.5"/);
+  assert.match(html, /onemaker_runtime-1\.1\.5\.hex/g);
+  assert.match(html, /app\.js\?v=1\.4\.1/);
+  assert.match(html, /https:\/\/raw\.githubusercontent\.com\/SHKim9020\/SHkim9020\.github\.io\/main\/arduino-studio\/firmware\/onemaker_runtime-1\.1\.5\.hex/);
 });
 
 test("quick test exposes independent pins, track, volume, play, and stop", () => {
