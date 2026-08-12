@@ -33,7 +33,6 @@ jobs:
           arduino-cli lib install "DHT sensor library"
           arduino-cli lib install "Adafruit NeoPixel"
           arduino-cli lib install "LiquidCrystal I2C"
-          arduino-cli lib install "U8g2"
 
       - name: Compile UNO/Nano runtime
         run: |

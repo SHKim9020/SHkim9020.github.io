@@ -2126,14 +2126,14 @@
           + line(`lcd.print(${cppInput(block, "VALUE", '""')});`);
       case "lcd_clear": return line("lcd.clear();");
       case "oled_begin":
-        return line(`oled.setI2CAddress(${block.getFieldValue("ADDRESS")} << 1);`)
-          + line("oled.begin();")
-          + line("oled.setFont(u8x8_font_chroma48medium8_r);")
-          + line("oled.clearDisplay();");
+        return line("Wire.begin();")
+          + line(`oled.begin(&Adafruit128x64, 0x${Number(block.getFieldValue("ADDRESS")).toString(16).toUpperCase()});`)
+          + line("oled.setFont(System5x7);")
+          + line("oled.clear();");
       case "oled_print":
-        return line(`oled.setCursor(constrain(${cppInput(block, "COL")}, 0, 15), constrain(${cppInput(block, "ROW")}, 0, 7));`)
+        return line(`oled.setCursor(constrain(${cppInput(block, "COL")}, 0, 15) * 6, constrain(${cppInput(block, "ROW")}, 0, 7));`)
           + line(`oled.print(${cppInput(block, "VALUE", '\"\"')});`);
-      case "oled_clear": return line("oled.clearDisplay();");
+      case "oled_clear": return line("oled.clear();");
       case "neo_begin": return line("pixels.begin();") + line("pixels.clear();") + line("pixels.show();");
       case "neo_set":
         return line(`pixels.setPixelColor(${cppInput(block, "INDEX")}, pixels.Color(${cppInput(block, "R")}, ${cppInput(block, "G")}, ${cppInput(block, "B")}));`)
@@ -2222,7 +2222,7 @@
     if (hardware.dht.length) includes.push("#include <DHT.h>");
     if (hardware.servoPins.length) includes.push("#include <Servo.h>");
     if (hardware.lcd.enabled) includes.push("#include <Wire.h>", "#include <LiquidCrystal_I2C.h>");
-    if (hardware.oled.enabled) includes.push("#include <Wire.h>", "#include <U8x8lib.h>");
+    if (hardware.oled.enabled) includes.push("#include <Wire.h>", "#include <SSD1306Ascii.h>", "#include <SSD1306AsciiWire.h>");
     if (hardware.neo.enabled) includes.push("#include <Adafruit_NeoPixel.h>");
     if (hardware.bluetooth.enabled || hardware.mp3.enabled) includes.push("#include <SoftwareSerial.h>");
 
@@ -2230,7 +2230,7 @@
     hardware.dht.forEach(({ pin, type }) => globals.push(`DHT ${dhtName(pin, type)}(${pin}, DHT${type});`));
     hardware.servoPins.forEach(pin => globals.push(`Servo ${cppIdentifier(pin, "servo")};`));
     if (hardware.lcd.enabled) globals.push(`LiquidCrystal_I2C lcd(0x${hardware.lcd.address.toString(16).toUpperCase()}, ${hardware.lcd.columns}, ${hardware.lcd.rows});`);
-    if (hardware.oled.enabled) globals.push("U8X8_SSD1306_128X64_NONAME_HW_I2C oled(U8X8_PIN_NONE);");
+    if (hardware.oled.enabled) globals.push("SSD1306AsciiWire oled;");
     if (hardware.neo.enabled) globals.push(`Adafruit_NeoPixel pixels(${hardware.neo.count}, ${hardware.neo.pin}, NEO_GRB + NEO_KHZ800);`);
     if (hardware.bluetooth.enabled) globals.push(`SoftwareSerial bluetooth(${hardware.bluetooth.rx}, ${hardware.bluetooth.tx}); // Arduino RX, TX`);
     if (hardware.mp3.enabled) globals.push(`SoftwareSerial mp3Serial(${hardware.mp3.rx}, ${hardware.mp3.tx}); // Arduino RX, TX`);

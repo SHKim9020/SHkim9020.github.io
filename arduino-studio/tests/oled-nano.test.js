@@ -21,10 +21,11 @@ test("OLED works in stored, live, and generated INO modes", () => {
   assert.match(app, /OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31/);
   assert.match(app, /sendAction\("OLEDBEGIN"/);
   assert.match(app, /sendAction\([\s\S]*"OLEDPRINT"/);
-  assert.match(app, /#include <U8x8lib\.h>/);
+  assert.match(app, /#include <SSD1306Ascii\.h>/);
   assert.match(runtime, /OP_OLED_BEGIN = 29/);
   assert.match(runtime, /"OLEDPRINT"/);
-  assert.match(runtime, /U8X8_SSD1306_128X64_NONAME_HW_I2C/);
+  assert.match(runtime, /OLED_FONT_3X5/);
+  assert.match(runtime, /void oledBegin/);
 });
 
 test("UNO and both Nano bootloader upload paths use runtime 1.1.4", () => {
@@ -34,6 +35,6 @@ test("UNO and both Nano bootloader upload paths use runtime 1.1.4", () => {
   for (const board of ["uno", "nano", "nanoOldBootloader"]) {
     assert.match(html, new RegExp(`board="${board}"`));
   }
-  assert.match(workflow, /arduino-cli lib install "U8g2"/);
+  assert.doesNotMatch(workflow, /U8g2/);
   assert.match(workflow, /--fqbn "arduino:avr:uno"/);
 });

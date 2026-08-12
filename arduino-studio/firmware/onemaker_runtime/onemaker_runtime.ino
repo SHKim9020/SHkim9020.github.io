@@ -6,7 +6,6 @@
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
-#include <U8x8lib.h>
 
 // OneMaker Arduino UNO/Nano Runtime 1.1.4
 static const char *RUNTIME_VERSION = "1.1.4";
@@ -121,7 +120,8 @@ uint16_t incomingChecksum = 0;
 bool receivingProgram = false;
 
 LiquidCrystal_I2C *lcd = nullptr;
-U8X8_SSD1306_128X64_NONAME_HW_I2C *oled = nullptr;
+uint8_t oledAddress = 0x3C;
+bool oledReady = false;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
@@ -268,6 +268,80 @@ bool initializeMp3(uint8_t rx, uint8_t tx) {
 uint8_t programByte(uint16_t address) {
   if (address >= storedProgramLength) return 0;
   return EEPROM.read(PROGRAM_HEADER_SIZE + address);
+}
+
+// Tiny 3x5 uppercase/digit font keeps the UNO/Nano runtime inside 32 KB flash.
+// Entries are three vertical columns, least-significant bit at the top.
+const uint8_t OLED_FONT_3X5[][3] PROGMEM = {
+  {31,17,31},{0,31,0},{29,21,23},{21,21,31},{7,4,31},
+  {23,21,29},{31,21,29},{1,1,31},{31,21,31},{23,21,31},
+  {30,5,30},{31,21,10},{14,17,17},{31,17,14},{31,21,17},{31,5,1},
+  {14,17,29},{31,4,31},{17,31,17},{8,16,15},{31,4,27},{31,16,16},
+  {31,2,31},{31,1,30},{14,17,14},{31,5,7},{14,25,30},{31,5,26},
+  {18,21,9},{1,31,1},{15,16,15},{7,24,7},{31,8,31},{27,4,27},
+  {3,28,3},{25,21,19}
+};
+
+void oledCommand(uint8_t command) {
+  Wire.beginTransmission(oledAddress);
+  Wire.write(0x00);
+  Wire.write(command);
+  Wire.endTransmission();
+}
+
+void oledSetCursor(uint8_t column, uint8_t row) {
+  uint8_t x = constrain(column, 0, 31) * 4;
+  oledCommand(0xB0 | constrain(row, 0, 7));
+  oledCommand(x & 0x0F);
+  oledCommand(0x10 | (x >> 4));
+}
+
+void oledClear() {
+  if (!oledReady) return;
+  for (uint8_t page = 0; page < 8; page++) {
+    oledSetCursor(0, page);
+    for (uint8_t chunk = 0; chunk < 8; chunk++) {
+      Wire.beginTransmission(oledAddress);
+      Wire.write(0x40);
+      for (uint8_t index = 0; index < 16; index++) Wire.write(0);
+      Wire.endTransmission();
+    }
+  }
+  oledSetCursor(0, 0);
+}
+
+void oledBegin(uint8_t address) {
+  static const uint8_t initCommands[] PROGMEM = {
+    0xAE,0xD5,0x80,0xA8,0x3F,0xD3,0x00,0x40,0x8D,0x14,0x20,0x02,
+    0xA1,0xC8,0xDA,0x12,0x81,0xCF,0xD9,0xF1,0xDB,0x40,0xA4,0xA6,0xAF
+  };
+  oledAddress = address;
+  Wire.begin();
+  for (uint8_t index = 0; index < sizeof(initCommands); index++) oledCommand(pgm_read_byte(&initCommands[index]));
+  oledReady = true;
+  oledClear();
+}
+
+void oledPrint(const String &value) {
+  if (!oledReady) return;
+  for (uint8_t index = 0; index < value.length(); index++) {
+    char character = value[index];
+    if (character >= 'a' && character <= 'z') character -= 32;
+    uint8_t glyph[3] = {0, 0, 0};
+    if (character >= '0' && character <= '9') {
+      for (uint8_t column = 0; column < 3; column++) glyph[column] = pgm_read_byte(&OLED_FONT_3X5[character - '0'][column]);
+    } else if (character >= 'A' && character <= 'Z') {
+      for (uint8_t column = 0; column < 3; column++) glyph[column] = pgm_read_byte(&OLED_FONT_3X5[10 + character - 'A'][column]);
+    } else if (character == '-') glyph[0] = glyph[1] = glyph[2] = 4;
+    else if (character == '.') glyph[1] = 16;
+    else if (character == ':') glyph[1] = 10;
+    else if (character == '%') { glyph[0] = 25; glyph[1] = 4; glyph[2] = 19; }
+    Wire.beginTransmission(oledAddress);
+    Wire.write(0x40);
+    Wire.write(glyph, 3);
+    Wire.write(0);
+    Wire.endTransmission();
+  }
 }
 
 uint16_t programWord(uint16_t &address) {
@@ -580,24 +654,14 @@ void executeStoredProgramStep() {
     if (lcd) lcd->clear();
   } else if (opcode == OP_OLED_BEGIN) {
     uint8_t address = programByte(vmProgramCounter++);
-    if (oled) delete oled;
-    oled = new U8X8_SSD1306_128X64_NONAME_HW_I2C(U8X8_PIN_NONE);
-    if (oled) {
-      oled->setI2CAddress(address << 1);
-      oled->begin();
-      oled->setFont(u8x8_font_chroma48medium8_r);
-      oled->clearDisplay();
-    }
+    oledBegin(address);
   } else if (opcode == OP_OLED_PRINT) {
     long row = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 7);
     long column = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 15);
     String value = valueText(evaluateStoredExpression(vmProgramCounter));
-    if (oled) {
-      oled->setCursor(column, row);
-      oled->print(value);
-    }
+    if (oledReady) { oledSetCursor(column, row); oledPrint(value); }
   } else if (opcode == OP_OLED_CLEAR) {
-    if (oled) oled->clearDisplay();
+    oledClear();
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
     long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
@@ -815,19 +879,12 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "LCDCLEAR") && lcd) {
     lcd->clear();
   } else if (!strcmp(operation, "OLEDBEGIN") && count >= 1) {
-    if (oled) delete oled;
-    oled = new U8X8_SSD1306_128X64_NONAME_HW_I2C(U8X8_PIN_NONE);
-    if (oled) {
-      oled->setI2CAddress(tokenInt(args[0], 60) << 1);
-      oled->begin();
-      oled->setFont(u8x8_font_chroma48medium8_r);
-      oled->clearDisplay();
-    }
-  } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oled) {
-    oled->setCursor(constrain(tokenInt(args[1]), 0, 15), constrain(tokenInt(args[0]), 0, 7));
-    oled->print(decodeHex(args[2]));
-  } else if (!strcmp(operation, "OLEDCLEAR") && oled) {
-    oled->clearDisplay();
+    oledBegin(tokenInt(args[0], 60));
+  } else if (!strcmp(operation, "OLEDPRINT") && count >= 3 && oledReady) {
+    oledSetCursor(constrain(tokenInt(args[1]), 0, 15), constrain(tokenInt(args[0]), 0, 7));
+    oledPrint(decodeHex(args[2]));
+  } else if (!strcmp(operation, "OLEDCLEAR") && oledReady) {
+    oledClear();
   } else if (!strcmp(operation, "NEOBEGIN") && count >= 2) {
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(constrain(tokenInt(args[1]), 1, 60), tokenInt(args[0]), NEO_GRB + NEO_KHZ800);
