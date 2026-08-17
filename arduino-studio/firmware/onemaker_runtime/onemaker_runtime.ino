@@ -201,15 +201,6 @@ int readDust(uint8_t ledPin, uint8_t analogIndex) {
   return value;
 }
 
-bool huskyWireReady = false;
-
-void beginHuskyWire() {
-  if (huskyWireReady) return;
-  Wire.begin();
-  Wire.setClock(100000);
-  huskyWireReady = true;
-}
-
 void sendHuskyFrame(uint8_t command, int16_t value = 0, bool hasValue = false) {
   uint8_t frame[8] = {0x55, 0xAA, 0x11, (uint8_t)(hasValue ? 2 : 0), command, 0, 0, 0};
   uint8_t length = hasValue ? 8 : 6;
@@ -218,74 +209,50 @@ void sendHuskyFrame(uint8_t command, int16_t value = 0, bool hasValue = false) {
     frame[6] = value >> 8;
   }
   for (uint8_t index = 0; index < length - 1; index++) frame[length - 1] += frame[index];
-  beginHuskyWire();
+  Wire.begin();
+  Wire.setClock(100000);
   Wire.beginTransmission(0x32);
   Wire.write(frame, length);
   Wire.endTransmission();
 }
 
-bool readHuskyFrame(uint8_t &command, int16_t values[5], uint8_t &valueCount) {
-  uint8_t frame[16];
-  uint8_t size = 0;
-  uint8_t total = 0;
-  unsigned long started = millis();
-  while (millis() - started < 130) {
-    if (!Wire.available()) Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
-    while (Wire.available()) {
-      uint8_t value = Wire.read();
-      if (!size && value != 0x55) continue;
-      if (size == 1 && value != 0xAA) {
-        size = value == 0x55 ? 1 : 0;
-        continue;
-      }
-      if (size >= sizeof(frame)) return false;
-      frame[size++] = value;
-      if (size == 4) {
-        total = frame[3] + 6;
-        if (total > sizeof(frame)) return false;
-      }
-      if (!total || size < total) continue;
-      uint8_t checksum = 0;
-      for (uint8_t index = 0; index < total - 1; index++) checksum += frame[index];
-      if (checksum != frame[total - 1]) return false;
-      command = frame[4];
-      valueCount = min((uint8_t)5, (uint8_t)(frame[3] / 2));
-      for (uint8_t index = 0; index < valueCount; index++) {
-        values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
-      }
-      return true;
+bool readHuskyFrame(uint8_t expectedCommand, int16_t values[5]) {
+  for (uint8_t attempt = 0; attempt < 20; attempt++) {
+    delay(5);
+    uint8_t frame[16];
+    uint8_t size = Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
+    if (size > sizeof(frame)) size = sizeof(frame);
+    for (uint8_t index = 0; index < size; index++) frame[index] = Wire.read();
+    if (size < 6 || frame[0] != 0x55 || frame[1] != 0xAA || frame[4] != expectedCommand) continue;
+    uint8_t total = frame[3] + 6;
+    if (total > size) continue;
+    uint8_t checksum = 0;
+    for (uint8_t index = 0; index < total - 1; index++) checksum += frame[index];
+    if (checksum != frame[total - 1]) continue;
+    uint8_t valueCount = min((uint8_t)5, (uint8_t)(frame[3] / 2));
+    for (uint8_t index = 0; index < valueCount; index++) {
+      values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
     }
+    return true;
   }
   return false;
 }
 
 bool setHuskyAlgorithm(uint8_t algorithm) {
   sendHuskyFrame(0x2D, constrain(algorithm, 0, 6), true);
-  for (uint8_t attempt = 0; attempt < 3; attempt++) {
-    uint8_t command, count;
-    int16_t values[5];
-    if (readHuskyFrame(command, values, count) && command == 0x2E) {
-      delay(300);
-      return true;
-    }
-  }
-  return false;
+  int16_t values[5];
+  bool changed = readHuskyFrame(0x2E, values);
+  if (changed) delay(300);
+  return changed;
 }
 
 bool fetchHuskyValue(int16_t id, uint8_t field, int16_t &value) {
   sendHuskyFrame(0x27, id, true);
-  uint8_t command, count;
   int16_t values[5];
-  if (!readHuskyFrame(command, values, count) || command != 0x29 || !count) return false;
-  uint8_t resultCount = constrain(values[0], 0, 20);
-  while (resultCount--) {
-    if (!readHuskyFrame(command, values, count)) return false;
-    if (command == 0x2A && count >= 5 && values[4] == id) {
-      value = field ? values[field - 1] : 1;
-      return true;
-    }
-  }
-  return false;
+  if (!readHuskyFrame(0x29, values) || values[0] < 1) return false;
+  if (!readHuskyFrame(0x2A, values) || values[4] != id) return false;
+  value = field ? values[field - 1] : 1;
+  return true;
 }
 
 void rememberMotorPin(uint8_t pin) {
@@ -555,6 +522,20 @@ float nonNegative(float value) {
   return value < 0 ? 0 : value;
 }
 
+float vmPower(float base, float exponent) {
+  long power = (long)exponent;
+  if (fabs(exponent - power) > 0.00001f) return 0;
+  bool inverse = power < 0;
+  if (inverse) power = -power;
+  float result = 1;
+  while (power) {
+    if (power & 1) result *= base;
+    base *= base;
+    power >>= 1;
+  }
+  return inverse && fabs(result) > 0.00001f ? 1.0f / result : (inverse ? 0 : result);
+}
+
 float valueNumber(const VmValue &value) {
   return value.isText ? value.text.toFloat() : value.number;
 }
@@ -697,7 +678,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
         case EX_SUBTRACT: result = numberValue(a - b); break;
         case EX_MULTIPLY: result = numberValue(a * b); break;
         case EX_DIVIDE: result = numberValue(fabs(b) < 0.00001f ? 0 : a / b); break;
-        case EX_POWER: result = numberValue(pow(a, b)); break;
+        case EX_POWER: result = numberValue(vmPower(a, b)); break;
         case EX_EQUAL:
           result = numberValue(left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f);
           break;
