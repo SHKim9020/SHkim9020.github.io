@@ -2076,7 +2076,9 @@
   function scheduleAutosave() {
     clearTimeout(scheduleAutosave.timer);
     scheduleAutosave.timer = setTimeout(() => {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projectData())); } catch (_) {}
+      const data = projectData();
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) {}
+      window.dispatchEvent(new CustomEvent("onemaker:project-change", { detail: data }));
     }, 350);
   }
 
@@ -2103,6 +2105,15 @@
     downloadBlob(`${safeFilename(data.name)}.omarduino`, JSON.stringify(data, null, 2), "application/json");
     toast("프로젝트 파일을 저장했습니다.");
   }
+
+  window.OneMakerProjectApi = {
+    getData: projectData,
+    loadData(data) {
+      loadProjectData(data);
+      scheduleAutosave();
+    },
+    toast
+  };
 
   async function openProject(event) {
     const file = event.target.files?.[0];

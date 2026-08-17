@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.2">
+  <link rel="stylesheet" href="style.css?v=1.2.3">
 </head>
 <body>
   <header class="topbar">
@@ -25,6 +25,8 @@
       <input id="projectName" value="나의 아두이노 프로젝트" maxlength="40">
     </label>
     <div class="top-actions">
+      <button id="accountBtn" class="ghost" type="button">👤 로그인</button>
+      <button id="cloudProjectsBtn" class="ghost" type="button" hidden>☁ 내 프로젝트</button>
       <button id="pwaInstallBtn" class="install-app" type="button" hidden>⬇ 앱 설치</button>
       <button id="exampleBtn" class="ghost">예제</button>
       <button id="saveBtn" class="ghost">저장</button>
@@ -238,6 +240,74 @@
     </div>
   </dialog>
 
+  <dialog id="accountDialog">
+    <div class="dialog-card account-card">
+      <button class="dialog-close" type="button" data-close-dialog="#accountDialog" aria-label="닫기">×</button>
+      <span class="step-chip cloud-chip">OneMaker Cloud</span>
+      <h2>계정</h2>
+      <p id="cloudStatus">로그인하면 여러 기기에서 프로젝트를 사용할 수 있습니다.</p>
+      <div id="accountForms">
+        <div class="auth-tabs">
+          <button type="button" class="active" data-show-auth="login">로그인</button>
+          <button type="button" data-show-auth="signup">회원가입</button>
+          <button type="button" data-show-auth="reset">비밀번호 찾기</button>
+        </div>
+        <form id="loginForm" class="auth-form" data-auth-view="login">
+          <label>이메일<input name="email" type="email" autocomplete="email" required placeholder="student@example.com"></label>
+          <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="primary wide" type="submit">로그인</button>
+        </form>
+        <form id="signupForm" class="auth-form" data-auth-view="signup" hidden>
+          <label>아이디<input name="username" autocomplete="username" minlength="4" maxlength="20" pattern="[A-Za-z0-9_]+" required placeholder="영문·숫자·밑줄 4~20자"></label>
+          <label>이메일<input name="email" type="email" autocomplete="email" required placeholder="student@example.com"></label>
+          <label>비밀번호<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="8자 이상"></label>
+          <label>비밀번호 확인<input name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></label>
+          <label class="privacy-check"><input name="privacy" type="checkbox" required> 프로젝트 저장을 위한 아이디와 이메일 수집에 동의합니다.</label>
+          <button class="primary wide" type="submit">회원가입</button>
+        </form>
+        <form id="resetForm" class="auth-form" data-auth-view="reset" hidden>
+          <label>가입 이메일<input name="email" type="email" autocomplete="email" required></label>
+          <button class="primary wide" type="submit">재설정 이메일 보내기</button>
+        </form>
+        <form id="updatePasswordForm" class="auth-form" data-auth-view="update" hidden>
+          <label>새 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="8자 이상"></label>
+          <label>새 비밀번호 확인<input name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></label>
+          <button class="primary wide" type="submit">새 비밀번호 저장</button>
+        </form>
+      </div>
+      <div id="accountSignedIn" class="account-signed-in" hidden>
+        <div class="account-avatar">OM</div>
+        <b id="accountUsername"></b>
+        <span id="accountEmail"></span>
+        <button id="logoutBtn" class="danger-soft wide" type="button">로그아웃</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="cloudProjectsDialog">
+    <div class="dialog-card cloud-projects-card">
+      <button class="dialog-close" type="button" data-close-dialog="#cloudProjectsDialog" aria-label="닫기">×</button>
+      <span class="step-chip cloud-chip">자동저장 지원</span>
+      <h2>내 프로젝트</h2>
+      <p>로그인한 계정에서만 확인할 수 있습니다.</p>
+      <div class="cloud-project-actions">
+        <button id="cloudSaveBtn" class="primary" type="button">현재 프로젝트 저장</button>
+        <button id="cloudSaveAsBtn" type="button">새 이름으로 저장</button>
+      </div>
+      <div id="cloudProjectList" class="cloud-project-list"></div>
+    </div>
+  </dialog>
+
+  <dialog id="cloudSetupDialog">
+    <div class="dialog-card cloud-setup-card">
+      <button class="dialog-close" type="button" data-close-dialog="#cloudSetupDialog" aria-label="닫기">×</button>
+      <span class="step-chip">관리자 설정 필요</span>
+      <h2>클라우드 연결 준비 중</h2>
+      <p>회원 기능의 화면과 저장 구조는 준비되었습니다. Supabase 프로젝트 URL과 Publishable Key를 연결하면 바로 활성화됩니다.</p>
+      <button class="wide" type="button" data-close-dialog="#cloudSetupDialog">확인</button>
+    </div>
+  </dialog>
+
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
@@ -245,6 +315,9 @@
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="ch340-webserial.js?v=1.0.1"></script>
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
-  <script src="app.js?v=1.4.4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="cloud-config.js?v=1.0.0"></script>
+  <script src="app.js?v=1.4.5"></script>
+  <script src="cloud.js?v=1.0.0"></script>
 </body>
 </html>

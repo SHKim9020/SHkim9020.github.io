@@ -79,6 +79,16 @@ PWA 앱은 블록 작성·프로젝트 저장·열기를 지원합니다. Androi
 - `모터`: 서보 각도, 시간 회전, 연결 해제, DC 모터 켜기·끄기 및 PWM 세기
 - `입력`: 조도, 초음파, DHT11 온습도, 미세먼지, 토양수분, 푸시 버튼, 택트 스위치
 
+## 회원가입·클라우드 프로젝트
+
+1. Supabase에서 새 프로젝트를 만듭니다.
+2. Dashboard의 SQL Editor에서 `supabase/setup.sql`을 실행합니다.
+3. Authentication 설정에서 Site URL을 `https://shkim9020.github.io/arduino-studio/`로 지정합니다.
+4. 수업 중 다수 학생이 동시에 가입한다면 Confirm email을 끄거나 Custom SMTP를 연결합니다.
+5. Connect 화면의 Project URL과 Publishable Key를 `cloud-config.js`에 입력합니다.
+
+클라우드 연결 전에도 기존 로컬 자동저장과 `.omarduino` 파일 저장·열기는 그대로 사용할 수 있습니다. 로그인 후 처음 `현재 프로젝트 저장`을 누르면 이후 변경 내용이 해당 프로젝트에 자동저장됩니다.
+
 ## 펌웨어 빌드
 
 `arduino-studio/firmware/onemaker_runtime/onemaker_runtime.ino`를 GitHub Actions에서 UNO용으로 컴파일하여 `arduino-studio/firmware/onemaker_runtime.hex`를 생성합니다. UNO, Nano, Nano 구형 부트로더는 같은 ATmega328P 애플리케이션 HEX를 사용하며 업로더의 통신 속도만 다릅니다.
