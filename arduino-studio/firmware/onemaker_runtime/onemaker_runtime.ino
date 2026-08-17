@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.6
-static const char *RUNTIME_VERSION = "1.1.6";
+// OneMaker Arduino UNO/Nano Runtime 1.1.7
+static const char *RUNTIME_VERSION = "1.1.7";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -50,7 +50,8 @@ enum StatementOpcode : uint8_t {
   OP_BT_SET_NAME = 28,
   OP_OLED_BEGIN = 29,
   OP_OLED_PRINT = 30,
-  OP_OLED_CLEAR = 31
+  OP_OLED_CLEAR = 31,
+  OP_HUSKY_ALGORITHM = 32
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -65,6 +66,11 @@ enum ExpressionOpcode : uint8_t {
   EX_DUST = 9,
   EX_BT_AVAILABLE = 10,
   EX_BT_READ = 11,
+  EX_HUSKY_SEEN = 12,
+  EX_HUSKY_X = 13,
+  EX_HUSKY_Y = 14,
+  EX_HUSKY_WIDTH = 15,
+  EX_HUSKY_HEIGHT = 16,
   EX_ADD = 20,
   EX_SUBTRACT = 21,
   EX_MULTIPLY = 22,
@@ -193,6 +199,93 @@ int readDust(uint8_t ledPin, uint8_t analogIndex) {
   digitalWrite(ledPin, HIGH);
   delayMicroseconds(9680);
   return value;
+}
+
+bool huskyWireReady = false;
+
+void beginHuskyWire() {
+  if (huskyWireReady) return;
+  Wire.begin();
+  Wire.setClock(100000);
+  huskyWireReady = true;
+}
+
+void sendHuskyFrame(uint8_t command, int16_t value = 0, bool hasValue = false) {
+  uint8_t frame[8] = {0x55, 0xAA, 0x11, (uint8_t)(hasValue ? 2 : 0), command, 0, 0, 0};
+  uint8_t length = hasValue ? 8 : 6;
+  if (hasValue) {
+    frame[5] = value & 0xFF;
+    frame[6] = value >> 8;
+  }
+  for (uint8_t index = 0; index < length - 1; index++) frame[length - 1] += frame[index];
+  beginHuskyWire();
+  Wire.beginTransmission(0x32);
+  Wire.write(frame, length);
+  Wire.endTransmission();
+}
+
+bool readHuskyFrame(uint8_t &command, int16_t values[5], uint8_t &valueCount) {
+  uint8_t frame[16];
+  uint8_t size = 0;
+  uint8_t total = 0;
+  unsigned long started = millis();
+  while (millis() - started < 130) {
+    if (!Wire.available()) Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
+    while (Wire.available()) {
+      uint8_t value = Wire.read();
+      if (!size && value != 0x55) continue;
+      if (size == 1 && value != 0xAA) {
+        size = value == 0x55 ? 1 : 0;
+        continue;
+      }
+      if (size >= sizeof(frame)) return false;
+      frame[size++] = value;
+      if (size == 4) {
+        total = frame[3] + 6;
+        if (total > sizeof(frame)) return false;
+      }
+      if (!total || size < total) continue;
+      uint8_t checksum = 0;
+      for (uint8_t index = 0; index < total - 1; index++) checksum += frame[index];
+      if (checksum != frame[total - 1]) return false;
+      command = frame[4];
+      valueCount = min((uint8_t)5, (uint8_t)(frame[3] / 2));
+      for (uint8_t index = 0; index < valueCount; index++) {
+        values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+bool setHuskyAlgorithm(uint8_t algorithm) {
+  sendHuskyFrame(0x2D, constrain(algorithm, 0, 6), true);
+  for (uint8_t attempt = 0; attempt < 3; attempt++) {
+    uint8_t command, count;
+    int16_t values[5];
+    if (readHuskyFrame(command, values, count) && command == 0x2E) {
+      delay(300);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool fetchHuskyValue(int16_t id, uint8_t field, int16_t &value) {
+  sendHuskyFrame(0x27, id, true);
+  uint8_t command, count;
+  int16_t values[5];
+  if (!readHuskyFrame(command, values, count) || command != 0x29 || !count) return false;
+  uint8_t resultCount = constrain(values[0], 0, 20);
+  while (resultCount--) {
+    if (!readHuskyFrame(command, values, count)) return false;
+    if (command == 0x2A && count >= 5 && values[4] == id) {
+      value = field ? values[field - 1] : 1;
+      return true;
+    }
+  }
+  return false;
 }
 
 void rememberMotorPin(uint8_t pin) {
@@ -585,6 +678,12 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(bluetooth && bluetooth->available() ? 1 : 0);
     } else if (opcode == EX_BT_READ) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
+    } else if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
+      int16_t id = constrain((int)valueNumber(stack[stackSize - 1]), 0, 32767);
+      int16_t value = 0;
+      uint8_t field = opcode == EX_HUSKY_SEEN ? 0 : opcode - EX_HUSKY_SEEN;
+      bool seen = fetchHuskyValue(id, field, value);
+      stack[stackSize - 1] = numberValue(seen ? value : 0);
     } else if (opcode == EX_NOT && stackSize >= 1) {
       stack[stackSize - 1] = numberValue(!valueBoolean(stack[stackSize - 1]));
     } else if (stackSize >= 2) {
@@ -744,6 +843,8 @@ void executeStoredProgramStep() {
     oledPrint(value, column, row);
   } else if (opcode == OP_OLED_CLEAR) {
     oledClear();
+  } else if (opcode == OP_HUSKY_ALGORITHM) {
+    setHuskyAlgorithm(programByte(vmProgramCounter++));
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
     long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
@@ -911,6 +1012,10 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "DHT") && count >= 3) {
     uint8_t pin = tokenInt(args[0]);
     sendNumber(id, readDhtValue(pin, tokenInt(args[1]), tokenInt(args[2]) != 0));
+  } else if (!strcmp(operation, "HUSKY") && count >= 2) {
+    int16_t value = 0;
+    fetchHuskyValue(constrain(tokenInt(args[0]), 0, 32767), constrain(tokenInt(args[1]), 0, 4), value);
+    sendNumber(id, value);
   } else if (!strcmp(operation, "BTAVAIL")) {
     if (bluetooth) bluetooth->listen();
     sendNumber(id, bluetooth && bluetooth->available() ? 1 : 0);
@@ -954,6 +1059,8 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     oledPrint(decodeHex(args[2]), tokenInt(args[1]), tokenInt(args[0]));
   } else if (!strcmp(operation, "OLEDCLEAR") && oledReady) {
     oledClear();
+  } else if (!strcmp(operation, "HUSKYALG") && count >= 1) {
+    setHuskyAlgorithm(constrain(tokenInt(args[0]), 0, 6));
   } else if (!strcmp(operation, "NEOBEGIN") && count >= 2) {
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(constrain(tokenInt(args[1]), 1, 60), tokenInt(args[0]), NEO_GRB + NEO_KHZ800);
