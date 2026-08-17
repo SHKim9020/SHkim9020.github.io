@@ -216,7 +216,7 @@ bool readHuskyFrame(uint8_t expectedCommand, int16_t values[5]) {
     uint8_t frame[16];
     uint8_t size = Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
     for (uint8_t index = 0; index < size; index++) frame[index] = Wire.read();
-    if (size != 16 || frame[0] != 0x55 || frame[1] != 0xAA || frame[4] != expectedCommand) continue;
+    if (size != 16 || frame[4] != expectedCommand) continue;
     for (uint8_t index = 0; index < 5; index++) {
       values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
     }
@@ -509,7 +509,7 @@ float parseNumber(const String &text) {
 
 VmValue textValue(const String &value) {
   VmValue result;
-  result.number = parseNumber(value);
+  result.number = 0;
   result.text = value;
   result.isText = true;
   return result;
@@ -526,17 +526,15 @@ float nonNegative(float value) {
 }
 
 float vmPower(float base, float exponent) {
-  long power = (long)exponent;
-  if (fabs(exponent - power) > 0.00001f) return 0;
-  bool inverse = power < 0;
-  if (inverse) power = -power;
+  bool inverse = exponent < 0;
+  long power = abs((long)exponent);
   float result = 1;
   while (power) {
     if (power & 1) result *= base;
     base *= base;
     power >>= 1;
   }
-  return inverse && fabs(result) > 0.00001f ? 1.0f / result : (inverse ? 0 : result);
+  return inverse ? 1.0f / result : result;
 }
 
 float valueNumber(const VmValue &value) {
