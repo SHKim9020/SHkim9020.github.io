@@ -201,53 +201,42 @@ int readDust(uint8_t ledPin, uint8_t analogIndex) {
   return value;
 }
 
-void sendHuskyFrame(uint8_t command, int16_t value = 0, bool hasValue = false) {
-  uint8_t frame[8] = {0x55, 0xAA, 0x11, (uint8_t)(hasValue ? 2 : 0), command, 0, 0, 0};
-  uint8_t length = hasValue ? 8 : 6;
-  if (hasValue) {
-    frame[5] = value & 0xFF;
-    frame[6] = value >> 8;
-  }
-  for (uint8_t index = 0; index < length - 1; index++) frame[length - 1] += frame[index];
+void sendHuskyCommand(uint8_t command, int16_t value) {
+  uint8_t frame[8] = {0x55, 0xAA, 0x11, 2, command, (uint8_t)value, (uint8_t)(value >> 8), 0};
+  for (uint8_t index = 0; index < 7; index++) frame[7] += frame[index];
   Wire.begin();
-  Wire.setClock(100000);
   Wire.beginTransmission(0x32);
-  Wire.write(frame, length);
+  Wire.write(frame, 8);
   Wire.endTransmission();
 }
 
 bool readHuskyFrame(uint8_t expectedCommand, int16_t values[5]) {
-  for (uint8_t attempt = 0; attempt < 20; attempt++) {
+  for (uint8_t attempt = 0; attempt < 12; attempt++) {
     delay(5);
-    uint8_t frame[16];
-    uint8_t size = Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
-    if (size > sizeof(frame)) size = sizeof(frame);
-    for (uint8_t index = 0; index < size; index++) frame[index] = Wire.read();
-    if (size < 6 || frame[0] != 0x55 || frame[1] != 0xAA || frame[4] != expectedCommand) continue;
-    uint8_t total = frame[3] + 6;
-    if (total > size) continue;
-    uint8_t checksum = 0;
-    for (uint8_t index = 0; index < total - 1; index++) checksum += frame[index];
-    if (checksum != frame[total - 1]) continue;
-    uint8_t valueCount = min((uint8_t)5, (uint8_t)(frame[3] / 2));
+    Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
+    if (Wire.available() < 6) continue;
+    bool matches = Wire.read() == 0x55;
+    matches = Wire.read() == 0xAA && matches;
+    matches = Wire.read() == 0x11 && matches;
+    uint8_t valueCount = min((uint8_t)5, (uint8_t)(Wire.read() / 2));
+    matches = Wire.read() == expectedCommand && matches;
     for (uint8_t index = 0; index < valueCount; index++) {
-      values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
+      uint8_t low = Wire.read();
+      values[index] = low | ((int16_t)Wire.read() << 8);
     }
-    return true;
+    while (Wire.available()) Wire.read();
+    if (matches) return true;
   }
   return false;
 }
 
-bool setHuskyAlgorithm(uint8_t algorithm) {
-  sendHuskyFrame(0x2D, constrain(algorithm, 0, 6), true);
-  int16_t values[5];
-  bool changed = readHuskyFrame(0x2E, values);
-  if (changed) delay(300);
-  return changed;
+void setHuskyAlgorithm(uint8_t algorithm) {
+  sendHuskyCommand(0x2D, constrain(algorithm, 0, 6));
+  delay(300);
 }
 
 bool fetchHuskyValue(int16_t id, uint8_t field, int16_t &value) {
-  sendHuskyFrame(0x27, id, true);
+  sendHuskyCommand(0x27, id);
   int16_t values[5];
   if (!readHuskyFrame(0x29, values) || values[0] < 1) return false;
   if (!readHuskyFrame(0x2A, values) || values[4] != id) return false;
