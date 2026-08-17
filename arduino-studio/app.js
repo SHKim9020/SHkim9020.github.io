@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.7";
+  const RUNTIME_VERSION = "1.1.8";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -91,6 +91,34 @@
       colour: 155
     },
     {
+      type: "sensor_light",
+      message0: "조도센서 %1 핀 값",
+      args0: [{ type: "field_dropdown", name: "PIN", options: analogOptions }],
+      output: "Number",
+      colour: 250
+    },
+    {
+      type: "sensor_soil",
+      message0: "토양수분센서 %1 핀 값",
+      args0: [{ type: "field_dropdown", name: "PIN", options: analogOptions }],
+      output: "Number",
+      colour: 250
+    },
+    {
+      type: "sensor_push_button",
+      message0: "푸시 버튼 스위치 %1 핀 눌림 상태",
+      args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
+      output: "Boolean",
+      colour: 250
+    },
+    {
+      type: "sensor_tact_button",
+      message0: "택트 스위치 %1 핀 눌림 상태",
+      args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
+      output: "Boolean",
+      colour: 250
+    },
+    {
       type: "pin_digital_read",
       message0: "디지털 입력 핀 %1 값",
       args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
@@ -141,7 +169,7 @@
     },
     {
       type: "sensor_ultrasonic",
-      message0: "초음파 거리 TRIG %1 ECHO %2 cm",
+      message0: "초음파센서 (trig %1, echo %2) 거리 (cm)",
       args0: [
         { type: "field_dropdown", name: "TRIG", options: digitalOptions },
         { type: "field_dropdown", name: "ECHO", options: digitalOptions }
@@ -162,8 +190,19 @@
       colour: 155
     },
     {
+      type: "sensor_dht_simple",
+      message0: "온습도센서 %1 핀 %2 값",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: digitalOptions },
+        { type: "field_dropdown", name: "FIELD", options: [["온도", "temperature"], ["습도", "humidity"]] }
+      ],
+      output: "Number",
+      colour: 250,
+      tooltip: "DHT11 센서의 온도 또는 습도 값을 읽습니다."
+    },
+    {
       type: "sensor_dust",
-      message0: "미세먼지 GP2Y LED %1 아날로그 %2",
+      message0: "미세먼지센서 (LED %1, OUT %2) 값 (μg/m³)",
       args0: [
         { type: "field_dropdown", name: "LED_PIN", options: digitalOptions },
         { type: "field_dropdown", name: "ANALOG_PIN", options: analogOptions }
@@ -264,7 +303,7 @@
     },
     {
       type: "servo_write",
-      message0: "서보모터 핀 %1 각도 %2",
+      message0: "서보모터 %1 번 핀 %2 각도로 회전",
       args0: [
         { type: "field_dropdown", name: "PIN", options: digitalOptions },
         { type: "input_value", name: "ANGLE", check: "Number" }
@@ -272,7 +311,52 @@
       previousStatement: null,
       nextStatement: null,
       inputsInline: true,
-      colour: 205
+      colour: 285
+    },
+    {
+      type: "servo_write_for",
+      message0: "서보모터 %1 번 핀 %2 ~ %3 각도로 %4 초 동안 회전",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: digitalOptions },
+        { type: "input_value", name: "FROM", check: "Number" },
+        { type: "input_value", name: "TO", check: "Number" },
+        { type: "input_value", name: "SECONDS", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 285
+    },
+    {
+      type: "servo_detach",
+      message0: "서보모터 %1 번 핀 연결 해제",
+      args0: [{ type: "field_dropdown", name: "PIN", options: digitalOptions }],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 285
+    },
+    {
+      type: "dc_motor_digital",
+      message0: "DC 모터 %1 핀 %2",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: digitalOptions },
+        { type: "field_dropdown", name: "STATE", options: [["켜기", "1"], ["끄기", "0"]] }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 285
+    },
+    {
+      type: "dc_motor_pwm",
+      message0: "DC 모터 %1 핀 세기 %2 출력 (0~255)",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: pwmOptions },
+        { type: "input_value", name: "VALUE", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 285
     },
     {
       type: "buzzer_tone",
@@ -608,12 +692,14 @@
         { kind: "block", type: "pin_digital_write" },
         { kind: "block", type: "pin_pwm_write", inputs: { VALUE: numberShadow(128) } }
       ] },
-      { kind: "category", name: "입력·센서", colour: "155", contents: [
-        { kind: "block", type: "sensor_analog" },
-        { kind: "block", type: "sensor_button" },
-        { kind: "block", type: "sensor_ultrasonic" },
-        { kind: "block", type: "sensor_dht" },
-        { kind: "block", type: "sensor_dust" }
+      { kind: "category", name: "입력", colour: "250", contents: [
+        { kind: "block", type: "sensor_light", fields: { PIN: "0" } },
+        { kind: "block", type: "sensor_ultrasonic", fields: { TRIG: "13", ECHO: "12" } },
+        { kind: "block", type: "sensor_dht_simple", fields: { PIN: "4", FIELD: "temperature" } },
+        { kind: "block", type: "sensor_dust", fields: { LED_PIN: "2", ANALOG_PIN: "0" } },
+        { kind: "block", type: "sensor_soil", fields: { PIN: "1" } },
+        { kind: "block", type: "sensor_push_button", fields: { PIN: "2" } },
+        { kind: "block", type: "sensor_tact_button", fields: { PIN: "2" } }
       ] },
       { kind: "category", name: "HuskyLens", colour: "165", contents: [
         { kind: "block", type: "husky_algorithm" },
@@ -624,10 +710,12 @@
         { kind: "block", type: "led_digital" },
         { kind: "block", type: "led_pwm", inputs: { VALUE: numberShadow(128) } }
       ] },
-      { kind: "category", name: "DC모터·서보", colour: "205", contents: [
-        { kind: "block", type: "motor_set", inputs: { SPEED: numberShadow(180) } },
-        { kind: "block", type: "motor_stop" },
-        { kind: "block", type: "servo_write", inputs: { ANGLE: numberShadow(90) } }
+      { kind: "category", name: "모터", colour: "285", contents: [
+        { kind: "block", type: "servo_write", fields: { PIN: "8" }, inputs: { ANGLE: numberShadow(0) } },
+        { kind: "block", type: "servo_write_for", fields: { PIN: "8" }, inputs: { FROM: numberShadow(0), TO: numberShadow(180), SECONDS: numberShadow(1) } },
+        { kind: "block", type: "servo_detach", fields: { PIN: "8" } },
+        { kind: "block", type: "dc_motor_digital", fields: { PIN: "5", STATE: "1" } },
+        { kind: "block", type: "dc_motor_pwm", fields: { PIN: "5" }, inputs: { VALUE: numberShadow(255) } }
       ] },
       { kind: "category", name: "피에조", colour: "35", contents: [
         { kind: "block", type: "buzzer_tone", inputs: { FREQ: numberShadow(262), SECONDS: numberShadow(0.5) } },
@@ -1008,6 +1096,8 @@
         return;
       }
       case "sensor_analog":
+      case "sensor_light":
+      case "sensor_soil":
       case "pin_analog_read":
         writer.u8(EX.ANALOG);
         writer.u8(block.getFieldValue("PIN"));
@@ -1017,6 +1107,8 @@
         writer.u8(block.getFieldValue("PIN"));
         return;
       case "sensor_button":
+      case "sensor_push_button":
+      case "sensor_tact_button":
         writer.u8(EX.BUTTON);
         writer.u8(block.getFieldValue("PIN"));
         return;
@@ -1029,6 +1121,12 @@
         writer.u8(EX.DHT);
         writer.u8(block.getFieldValue("PIN"));
         writer.u8(block.getFieldValue("TYPE"));
+        writer.u8(block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
+        return;
+      case "sensor_dht_simple":
+        writer.u8(EX.DHT);
+        writer.u8(block.getFieldValue("PIN"));
+        writer.u8(11);
         writer.u8(block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
         return;
       case "sensor_dust":
@@ -1184,9 +1282,11 @@
         writer.u8(VM.CHANGE_VAR); writer.u8(variableIndex(block, context)); expression("DELTA"); return;
       case "pin_digital_write":
       case "led_digital":
+      case "dc_motor_digital":
         writer.u8(VM.DIGITAL_WRITE); pin("PIN"); writer.u8(block.getFieldValue("STATE")); return;
       case "pin_pwm_write":
       case "led_pwm":
+      case "dc_motor_pwm":
         writer.u8(VM.PWM_WRITE); pin("PIN"); expression("VALUE"); return;
       case "motor_set":
         writer.u8(VM.MOTOR); pin("IN1"); pin("IN2"); expression("SPEED"); return;
@@ -1195,6 +1295,12 @@
         writeCompiledExpression(writer, null, context); return;
       case "servo_write":
         writer.u8(VM.SERVO); pin("PIN"); expression("ANGLE"); return;
+      case "servo_write_for":
+        writer.u8(VM.SERVO); pin("PIN"); expression("FROM");
+        writer.u8(VM.SERVO); pin("PIN"); expression("TO");
+        writer.u8(VM.WAIT); expression("SECONDS"); return;
+      case "servo_detach":
+        writer.u8(VM.SERVO); pin("PIN"); numberExpression(-1); return;
       case "buzzer_tone":
         writer.u8(VM.TONE); pin("PIN"); expression("FREQ"); expression("SECONDS"); return;
       case "buzzer_stop":
@@ -1723,12 +1829,17 @@
         }
         return result;
       }
-      case "sensor_analog": return requestValue("AR", block.getFieldValue("PIN"));
+      case "sensor_analog":
+      case "sensor_light":
+      case "sensor_soil": return requestValue("AR", block.getFieldValue("PIN"));
       case "pin_digital_read": return requestValue("DR", block.getFieldValue("PIN"));
       case "pin_analog_read": return requestValue("AR", block.getFieldValue("PIN"));
-      case "sensor_button": return Boolean(await requestValue("BUTTON", block.getFieldValue("PIN")));
+      case "sensor_button":
+      case "sensor_push_button":
+      case "sensor_tact_button": return Boolean(await requestValue("BUTTON", block.getFieldValue("PIN")));
       case "sensor_ultrasonic": return requestValue("SONAR", block.getFieldValue("TRIG"), block.getFieldValue("ECHO"));
       case "sensor_dht": return requestValue("DHT", block.getFieldValue("PIN"), block.getFieldValue("TYPE"), block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
+      case "sensor_dht_simple": return requestValue("DHT", block.getFieldValue("PIN"), 11, block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
       case "sensor_dust": return requestValue("DUST", block.getFieldValue("LED_PIN"), block.getFieldValue("ANALOG_PIN"));
       case "husky_seen":
         return Boolean(await requestValue("HUSKY", clamp(await evaluate(inputBlock(block, "ID"), functionDepth), 0, 32767), 0));
@@ -1810,8 +1921,10 @@
         return;
       }
       case "pin_digital_write":
+      case "dc_motor_digital":
         return sendAction("DW", block.getFieldValue("PIN"), block.getFieldValue("STATE"));
       case "pin_pwm_write":
+      case "dc_motor_pwm":
         return sendAction("PW", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "VALUE"), functionDepth), 0, 255));
       case "led_digital":
         return sendAction("DW", block.getFieldValue("PIN"), block.getFieldValue("STATE"));
@@ -1823,6 +1936,21 @@
         return sendAction("MOTOR", block.getFieldValue("IN1"), block.getFieldValue("IN2"), 0);
       case "servo_write":
         return sendAction("SERVO", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "ANGLE"), functionDepth), 0, 180));
+      case "servo_write_for": {
+        const pin = block.getFieldValue("PIN");
+        const from = clamp(await evaluate(inputBlock(block, "FROM"), functionDepth), 0, 180);
+        const to = clamp(await evaluate(inputBlock(block, "TO"), functionDepth), 0, 180);
+        const duration = Math.max(0, Number(await evaluate(inputBlock(block, "SECONDS"), functionDepth))) * 1000;
+        const steps = Math.max(1, Math.min(90, Math.ceil(Math.abs(to - from))));
+        await sendAction("SERVO", pin, Math.round(from));
+        for (let step = 1; step <= steps && !runCancelled; step++) {
+          await sleep(duration / steps);
+          await sendAction("SERVO", pin, Math.round(from + (to - from) * step / steps));
+        }
+        return;
+      }
+      case "servo_detach":
+        return sendAction("SERVO", block.getFieldValue("PIN"), -1);
       case "buzzer_tone":
         return sendAction(
           "TONE",
@@ -2159,13 +2287,21 @@
         for (let index = 0; block.getInput(`ADD${index}`); index++) parts.push(`String(${cppInput(block, `ADD${index}`, '""')})`);
         return parts.length ? parts.join(" + ") : 'String("")';
       }
-      case "sensor_analog": return `analogRead(A${block.getFieldValue("PIN")})`;
+      case "sensor_analog":
+      case "sensor_light":
+      case "sensor_soil": return `analogRead(A${block.getFieldValue("PIN")})`;
       case "pin_digital_read": return `readDigitalPin(${block.getFieldValue("PIN")})`;
       case "pin_analog_read": return `analogRead(A${block.getFieldValue("PIN")})`;
       case "sensor_button": return `(readDigitalPin(${block.getFieldValue("PIN")}) == 1)`;
+      case "sensor_push_button":
+      case "sensor_tact_button": return `(readDigitalPin(${block.getFieldValue("PIN")}) == 1)`;
       case "sensor_ultrasonic": return `readUltrasonic(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
       case "sensor_dht": {
         const object = dhtName(block.getFieldValue("PIN"), block.getFieldValue("TYPE"));
+        return `${object}.${block.getFieldValue("FIELD") === "humidity" ? "readHumidity" : "readTemperature"}()`;
+      }
+      case "sensor_dht_simple": {
+        const object = dhtName(block.getFieldValue("PIN"), 11);
         return `${object}.${block.getFieldValue("FIELD") === "humidity" ? "readHumidity" : "readTemperature"}()`;
       }
       case "sensor_dust": return `readDust(${block.getFieldValue("LED_PIN")}, A${block.getFieldValue("ANALOG_PIN")})`;
@@ -2218,9 +2354,11 @@
       case "variables_set": return line(`${cppVariable(block)} = ${cppInput(block, "VALUE")};`);
       case "math_change": return line(`${cppVariable(block)} += ${cppInput(block, "DELTA")};`);
       case "pin_digital_write":
+      case "dc_motor_digital":
         return line(`pinMode(${block.getFieldValue("PIN")}, OUTPUT);`)
           + line(`digitalWrite(${block.getFieldValue("PIN")}, ${block.getFieldValue("STATE") === "1" ? "HIGH" : "LOW"});`);
       case "pin_pwm_write":
+      case "dc_motor_pwm":
         return line(`pinMode(${block.getFieldValue("PIN")}, OUTPUT);`)
           + line(`analogWrite(${block.getFieldValue("PIN")}, constrain(${cppInput(block, "VALUE")}, 0, 255));`);
       case "led_digital":
@@ -2235,6 +2373,21 @@
         return line(`setMotor(${block.getFieldValue("IN1")}, ${block.getFieldValue("IN2")}, 0);`);
       case "servo_write":
         return line(`${cppIdentifier(block.getFieldValue("PIN"), "servo")}.write(constrain(${cppInput(block, "ANGLE")}, 0, 180));`);
+      case "servo_write_for": {
+        const suffix = block.id.replace(/\W/g, "").slice(0, 6);
+        const servo = cppIdentifier(block.getFieldValue("PIN"), "servo");
+        return line("{")
+          + line(`  int servoFrom_${suffix} = constrain(${cppInput(block, "FROM")}, 0, 180);`)
+          + line(`  int servoTo_${suffix} = constrain(${cppInput(block, "TO")}, 0, 180);`)
+          + line(`  int servoSteps_${suffix} = max(1, abs(servoTo_${suffix} - servoFrom_${suffix}));`)
+          + line(`  unsigned long servoDelay_${suffix} = max(0.0, ${cppInput(block, "SECONDS")}) * 1000UL / servoSteps_${suffix};`)
+          + line(`  for (int servoStep_${suffix} = 0; servoStep_${suffix} <= servoSteps_${suffix}; servoStep_${suffix}++) {`)
+          + line(`    ${servo}.write(map(servoStep_${suffix}, 0, servoSteps_${suffix}, servoFrom_${suffix}, servoTo_${suffix}));`)
+          + line(`    if (servoStep_${suffix} < servoSteps_${suffix}) delay(servoDelay_${suffix});`)
+          + line("  }") + line("}");
+      }
+      case "servo_detach":
+        return line(`${cppIdentifier(block.getFieldValue("PIN"), "servo")}.detach();`);
       case "buzzer_tone":
         return line(`tone(${block.getFieldValue("PIN")}, ${cppInput(block, "FREQ")}, (unsigned long)(${cppInput(block, "SECONDS")}) * 1000UL);`);
       case "buzzer_stop": return line(`noTone(${block.getFieldValue("PIN")});`);
@@ -2305,7 +2458,12 @@
       const type = block.getFieldValue("TYPE");
       dht.set(`${pin}:${type}`, { pin, type });
     });
-    all.filter(block => block.type === "servo_write").forEach(block => servoPins.add(block.getFieldValue("PIN")));
+    all.filter(block => block.type === "sensor_dht_simple").forEach(block => {
+      const pin = block.getFieldValue("PIN");
+      dht.set(`${pin}:11`, { pin, type: "11" });
+    });
+    all.filter(block => ["servo_write", "servo_write_for", "servo_detach"].includes(block.type))
+      .forEach(block => servoPins.add(block.getFieldValue("PIN")));
     const lcdBlock = firstBlockOfType("lcd_begin");
     const [lcdColumns, lcdRows] = (lcdBlock?.getFieldValue("SIZE") || "16x2").split("x").map(Number);
     const neoBlock = firstBlockOfType("neo_begin");
@@ -2371,7 +2529,7 @@
     });
 
     const helpers = [];
-    if (hardware.types.has("pin_digital_read") || hardware.types.has("sensor_button")) helpers.push(`
+    if (["pin_digital_read", "sensor_button", "sensor_push_button", "sensor_tact_button"].some(type => hardware.types.has(type))) helpers.push(`
 int readDigitalPin(uint8_t pin) {
   pinMode(pin, INPUT);
   return digitalRead(pin);

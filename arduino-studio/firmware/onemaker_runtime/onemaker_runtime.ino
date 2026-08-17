@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.7
-static const char *RUNTIME_VERSION = "1.1.7";
+// OneMaker Arduino UNO/Nano Runtime 1.1.8
+static const char *RUNTIME_VERSION = "1.1.8";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -789,7 +789,10 @@ void executeStoredProgramStep() {
     uint8_t pin = programByte(vmProgramCounter++);
     Servo *servo = servoForPin(pin);
     long angle = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
-    if (servo) servo->write(clampLong(angle, 0, 180));
+    if (servo) {
+      if (angle < 0) servo->detach();
+      else servo->write(clampLong(angle, 0, 180));
+    }
   } else if (opcode == OP_TONE) {
     uint8_t pin = programByte(vmProgramCounter++);
     long frequencyValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
@@ -1021,7 +1024,11 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     setMotor(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
   } else if (!strcmp(operation, "SERVO") && count >= 2) {
     Servo *servo = servoForPin(tokenInt(args[0]));
-    if (servo) servo->write(constrain(tokenInt(args[1]), 0, 180));
+    int angle = tokenInt(args[1]);
+    if (servo) {
+      if (angle < 0) servo->detach();
+      else servo->write(constrain(angle, 0, 180));
+    }
   } else if (!strcmp(operation, "TONE") && count >= 3) {
     lastTonePin = tokenInt(args[0]);
     tone(lastTonePin, constrain(tokenInt(args[1]), 20, 20000), max(1, tokenInt(args[2])));

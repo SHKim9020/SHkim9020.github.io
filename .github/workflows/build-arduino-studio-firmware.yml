@@ -59,20 +59,20 @@ jobs:
           cp "$RUNNER_TEMP/onemaker-arduino-nano/onemaker_runtime.ino.hex" \
             arduino-studio/firmware/onemaker_runtime.hex
           cp "$RUNNER_TEMP/onemaker-arduino-nano/onemaker_runtime.ino.hex" \
-            arduino-studio/firmware/onemaker_runtime-1.1.7.hex
+            arduino-studio/firmware/onemaker_runtime-1.1.8.hex
 
       - name: Verify runtime image
         run: |
           test -s arduino-studio/firmware/onemaker_runtime.hex
           grep -q '^:' arduino-studio/firmware/onemaker_runtime.hex
           cmp arduino-studio/firmware/onemaker_runtime.hex \
-            arduino-studio/firmware/onemaker_runtime-1.1.7.hex
+            arduino-studio/firmware/onemaker_runtime-1.1.8.hex
           python3 - <<'PY'
           from pathlib import Path
 
           memory = {}
           upper = 0
-          for line in Path("arduino-studio/firmware/onemaker_runtime-1.1.7.hex").read_text().splitlines():
+          for line in Path("arduino-studio/firmware/onemaker_runtime-1.1.8.hex").read_text().splitlines():
               if not line.startswith(":"):
                   continue
               record = bytes.fromhex(line[1:])
@@ -90,15 +90,15 @@ jobs:
           image = bytearray(max(memory) - start + 1)
           for address, value in memory.items():
               image[address - start] = value
-          assert b"1.1.7" in image, "compiled HEX does not contain runtime version 1.1.7"
+          assert b"1.1.8" in image, "compiled HEX does not contain runtime version 1.1.8"
           assert b"1.1.6" not in image, "compiled HEX still contains stale runtime version 1.1.6"
           PY
 
       - name: Upload verified runtime
         uses: actions/upload-artifact@v4
         with:
-          name: onemaker-runtime-1.1.7
-          path: arduino-studio/firmware/onemaker_runtime-1.1.7.hex
+          name: onemaker-runtime-1.1.8
+          path: arduino-studio/firmware/onemaker_runtime-1.1.8.hex
           if-no-files-found: error
 
       - name: Commit generated firmware
@@ -106,7 +106,7 @@ jobs:
         run: |
           git add \
             arduino-studio/firmware/onemaker_runtime.hex \
-            arduino-studio/firmware/onemaker_runtime-1.1.7.hex
+            arduino-studio/firmware/onemaker_runtime-1.1.8.hex
           if git diff --cached --quiet; then
             echo "Arduino runtime is unchanged."
             exit 0
