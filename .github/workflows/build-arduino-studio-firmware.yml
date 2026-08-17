@@ -44,6 +44,8 @@ jobs:
             --build-property "compiler.c.elf.extra_flags=-Wl,--relax" \
             --output-dir "$RUNNER_TEMP/onemaker-arduino-uno" \
             arduino-studio/firmware/onemaker_runtime
+          "$(find "$HOME/.arduino15/packages/arduino/tools/avr-gcc" -name avr-nm | head -1)" \
+            --print-size --size-sort "$RUNNER_TEMP/onemaker-arduino-uno/onemaker_runtime.ino.elf" | tail -40
           arduino-cli compile \
             --clean \
             --fqbn "arduino:avr:nano:cpu=atmega328" \
