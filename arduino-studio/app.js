@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.6";
+  const RUNTIME_VERSION = "1.1.7";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -172,6 +172,47 @@
       inputsInline: true,
       colour: 155,
       tooltip: "Sharp GP2Y1010 계열 센서의 원시 아날로그 값을 읽습니다."
+    },
+    {
+      type: "husky_algorithm",
+      message0: "HuskyLens 모드 %1",
+      args0: [{
+        type: "field_dropdown",
+        name: "ALGORITHM",
+        options: [
+          ["물체 추적", "1"],
+          ["물체 인식", "2"],
+          ["색상 인식", "4"],
+          ["선 추적", "3"],
+          ["얼굴 인식", "0"],
+          ["태그 인식", "5"],
+          ["물체 분류", "6"]
+        ]
+      }],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 165,
+      tooltip: "HuskyLens를 I²C 모드로 설정하고 UNO·Nano의 SDA A4, SCL A5에 연결합니다."
+    },
+    {
+      type: "husky_seen",
+      message0: "HuskyLens ID %1 보임?",
+      args0: [{ type: "input_value", name: "ID", check: "Number" }],
+      output: "Boolean",
+      colour: 165
+    },
+    {
+      type: "husky_value",
+      message0: "HuskyLens ID %1의 %2",
+      args0: [
+        { type: "input_value", name: "ID", check: "Number" },
+        { type: "field_dropdown", name: "FIELD", options: [
+          ["X 중심", "x"], ["Y 중심", "y"], ["너비", "width"], ["높이", "height"]
+        ] }
+      ],
+      output: "Number",
+      inputsInline: true,
+      colour: 165
     },
     {
       type: "led_digital",
@@ -574,6 +615,11 @@
         { kind: "block", type: "sensor_dht" },
         { kind: "block", type: "sensor_dust" }
       ] },
+      { kind: "category", name: "HuskyLens", colour: "165", contents: [
+        { kind: "block", type: "husky_algorithm" },
+        { kind: "block", type: "husky_seen", inputs: { ID: numberShadow(1) } },
+        { kind: "block", type: "husky_value", inputs: { ID: numberShadow(1) } }
+      ] },
       { kind: "category", name: "LED", colour: "110", contents: [
         { kind: "block", type: "led_digital" },
         { kind: "block", type: "led_pwm", inputs: { VALUE: numberShadow(128) } }
@@ -842,12 +888,14 @@
     LCD_CLEAR: 12, NEO_BEGIN: 13, NEO_SET: 14, NEO_CLEAR: 15, MP3_BEGIN: 16,
     MP3_PLAY: 17, MP3_VOLUME: 18, MP3_STOP: 19, BT_BEGIN: 20, BT_SEND: 21,
     SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26,
-    BT_SEND_RAW: 27, BT_SET_NAME: 28, OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31
+    BT_SEND_RAW: 27, BT_SET_NAME: 28, OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31,
+    HUSKY_ALGORITHM: 32
   });
 
   const EX = Object.freeze({
     NUMBER: 1, TEXT: 2, VARIABLE: 3, ANALOG: 4, DIGITAL: 5, BUTTON: 6,
     ULTRASONIC: 7, DHT: 8, DUST: 9, BT_AVAILABLE: 10, BT_READ: 11,
+    HUSKY_SEEN: 12, HUSKY_X: 13, HUSKY_Y: 14, HUSKY_WIDTH: 15, HUSKY_HEIGHT: 16,
     ADD: 20, SUBTRACT: 21, MULTIPLY: 22, DIVIDE: 23, POWER: 24,
     EQUAL: 30, NOT_EQUAL: 31, LESS: 32, LESS_EQUAL: 33, GREATER: 34,
     GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43, BT_ITEM: 44
@@ -987,6 +1035,14 @@
         writer.u8(EX.DUST);
         writer.u8(block.getFieldValue("LED_PIN"));
         writer.u8(block.getFieldValue("ANALOG_PIN"));
+        return;
+      case "husky_seen":
+        writeExpressionValue(writer, inputBlock(block, "ID"), context);
+        writer.u8(EX.HUSKY_SEEN);
+        return;
+      case "husky_value":
+        writeExpressionValue(writer, inputBlock(block, "ID"), context);
+        writer.u8({ x: EX.HUSKY_X, y: EX.HUSKY_Y, width: EX.HUSKY_WIDTH, height: EX.HUSKY_HEIGHT }[block.getFieldValue("FIELD")] || EX.HUSKY_X);
         return;
       case "bt_available":
         writer.u8(EX.BT_AVAILABLE);
@@ -1157,6 +1213,8 @@
         writer.u8(VM.OLED_PRINT); expression("ROW"); expression("COL"); expression("VALUE"); return;
       case "oled_clear":
         writer.u8(VM.OLED_CLEAR); return;
+      case "husky_algorithm":
+        writer.u8(VM.HUSKY_ALGORITHM); writer.u8(block.getFieldValue("ALGORITHM")); return;
       case "neo_begin":
         writer.u8(VM.NEO_BEGIN); pin("PIN"); expression("COUNT"); return;
       case "neo_set":
@@ -1672,6 +1730,12 @@
       case "sensor_ultrasonic": return requestValue("SONAR", block.getFieldValue("TRIG"), block.getFieldValue("ECHO"));
       case "sensor_dht": return requestValue("DHT", block.getFieldValue("PIN"), block.getFieldValue("TYPE"), block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
       case "sensor_dust": return requestValue("DUST", block.getFieldValue("LED_PIN"), block.getFieldValue("ANALOG_PIN"));
+      case "husky_seen":
+        return Boolean(await requestValue("HUSKY", clamp(await evaluate(inputBlock(block, "ID"), functionDepth), 0, 32767), 0));
+      case "husky_value": {
+        const fields = { x: 1, y: 2, width: 3, height: 4 };
+        return requestValue("HUSKY", clamp(await evaluate(inputBlock(block, "ID"), functionDepth), 0, 32767), fields[block.getFieldValue("FIELD")] || 1);
+      }
       case "bt_available": return Boolean(await requestValue("BTAVAIL"));
       case "bt_read": return requestValue("BTREAD");
       case "bt_received_item": {
@@ -1792,6 +1856,8 @@
         );
       case "oled_clear":
         return sendAction("OLEDCLEAR");
+      case "husky_algorithm":
+        return sendAction("HUSKYALG", block.getFieldValue("ALGORITHM"));
       case "neo_begin":
         return sendAction("NEOBEGIN", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "COUNT"), functionDepth), 1, 60));
       case "neo_set":
@@ -2103,6 +2169,9 @@
         return `${object}.${block.getFieldValue("FIELD") === "humidity" ? "readHumidity" : "readTemperature"}()`;
       }
       case "sensor_dust": return `readDust(${block.getFieldValue("LED_PIN")}, A${block.getFieldValue("ANALOG_PIN")})`;
+      case "husky_seen": return `huskySeen(${cppInput(block, "ID")})`;
+      case "husky_value":
+        return `huskyValue(${cppInput(block, "ID")}, ${{ x: 1, y: 2, width: 3, height: 4 }[block.getFieldValue("FIELD")] || 1})`;
       case "bt_available": return "(bluetooth.listen(), bluetooth.available() > 0)";
       case "bt_read": return "readBluetoothLine()";
       case "bt_received_item": return `readBluetoothItem(${cppInput(block, "COUNT")}, ${cppInput(block, "INDEX")})`;
@@ -2185,6 +2254,7 @@
         return line(`oled.setCursor(constrain(${cppInput(block, "COL")}, 0, oledTextScale == 2 ? 10 : 15) * 6 * oledTextScale, constrain(${cppInput(block, "ROW")}, 0, oledTextScale == 2 ? 3 : 7) * oledTextScale);`)
           + line(`oled.print(${cppInput(block, "VALUE", '\"\"')});`);
       case "oled_clear": return line("oled.clear();");
+      case "husky_algorithm": return line(`setHuskyAlgorithm(${block.getFieldValue("ALGORITHM")});`);
       case "neo_begin": return line("pixels.begin();") + line("pixels.clear();") + line("pixels.show();");
       case "neo_set":
         return line(`pixels.setPixelColor(${cppInput(block, "INDEX")}, pixels.Color(${cppInput(block, "R")}, ${cppInput(block, "G")}, ${cppInput(block, "B")}));`)
@@ -2269,6 +2339,9 @@
         enabled: [...types].some(type => type.startsWith("mp3_")),
         rx: Number(mp3Block?.getFieldValue("RX") || 10),
         tx: Number(mp3Block?.getFieldValue("TX") || 11)
+      },
+      husky: {
+        enabled: [...types].some(type => type.startsWith("husky_"))
       }
     };
   }
@@ -2282,6 +2355,7 @@
     if (hardware.oled.enabled) includes.push("#include <Wire.h>", "#include <SSD1306Ascii.h>", "#include <SSD1306AsciiWire.h>");
     if (hardware.neo.enabled) includes.push("#include <Adafruit_NeoPixel.h>");
     if (hardware.bluetooth.enabled || hardware.mp3.enabled) includes.push("#include <SoftwareSerial.h>");
+    if (hardware.husky.enabled) includes.push("#include <Wire.h>", "#include <HUSKYLENS.h>");
 
     const globals = [];
     hardware.dht.forEach(({ pin, type }) => globals.push(`DHT ${dhtName(pin, type)}(${pin}, DHT${type});`));
@@ -2291,6 +2365,7 @@
     if (hardware.neo.enabled) globals.push(`Adafruit_NeoPixel pixels(${hardware.neo.count}, ${hardware.neo.pin}, NEO_GRB + NEO_KHZ800);`);
     if (hardware.bluetooth.enabled) globals.push(`SoftwareSerial bluetooth(${hardware.bluetooth.rx}, ${hardware.bluetooth.tx}); // Arduino RX, TX`);
     if (hardware.mp3.enabled) globals.push(`SoftwareSerial mp3Serial(${hardware.mp3.rx}, ${hardware.mp3.tx}); // Arduino RX, TX`);
+    if (hardware.husky.enabled) globals.push("HUSKYLENS huskylens;", "bool huskyReady = false;", "int8_t activeHuskyAlgorithm = -1;");
     workspace.getVariableMap().getAllVariables().forEach(variable => {
       globals.push(`double ${cppIdentifier(variable.name, "var")} = 0;`);
     });
@@ -2338,6 +2413,52 @@ void setMotor(uint8_t pin1, uint8_t pin2, int speedValue) {
   } else {
     analogWrite(pin1, 0);
     analogWrite(pin2, 0);
+  }
+}`);
+    if (hardware.husky.enabled) helpers.push(`
+bool ensureHusky() {
+  if (huskyReady) return true;
+  Wire.begin();
+  Wire.setClock(100000);
+  delay(100);
+  huskyReady = huskylens.begin(Wire);
+  return huskyReady;
+}
+
+bool fetchHuskyResult(int id, HUSKYLENSResult &result) {
+  if (!ensureHusky() || !huskylens.requestBlocks(id)) {
+    huskyReady = false;
+    return false;
+  }
+  while (huskylens.available()) {
+    HUSKYLENSResult candidate = huskylens.read();
+    if (candidate.command == COMMAND_RETURN_BLOCK && candidate.ID == id) {
+      result = candidate;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool huskySeen(int id) {
+  HUSKYLENSResult result;
+  return fetchHuskyResult(id, result);
+}
+
+int huskyValue(int id, uint8_t field) {
+  HUSKYLENSResult result;
+  if (!fetchHuskyResult(id, result)) return 0;
+  if (field == 1) return result.xCenter;
+  if (field == 2) return result.yCenter;
+  if (field == 3) return result.width;
+  return result.height;
+}
+
+void setHuskyAlgorithm(uint8_t algorithm) {
+  if (!ensureHusky() || activeHuskyAlgorithm == algorithm) return;
+  if (huskylens.writeAlgorithm((protocolAlgorithm)algorithm)) {
+    activeHuskyAlgorithm = algorithm;
+    delay(300);
   }
 }`);
     if (hardware.bluetooth.enabled && ["bt_read", "bt_received_item", "bt_value_equals"].some(type => hardware.types.has(type))) helpers.push(`

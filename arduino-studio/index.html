@@ -109,7 +109,7 @@
             <span>☀️ 조도</span><span>📏 초음파</span><span>🌡️ 온습도</span><span>🌫️ 미세먼지</span>
             <span>🌱 토양수분</span><span>🔘 버튼</span><span>💡 LED</span><span>⚙️ DC모터</span>
             <span>🦾 서보</span><span>🔊 피에조</span><span>🖥️ I²C LCD</span><span>◼️ 0.96 OLED</span>
-            <span>🌈 네오픽셀</span><span>🎵 MP3</span><span>📶 Bluetooth</span>
+            <span>🌈 네오픽셀</span><span>🎵 MP3</span><span>📶 Bluetooth</span><span>👁️ HuskyLens</span>
           </div>
         </div>
 
@@ -121,7 +121,7 @@
 
         <div class="settings-card pin-warning">
           <h3>핀 사용 주의</h3>
-          <p>D0·D1은 USB 시리얼과 겹쳐 기본 목록에서 제외했습니다. UNO·Nano에는 진짜 아날로그 출력(DAC)이 없으므로 PWM 출력 블록을 사용합니다. I²C LCD와 OLED는 A4(SDA)·A5(SCL)를 사용합니다.</p>
+          <p>D0·D1은 USB 시리얼과 겹쳐 기본 목록에서 제외했습니다. UNO·Nano에는 진짜 아날로그 출력(DAC)이 없으므로 PWM 출력 블록을 사용합니다. I²C LCD·OLED·HuskyLens는 A4(SDA)·A5(SCL)를 사용합니다.</p>
         </div>
       </section>
 
@@ -189,17 +189,17 @@
     <form method="dialog" class="dialog-card firmware-card">
       <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
       <span class="step-chip">보드당 처음 1번</span>
-      <h2>OneMaker Arduino 런타임 1.1.6 설치</h2>
-      <p>네오픽셀 전체 색상·밝기 블록이 포함된 1.1.6을 설치합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
+      <h2>OneMaker Arduino 런타임 1.1.7 설치</h2>
+      <p>HuskyLens I²C 블록이 포함된 1.1.7을 설치합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
       <div class="firmware-options">
-        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.6.hex" board="uno" verify>
-          Arduino UNO에 1.1.6 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.7.hex" board="uno" verify>
+          Arduino UNO에 1.1.7 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.6.hex" board="nano" verify>
-          Nano에 1.1.6 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.7.hex" board="nano" verify>
+          Nano에 1.1.7 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.6.hex" board="nanoOldBootloader" verify>
-          Nano 구형 부트로더에 1.1.6 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.7.hex" board="nanoOldBootloader" verify>
+          Nano 구형 부트로더에 1.1.7 설치 <span class="upload-progress"></span>
         </button>
       </div>
       <ol class="mini-steps">
@@ -245,6 +245,6 @@
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="ch340-webserial.js?v=1.0.1"></script>
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
-  <script src="app.js?v=1.4.2"></script>
+  <script src="app.js?v=1.4.3"></script>
 </body>
 </html>

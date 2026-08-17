@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.6
-static const char *RUNTIME_VERSION = "1.1.6";
+// OneMaker Arduino UNO/Nano Runtime 1.1.7
+static const char *RUNTIME_VERSION = "1.1.7";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -50,7 +50,8 @@ enum StatementOpcode : uint8_t {
   OP_BT_SET_NAME = 28,
   OP_OLED_BEGIN = 29,
   OP_OLED_PRINT = 30,
-  OP_OLED_CLEAR = 31
+  OP_OLED_CLEAR = 31,
+  OP_HUSKY_ALGORITHM = 32
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -65,6 +66,11 @@ enum ExpressionOpcode : uint8_t {
   EX_DUST = 9,
   EX_BT_AVAILABLE = 10,
   EX_BT_READ = 11,
+  EX_HUSKY_SEEN = 12,
+  EX_HUSKY_X = 13,
+  EX_HUSKY_Y = 14,
+  EX_HUSKY_WIDTH = 15,
+  EX_HUSKY_HEIGHT = 16,
   EX_ADD = 20,
   EX_SUBTRACT = 21,
   EX_MULTIPLY = 22,
@@ -193,6 +199,44 @@ int readDust(uint8_t ledPin, uint8_t analogIndex) {
   digitalWrite(ledPin, HIGH);
   delayMicroseconds(9680);
   return value;
+}
+
+void sendHuskyCommand(uint8_t command, int16_t value) {
+  uint8_t frame[8] = {0x55, 0xAA, 0x11, 2, command, (uint8_t)value, (uint8_t)(value >> 8), 0};
+  for (uint8_t index = 0; index < 7; index++) frame[7] += frame[index];
+  Wire.begin();
+  Wire.beginTransmission(0x32);
+  Wire.write(frame, 8);
+  Wire.endTransmission();
+}
+
+bool readHuskyFrame(uint8_t expectedCommand, int16_t values[5]) {
+  for (uint8_t attempt = 0; attempt < 3; attempt++) {
+    delay(10);
+    uint8_t frame[16];
+    uint8_t size = Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
+    for (uint8_t index = 0; index < size; index++) frame[index] = Wire.read();
+    if (size != 16 || frame[4] != expectedCommand) continue;
+    for (uint8_t index = 0; index < 5; index++) {
+      values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
+    }
+    return true;
+  }
+  return false;
+}
+
+void setHuskyAlgorithm(uint8_t algorithm) {
+  sendHuskyCommand(0x2D, constrain(algorithm, 0, 6));
+  delay(300);
+}
+
+bool fetchHuskyValue(int16_t id, uint8_t field, int16_t &value) {
+  sendHuskyCommand(0x27, id);
+  int16_t values[5];
+  if (!readHuskyFrame(0x29, values) || values[0] < 1) return false;
+  if (!readHuskyFrame(0x2A, values) || values[4] != id) return false;
+  value = field ? values[field - 1] : 1;
+  return true;
 }
 
 void rememberMotorPin(uint8_t pin) {
@@ -444,9 +488,28 @@ VmValue numberValue(float value) {
   return result;
 }
 
+float parseNumber(const String &text) {
+  uint8_t index = 0;
+  bool negative = false;
+  if (text[0] == '-') {
+    negative = true;
+    index++;
+  }
+  float value = 0;
+  while (isDigit(text[index])) value = value * 10 + text[index++] - '0';
+  if (text[index] == '.') {
+    float place = 0.1f;
+    while (isDigit(text[++index])) {
+      value += (text[index] - '0') * place;
+      place *= 0.1f;
+    }
+  }
+  return negative ? -value : value;
+}
+
 VmValue textValue(const String &value) {
   VmValue result;
-  result.number = value.toFloat();
+  result.number = 0;
   result.text = value;
   result.isText = true;
   return result;
@@ -462,8 +525,19 @@ float nonNegative(float value) {
   return value < 0 ? 0 : value;
 }
 
+float vmPower(float base, float exponent) {
+  long power = (long)exponent;
+  float result = 1;
+  while (power > 0) {
+    if (power & 1) result *= base;
+    base *= base;
+    power >>= 1;
+  }
+  return result;
+}
+
 float valueNumber(const VmValue &value) {
-  return value.isText ? value.text.toFloat() : value.number;
+  return value.isText ? parseNumber(value.text) : value.number;
 }
 
 bool valueBoolean(const VmValue &value) {
@@ -585,6 +659,12 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(bluetooth && bluetooth->available() ? 1 : 0);
     } else if (opcode == EX_BT_READ) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
+    } else if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
+      int16_t id = constrain((int)valueNumber(stack[stackSize - 1]), 0, 32767);
+      int16_t value = 0;
+      uint8_t field = opcode == EX_HUSKY_SEEN ? 0 : opcode - EX_HUSKY_SEEN;
+      bool seen = fetchHuskyValue(id, field, value);
+      stack[stackSize - 1] = numberValue(seen ? value : 0);
     } else if (opcode == EX_NOT && stackSize >= 1) {
       stack[stackSize - 1] = numberValue(!valueBoolean(stack[stackSize - 1]));
     } else if (stackSize >= 2) {
@@ -598,7 +678,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
         case EX_SUBTRACT: result = numberValue(a - b); break;
         case EX_MULTIPLY: result = numberValue(a * b); break;
         case EX_DIVIDE: result = numberValue(fabs(b) < 0.00001f ? 0 : a / b); break;
-        case EX_POWER: result = numberValue(pow(a, b)); break;
+        case EX_POWER: result = numberValue(vmPower(a, b)); break;
         case EX_EQUAL:
           result = numberValue(left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f);
           break;
@@ -744,6 +824,8 @@ void executeStoredProgramStep() {
     oledPrint(value, column, row);
   } else if (opcode == OP_OLED_CLEAR) {
     oledClear();
+  } else if (opcode == OP_HUSKY_ALGORITHM) {
+    setHuskyAlgorithm(programByte(vmProgramCounter++));
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
     long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
@@ -911,6 +993,10 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "DHT") && count >= 3) {
     uint8_t pin = tokenInt(args[0]);
     sendNumber(id, readDhtValue(pin, tokenInt(args[1]), tokenInt(args[2]) != 0));
+  } else if (!strcmp(operation, "HUSKY") && count >= 2) {
+    int16_t value = 0;
+    fetchHuskyValue(constrain(tokenInt(args[0]), 0, 32767), constrain(tokenInt(args[1]), 0, 4), value);
+    sendNumber(id, value);
   } else if (!strcmp(operation, "BTAVAIL")) {
     if (bluetooth) bluetooth->listen();
     sendNumber(id, bluetooth && bluetooth->available() ? 1 : 0);
@@ -954,6 +1040,8 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     oledPrint(decodeHex(args[2]), tokenInt(args[1]), tokenInt(args[0]));
   } else if (!strcmp(operation, "OLEDCLEAR") && oledReady) {
     oledClear();
+  } else if (!strcmp(operation, "HUSKYALG") && count >= 1) {
+    setHuskyAlgorithm(constrain(tokenInt(args[0]), 0, 6));
   } else if (!strcmp(operation, "NEOBEGIN") && count >= 2) {
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(constrain(tokenInt(args[1]), 1, 60), tokenInt(args[0]), NEO_GRB + NEO_KHZ800);
