@@ -526,15 +526,14 @@ float nonNegative(float value) {
 }
 
 float vmPower(float base, float exponent) {
-  bool inverse = exponent < 0;
-  long power = abs((long)exponent);
+  long power = (long)exponent;
   float result = 1;
-  while (power) {
+  while (power > 0) {
     if (power & 1) result *= base;
     base *= base;
     power >>= 1;
   }
-  return inverse ? 1.0f / result : result;
+  return result;
 }
 
 float valueNumber(const VmValue &value) {
