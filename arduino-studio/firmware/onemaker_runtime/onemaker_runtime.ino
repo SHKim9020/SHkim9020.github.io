@@ -211,21 +211,16 @@ void sendHuskyCommand(uint8_t command, int16_t value) {
 }
 
 bool readHuskyFrame(uint8_t expectedCommand, int16_t values[5]) {
-  for (uint8_t attempt = 0; attempt < 12; attempt++) {
-    delay(5);
-    Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
-    if (Wire.available() < 6) continue;
-    bool matches = Wire.read() == 0x55;
-    matches = Wire.read() == 0xAA && matches;
-    matches = Wire.read() == 0x11 && matches;
-    uint8_t valueCount = min((uint8_t)5, (uint8_t)(Wire.read() / 2));
-    matches = Wire.read() == expectedCommand && matches;
-    for (uint8_t index = 0; index < valueCount; index++) {
-      uint8_t low = Wire.read();
-      values[index] = low | ((int16_t)Wire.read() << 8);
+  for (uint8_t attempt = 0; attempt < 3; attempt++) {
+    delay(10);
+    uint8_t frame[16];
+    uint8_t size = Wire.requestFrom((uint8_t)0x32, (uint8_t)16);
+    for (uint8_t index = 0; index < size; index++) frame[index] = Wire.read();
+    if (size != 16 || frame[0] != 0x55 || frame[1] != 0xAA || frame[4] != expectedCommand) continue;
+    for (uint8_t index = 0; index < 5; index++) {
+      values[index] = frame[5 + index * 2] | ((int16_t)frame[6 + index * 2] << 8);
     }
-    while (Wire.available()) Wire.read();
-    if (matches) return true;
+    return true;
   }
   return false;
 }
@@ -493,9 +488,28 @@ VmValue numberValue(float value) {
   return result;
 }
 
+float parseNumber(const String &text) {
+  uint8_t index = 0;
+  bool negative = false;
+  if (text[0] == '-') {
+    negative = true;
+    index++;
+  }
+  float value = 0;
+  while (isDigit(text[index])) value = value * 10 + text[index++] - '0';
+  if (text[index] == '.') {
+    float place = 0.1f;
+    while (isDigit(text[++index])) {
+      value += (text[index] - '0') * place;
+      place *= 0.1f;
+    }
+  }
+  return negative ? -value : value;
+}
+
 VmValue textValue(const String &value) {
   VmValue result;
-  result.number = value.toFloat();
+  result.number = parseNumber(value);
   result.text = value;
   result.isText = true;
   return result;
@@ -526,7 +540,7 @@ float vmPower(float base, float exponent) {
 }
 
 float valueNumber(const VmValue &value) {
-  return value.isText ? value.text.toFloat() : value.number;
+  return value.isText ? parseNumber(value.text) : value.number;
 }
 
 bool valueBoolean(const VmValue &value) {
