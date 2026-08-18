@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>micro:bit BLE 온도·조도 테스트</title>
+<style>
+:root{
+  --bg:#f2f6fc;--card:#fff;--ink:#10213f;--muted:#7c8799;--line:#e1e8f2;
+  --blue:#0876f8;--green:#08b894;--red:#e45b66;--shadow:0 16px 40px rgba(25,58,110,.10)
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#fff 0,#f5f9ff 340px,#eef4fb 100%);color:var(--ink);
+font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+.app{max-width:980px;margin:auto;min-height:100vh}
+.topbar{height:104px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid #edf2f7;position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:center;gap:15px}.logo{width:54px;height:54px;border-radius:15px;background:var(--blue);display:grid;place-items:center;color:white;font-size:28px;font-weight:900;box-shadow:0 10px 24px rgba(8,118,248,.25)}
+.brand strong{display:block;font-size:30px}.brand small{display:block;color:#8792a2;letter-spacing:4px;font-size:11px;margin-top:2px}
+.connect{border:0;border-radius:17px;background:var(--blue);color:white;padding:17px 22px;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 10px 25px rgba(8,118,248,.24)}
+.connect:disabled{opacity:.45}
+.hero{background:linear-gradient(135deg,#0a2e58,#0d3b6c 58%,#09274a);color:white;padding:48px 34px 42px}
+.eyebrow{color:#70b0ff;font-weight:900;letter-spacing:2.4px}.hero h1{font-size:42px;line-height:1.25;margin:19px 0 15px;letter-spacing:-2px}.hero h1 span{color:#62a7ff}.hero p{color:#c4d1e1;font-size:18px;line-height:1.65;margin:0}
+.status{margin-top:28px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);border-radius:22px;padding:20px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.statusLeft{display:flex;align-items:center;gap:14px}.dot{width:20px;height:20px;border-radius:50%;background:#8195b1;box-shadow:0 0 0 8px rgba(255,255,255,.07)}.dot.on{background:#1dd3a7;box-shadow:0 0 0 8px rgba(29,211,167,.12)}
+.status small{display:block;color:#aebdd0}.status b{display:block;margin-top:4px;font-size:18px}
+.disconnect{border:0;background:#244d7d;color:#dcecff;border-radius:13px;padding:12px 16px;font-weight:850;cursor:pointer}.disconnect:disabled{opacity:.45}
+.device{background:white;margin:0 28px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.deviceName small{display:block;color:#8a95a7;margin-bottom:6px}.deviceName strong{font-size:22px}.team{background:#eef5ff;color:#1d6ed6;padding:10px 15px;border-radius:999px;font-weight:900}
+main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;letter-spacing:2.5px}.sectionTitle h2{font-size:32px;margin:8px 0 22px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{position:relative;background:white;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);padding:26px;min-height:235px}
+.icon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;font-size:23px;font-weight:900;margin-bottom:30px}
+.temp .icon{background:#fff0f1;color:#e35c67}.light .icon{background:#fff8df;color:#d3a71a}
+.label{color:#7f8a9b;font-weight:750}.value{font-size:64px;font-weight:950;letter-spacing:-3px;margin-top:8px}.unit{font-size:20px;color:#7d899b;margin-left:5px}
+.live{position:absolute;right:20px;top:20px;border-radius:999px;padding:8px 10px;background:#eafbf6;color:#05a27f;font-size:12px;font-weight:900}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}.metaBox{background:white;border:1px solid var(--line);border-radius:16px;padding:14px}.metaBox b{display:block;color:#8b96a7;font-size:12px;margin-bottom:6px}
+.testbox{margin-top:18px;background:white;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow)}.testbox h3{margin-top:0}.testbox p{color:#718096;line-height:1.65}
+.log{height:150px;overflow:auto;background:#0a1730;color:#dce9ff;border-radius:14px;padding:12px;font:12px/1.55 Consolas,monospace}
+@media(max-width:650px){.topbar{height:92px;padding:0 16px}.brand strong{font-size:24px}.brand small{font-size:9px}.logo{width:46px;height:46px}.connect{font-size:15px;padding:14px 15px}.hero{padding:39px 20px}.hero h1{font-size:34px}.status{align-items:flex-start;flex-direction:column}.device{margin:0;padding:20px}.cards{grid-template-columns:1fr}.meta{grid-template-columns:1fr 1fr}main{padding:38px 16px}.value{font-size:58px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">••</div>
+      <div><strong>micro:bit</strong><small>BLE MONITOR</small></div>
+    </div>
+    <button id="connectBtn" class="connect">ᛒ 연결하기</button>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">— WEB BLUETOOTH · SENSOR TEST</div>
+    <h1>내장 온도와 조도를<br><span>먼저 정확히 테스트합니다.</span></h1>
+    <p>IoT:bit의 외부 센서는 아직 사용하지 않습니다. micro:bit 본체의 온도와 LED 조도센서 값만 2초마다 BLE로 확인합니다.</p>
+
+    <div class="status">
+      <div class="statusLeft">
+        <div id="dot" class="dot"></div>
+        <div><small>현재 상태</small><b id="statusText">연결 대기 중</b></div>
+      </div>
+      <button id="disconnectBtn" class="disconnect" disabled>연결 해제</button>
+    </div>
+  </section>
+
+  <section class="device">
+    <div class="deviceName">
+      <small>연결 장치 / Bluetooth 이름</small>
+      <strong id="deviceName">아직 연결되지 않음</strong>
+    </div>
+    <div id="team" class="team">TEAM --</div>
+  </section>
+
+  <main>
+    <div class="sectionTitle"><small>LIVE DATA</small><h2>실시간 센서</h2></div>
+
+    <section class="cards">
+      <article class="card temp">
+        <span class="live">● LIVE</span>
+        <div class="icon">T</div>
+        <div class="label">micro:bit 내장 온도</div>
+        <div class="value"><span id="temp">--</span><span class="unit">℃</span></div>
+      </article>
+
+      <article class="card light">
+        <span class="live">● LIVE</span>
+        <div class="icon">☀</div>
+        <div class="label">micro:bit 내장 조도</div>
+        <div class="value"><span id="light">--</span><span class="unit">/255</span></div>
+      </article>
+    </section>
+
+    <section class="meta">
+      <div class="metaBox"><b>TEAM</b><span id="teamText">--</span></div>
+      <div class="metaBox"><b>micro:bit 이름</b><span id="bleName">--</span></div>
+      <div class="metaBox"><b>전송 번호</b><span id="seq">--</span></div>
+      <div class="metaBox"><b>최근 수신</b><span id="last">--</span></div>
+    </section>
+
+    <section class="testbox">
+      <h3>조도센서 테스트 방법</h3>
+      <p>연결 후 micro:bit 앞면의 5×5 LED 부분을 손바닥으로 완전히 가려보세요. 약 2초 뒤 조도 값이 크게 내려가면 정상입니다. 반대로 휴대폰 플래시나 밝은 조명을 비추면 값이 올라가야 합니다.</p>
+      <div id="log" class="log"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const $ = id => document.getElementById(id);
+
+  let device = null;
+  let notifyCharacteristic = null;
+  let textBuffer = "";
+  const decoder = new TextDecoder();
+
+  function time(){
+    return new Date().toLocaleTimeString("ko-KR",{hour12:false});
+  }
+
+  function log(text, kind="INFO"){
+    const row = document.createElement("div");
+    row.textContent = `[${time()}] ${kind} ${text}`;
+    $("log").prepend(row);
+  }
+
+  function status(on, text){
+    $("dot").classList.toggle("on", on);
+    $("statusText").textContent = text;
+    $("connectBtn").disabled = on;
+    $("disconnectBtn").disabled = !on;
+  }
+
+  function setInfo(team, bleName){
+    if(team){
+      $("team").textContent = team;
+      $("teamText").textContent = team;
+    }
+    if(bleName){
+      $("bleName").textContent = bleName;
+    }
+    if(device){
+      $("deviceName").textContent =
+        `${device.name || "BBC micro:bit"}${team ? " · " + team : ""}`;
+    }
+  }
+
+  function parseLine(line){
+    const p = line.trim().split(",").map(v => v.trim());
+
+    if(p[0] === "HELLO"){
+      setInfo(p[1] || "", p[2] || "");
+      return;
+    }
+
+    if(p[0] === "DATA" && p.length >= 6){
+      setInfo(p[1], p[2]);
+      $("temp").textContent = p[3];
+      $("light").textContent = p[4];
+      $("seq").textContent = p[5];
+      $("last").textContent = time();
+      return;
+    }
+
+    log("알 수 없는 데이터: " + line, "WARN");
+  }
+
+  function onNotification(event){
+    textBuffer += decoder.decode(event.target.value);
+    const lines = textBuffer.split(/\r?\n/);
+    textBuffer = lines.pop() || "";
+
+    for(const line of lines){
+      if(!line.trim()) continue;
+      log(line, "RECV");
+      parseLine(line);
+    }
+  }
+
+  async function connect(){
+    try{
+      if(!navigator.bluetooth){
+        throw new Error("Web Bluetooth를 사용할 수 없습니다. Chrome/Edge에서 HTTPS 또는 localhost로 실행하세요.");
+      }
+
+      status(false, "micro:bit 선택 중…");
+
+      device = await navigator.bluetooth.requestDevice({
+        filters:[
+          {namePrefix:"BBC micro:bit"},
+          {namePrefix:"micro:bit"}
+        ],
+        optionalServices:[UART_SERVICE_UUID]
+      });
+
+      device.addEventListener("gattserverdisconnected", disconnected);
+      $("deviceName").textContent = device.name || "BBC micro:bit";
+      status(false, "연결됨 · UART 서비스 확인 중…");
+
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(UART_SERVICE_UUID);
+      const characteristics = await service.getCharacteristics();
+
+      notifyCharacteristic =
+        characteristics.find(c => c.properties.notify || c.properties.indicate);
+
+      if(!notifyCharacteristic){
+        throw new Error("UART 알림 특성을 찾지 못했습니다. MakeCode에서 Bluetooth UART 서비스를 시작했는지 확인하세요.");
+      }
+
+      await notifyCharacteristic.startNotifications();
+      notifyCharacteristic.addEventListener("characteristicvaluechanged", onNotification);
+
+      status(true, "BLE 연결됨 · 실시간 수신 중");
+      log("연결 성공: " + (device.name || "micro:bit"));
+
+    }catch(e){
+      status(false, "연결 실패");
+      log(e.message || String(e), "ERROR");
+    }
+  }
+
+  function disconnected(){
+    status(false, "연결 대기 중");
+    notifyCharacteristic = null;
+    textBuffer = "";
+    log("Bluetooth 연결 해제");
+  }
+
+  function disconnect(){
+    if(device?.gatt?.connected) device.gatt.disconnect();
+    else disconnected();
+  }
+
+  $("connectBtn").addEventListener("click", connect);
+  $("disconnectBtn").addEventListener("click", disconnect);
+
+  if(!window.isSecureContext){
+    status(false, "localhost 또는 HTTPS에서 열어주세요");
+    log("Web Bluetooth는 보안 컨텍스트가 필요합니다.", "WARN");
+  }else{
+    log("준비 완료. 연결하기를 누르세요.");
+  }
+})();
+</script>
+</body>
+</html>
