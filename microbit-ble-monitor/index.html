@@ -3,260 +3,75 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0876f8">
 <title>micro:bit BLE 환경 센서 모니터</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
-:root{
-  --bg:#f2f6fc;--card:#fff;--ink:#10213f;--muted:#7c8799;--line:#e1e8f2;
-  --blue:#0876f8;--green:#08b894;--red:#e45b66;--orange:#f49a35;--purple:#735be5;
-  --shadow:0 16px 40px rgba(25,58,110,.10)
-}
-*{box-sizing:border-box}
-body{margin:0;background:linear-gradient(180deg,#fff 0,#f5f9ff 340px,#eef4fb 100%);color:var(--ink);
-font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Arial,sans-serif}
-.app{max-width:1050px;margin:auto;min-height:100vh}
-.topbar{height:104px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid #edf2f7;position:sticky;top:0;z-index:10}
-.brand{display:flex;align-items:center;gap:15px}.logo{width:54px;height:54px;border-radius:15px;background:var(--blue);display:grid;place-items:center;color:white;font-size:28px;font-weight:900;box-shadow:0 10px 24px rgba(8,118,248,.25)}
-.brand strong{display:block;font-size:30px}.brand small{display:block;color:#8792a2;letter-spacing:4px;font-size:11px;margin-top:2px}
-.connect{border:0;border-radius:17px;background:var(--blue);color:white;padding:17px 22px;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 10px 25px rgba(8,118,248,.24)}
-.connect:disabled{opacity:.45}
-.hero{background:linear-gradient(135deg,#0a2e58,#0d3b6c 58%,#09274a);color:white;padding:48px 34px 42px}
-.eyebrow{color:#70b0ff;font-weight:900;letter-spacing:2.4px}.hero h1{font-size:42px;line-height:1.25;margin:19px 0 15px;letter-spacing:-2px}.hero h1 span{color:#62a7ff}.hero p{color:#c4d1e1;font-size:18px;line-height:1.65;margin:0}
-.status{margin-top:28px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);border-radius:22px;padding:20px;display:flex;align-items:center;justify-content:space-between;gap:16px}
-.statusLeft{display:flex;align-items:center;gap:14px}.dot{width:20px;height:20px;border-radius:50%;background:#8195b1;box-shadow:0 0 0 8px rgba(255,255,255,.07)}.dot.on{background:#1dd3a7;box-shadow:0 0 0 8px rgba(29,211,167,.12)}
-.status small{display:block;color:#aebdd0}.status b{display:block;margin-top:4px;font-size:18px}
-.disconnect{border:0;background:#244d7d;color:#dcecff;border-radius:13px;padding:12px 16px;font-weight:850;cursor:pointer}.disconnect:disabled{opacity:.45}
-.device{background:white;margin:0 28px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px}
-.deviceName small{display:block;color:#8a95a7;margin-bottom:6px}.deviceName strong{font-size:22px}.team{background:#eef5ff;color:#1d6ed6;padding:10px 15px;border-radius:999px;font-weight:900}
-main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;letter-spacing:2.5px}.sectionTitle h2{font-size:32px;margin:8px 0 22px}
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-.card{position:relative;background:white;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);padding:24px;min-height:205px}
-.icon{width:50px;height:50px;border-radius:15px;display:grid;place-items:center;font-size:20px;font-weight:900;margin-bottom:24px}
-.temp .icon{background:#fff0f1;color:#e35c67}.hum .icon{background:#eef7ff;color:#1681e8}.press .icon{background:#f1edff;color:#7159e1}
-.dust .icon{background:#fff4e8;color:#ed9432}.soil .icon{background:#edf8e9;color:#4d9a42}.light .icon{background:#fff8df;color:#d3a71a}
-.label{color:#7f8a9b;font-weight:750}.value{font-size:48px;font-weight:950;letter-spacing:-2px;margin-top:8px}.unit{font-size:17px;color:#7d899b;margin-left:4px}
-.live{position:absolute;right:18px;top:18px;border-radius:999px;padding:7px 9px;background:#eafbf6;color:#05a27f;font-size:11px;font-weight:900}
-.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}.metaBox{background:white;border:1px solid var(--line);border-radius:16px;padding:14px}.metaBox b{display:block;color:#8b96a7;font-size:12px;margin-bottom:6px}
-.wiring{margin-top:32px;background:white;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow)}
-.wiring h3{margin:0 0 16px}.wireGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.wire{background:#f6f9fd;border:1px solid #e5ebf3;border-radius:14px;padding:13px}.wire b{display:block;font-size:13px;margin-bottom:5px}.wire span{color:#617087;font-size:13px}
-.testbox{margin-top:18px;background:white;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow)}.testbox h3{margin-top:0}.testbox p{color:#718096;line-height:1.65}
-.log{height:150px;overflow:auto;background:#0a1730;color:#dce9ff;border-radius:14px;padding:12px;font:12px/1.55 Consolas,monospace}
-@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.wireGrid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:650px){.topbar{height:92px;padding:0 16px}.brand strong{font-size:24px}.brand small{font-size:9px}.logo{width:46px;height:46px}.connect{font-size:15px;padding:14px 15px}.hero{padding:39px 20px}.hero h1{font-size:34px}.hero p{font-size:16px}.status{align-items:flex-start;flex-direction:column}.device{margin:0;padding:20px}.cards{grid-template-columns:1fr}.meta{grid-template-columns:1fr 1fr}.wireGrid{grid-template-columns:1fr 1fr}main{padding:38px 16px}.value{font-size:50px}}
+:root{--bg:#f2f6fc;--card:#fff;--ink:#10213f;--muted:#7c8799;--line:#e1e8f2;--blue:#0876f8;--green:#08b894;--shadow:0 16px 40px rgba(25,58,110,.10)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:linear-gradient(180deg,#fff 0,#f5f9ff 340px,#eef4fb 100%);color:var(--ink);font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Arial,sans-serif}button{font:inherit}.app{max-width:1050px;margin:auto;min-height:100vh}
+.topbar{height:104px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid #edf2f7;position:sticky;top:0;z-index:30}.brand{display:flex;align-items:center;gap:15px}.logo{width:54px;height:54px;border-radius:15px;background:var(--blue);display:grid;place-items:center;color:white;font-size:28px;font-weight:900;box-shadow:0 10px 24px rgba(8,118,248,.25)}.brand strong{display:block;font-size:30px}.brand small{display:block;color:#8792a2;letter-spacing:4px;font-size:11px;margin-top:2px}.connect{border:0;border-radius:17px;background:var(--blue);color:white;padding:17px 22px;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 10px 25px rgba(8,118,248,.24)}.connect:disabled{opacity:.45}
+.hero{background:linear-gradient(135deg,#0a2e58,#0d3b6c 58%,#09274a);color:white;padding:48px 34px 42px}.eyebrow{color:#70b0ff;font-weight:900;letter-spacing:2.4px}.hero h1{font-size:42px;line-height:1.25;margin:19px 0 15px;letter-spacing:-2px}.hero h1 span{color:#62a7ff}.hero p{color:#c4d1e1;font-size:18px;line-height:1.65;margin:0}.status{margin-top:28px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);border-radius:22px;padding:20px;display:flex;align-items:center;justify-content:space-between;gap:16px}.statusLeft{display:flex;align-items:center;gap:14px}.dot{width:20px;height:20px;border-radius:50%;background:#8195b1;box-shadow:0 0 0 8px rgba(255,255,255,.07)}.dot.on{background:#1dd3a7;box-shadow:0 0 0 8px rgba(29,211,167,.12)}.status small{display:block;color:#aebdd0}.status b{display:block;margin-top:4px;font-size:18px}.disconnect{border:0;background:#244d7d;color:#dcecff;border-radius:13px;padding:12px 16px;font-weight:850;cursor:pointer}.disconnect:disabled{opacity:.45}
+.device{background:white;margin:0 28px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px}.deviceName small{display:block;color:#8a95a7;margin-bottom:6px}.deviceName strong{font-size:22px}.team{background:#eef5ff;color:#1d6ed6;padding:10px 15px;border-radius:999px;font-weight:900}
+.tabsWrap{padding:24px 28px 0}.tabs{display:grid;grid-template-columns:1fr 1fr;background:#e8eef7;padding:5px;border-radius:17px;gap:5px}.tabBtn{border:0;background:transparent;color:#607087;padding:14px 12px;border-radius:13px;font-weight:900;cursor:pointer}.tabBtn.active{background:#fff;color:#126fdc;box-shadow:0 5px 16px rgba(41,72,115,.12)}
+main{padding:34px 28px 64px}.tabPanel{display:none}.tabPanel.active{display:block}.sectionTitle small{color:#1981eb;font-weight:900;letter-spacing:2.5px}.sectionTitle h2{font-size:32px;margin:8px 0 22px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{position:relative;background:white;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);padding:24px;min-height:205px}.icon{width:50px;height:50px;border-radius:15px;display:grid;place-items:center;font-size:20px;font-weight:900;margin-bottom:24px}.temp .icon{background:#fff0f1;color:#e35c67}.hum .icon{background:#eef7ff;color:#1681e8}.press .icon{background:#f1edff;color:#7159e1}.dust .icon{background:#fff4e8;color:#ed9432}.soil .icon{background:#edf8e9;color:#4d9a42}.light .icon{background:#fff8df;color:#d3a71a}.label{color:#7f8a9b;font-weight:750}.value{font-size:48px;font-weight:950;letter-spacing:-2px;margin-top:8px}.unit{font-size:17px;color:#7d899b;margin-left:4px}.live{position:absolute;right:18px;top:18px;border-radius:999px;padding:7px 9px;background:#eafbf6;color:#05a27f;font-size:11px;font-weight:900}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}.metaBox{background:white;border:1px solid var(--line);border-radius:16px;padding:14px}.metaBox b{display:block;color:#8b96a7;font-size:12px;margin-bottom:6px}.wiring,.testbox{margin-top:22px;background:white;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow)}.wiring h3,.testbox h3{margin:0 0 16px}.wireGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.wire{background:#f6f9fd;border:1px solid #e5ebf3;border-radius:14px;padding:13px}.wire b{display:block;font-size:13px;margin-bottom:5px}.wire span,.testbox p{color:#617087;font-size:13px;line-height:1.65}.log{height:150px;overflow:auto;background:#0a1730;color:#dce9ff;border-radius:14px;padding:12px;font:12px/1.55 Consolas,monospace}
+.graphTop{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.graphTop p{margin:6px 0 0;color:#748197;line-height:1.6}.clearBtn{border:1px solid #d9e3ef;background:#fff;color:#4a5c73;border-radius:12px;padding:11px 14px;font-weight:850;cursor:pointer;white-space:nowrap}.sensorPicker{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:16px}.sensorBtn{border:1px solid #dfe7f2;background:#fff;color:#5b697d;border-radius:14px;padding:12px 8px;font-weight:850;cursor:pointer}.sensorBtn.active{background:#eaf3ff;border-color:#96c4ff;color:#126fdc}.graphCard{background:#fff;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);padding:22px}.graphHeader{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}.graphHeader h3{margin:0;font-size:22px}.graphCurrent{font-size:28px;font-weight:950}.graphHint{font-size:13px;color:#8590a2;margin-top:4px}.chartWrap{height:360px;position:relative}.graphStats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}.stat{background:#f7faff;border:1px solid #e5ebf4;border-radius:15px;padding:13px}.stat b{display:block;font-size:12px;color:#8994a6;margin-bottom:5px}.stat strong{font-size:18px}.graphNote{margin-top:18px;background:#eff6ff;border:1px solid #d4e7ff;border-radius:16px;padding:15px;color:#46637f;line-height:1.65;font-size:14px}.emptyGraph{position:absolute;inset:0;display:grid;place-items:center;color:#8b96a7;font-weight:800;pointer-events:none}.emptyGraph.hide{display:none}
+@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.wireGrid{grid-template-columns:repeat(2,1fr)}.sensorPicker{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:650px){.topbar{height:92px;padding:0 16px}.brand strong{font-size:24px}.brand small{font-size:9px}.logo{width:46px;height:46px}.connect{font-size:15px;padding:14px 15px}.hero{padding:39px 20px}.hero h1{font-size:34px}.hero p{font-size:16px}.status{align-items:flex-start;flex-direction:column}.device{margin:0;padding:20px}.tabsWrap{padding:18px 16px 0}.cards{grid-template-columns:1fr}.meta{grid-template-columns:1fr 1fr}.wireGrid{grid-template-columns:1fr 1fr}main{padding:30px 16px 56px}.value{font-size:50px}.sectionTitle h2{font-size:28px}.sensorPicker{grid-template-columns:repeat(2,1fr)}.chartWrap{height:310px}.graphStats{grid-template-columns:1fr 1fr}.graphTop,.graphHeader{flex-direction:column}}
 </style>
 </head>
 <body>
 <div class="app">
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">••</div>
-      <div><strong>micro:bit</strong><small>BLE MONITOR</small></div>
-    </div>
-    <button id="connectBtn" class="connect">ᛒ 연결하기</button>
-  </header>
-
-  <section class="hero">
-    <div class="eyebrow">— WEB BLUETOOTH · SMART SENSOR</div>
-    <h1>환경 센서 6종을<br><span>스마트폰에서 실시간 확인합니다.</span></h1>
-    <p>BME280 온도·습도·기압, 미세먼지, 토양수분, 외부 빛센서를 IoT:bit에 연결하고 BLE로 약 2초마다 모니터링합니다.</p>
-
-    <div class="status">
-      <div class="statusLeft">
-        <div id="dot" class="dot"></div>
-        <div><small>현재 상태</small><b id="statusText">연결 대기 중</b></div>
-      </div>
-      <button id="disconnectBtn" class="disconnect" disabled>연결 해제</button>
-    </div>
-  </section>
-
-  <section class="device">
-    <div class="deviceName">
-      <small>연결 장치 / Bluetooth 이름</small>
-      <strong id="deviceName">아직 연결되지 않음</strong>
-    </div>
-    <div id="team" class="team">TEAM --</div>
-  </section>
-
-  <main>
-    <div class="sectionTitle"><small>LIVE DATA</small><h2>실시간 환경 센서</h2></div>
-
-    <section class="cards">
-      <article class="card temp"><span class="live">● LIVE</span><div class="icon">T</div><div class="label">BME280 온도</div><div class="value"><span id="temp">--</span><span class="unit">℃</span></div></article>
-      <article class="card hum"><span class="live">● LIVE</span><div class="icon">H</div><div class="label">BME280 습도</div><div class="value"><span id="hum">--</span><span class="unit">%</span></div></article>
-      <article class="card press"><span class="live">● LIVE</span><div class="icon">P</div><div class="label">BME280 기압</div><div class="value"><span id="press">--</span><span class="unit">hPa</span></div></article>
-      <article class="card dust"><span class="live">● LIVE</span><div class="icon">PM</div><div class="label">미세먼지</div><div class="value"><span id="dust">--</span><span class="unit">㎍/㎥</span></div></article>
-      <article class="card soil"><span class="live">● LIVE</span><div class="icon">S</div><div class="label">토양 수분</div><div class="value"><span id="soil">--</span><span class="unit">%</span></div></article>
-      <article class="card light"><span class="live">● LIVE</span><div class="icon">☀</div><div class="label">외부 빛 센서</div><div class="value"><span id="light">--</span><span class="unit">%</span></div></article>
-    </section>
-
-    <section class="meta">
-      <div class="metaBox"><b>TEAM</b><span id="teamText">--</span></div>
-      <div class="metaBox"><b>micro:bit 이름</b><span id="bleName">--</span></div>
-      <div class="metaBox"><b>전송 번호</b><span id="seq">--</span></div>
-      <div class="metaBox"><b>최근 수신</b><span id="last">--</span></div>
-    </section>
-
-    <section class="wiring">
-      <h3>IoT:bit 연결</h3>
-      <div class="wireGrid">
-        <div class="wire"><b>BME280</b><span>IIC · SCL P19 / SDA P20</span></div>
-        <div class="wire"><b>빛 센서</b><span>P1</span></div>
-        <div class="wire"><b>토양수분</b><span>P2</span></div>
-        <div class="wire"><b>미세먼지</b><span>LED IN P9 / OUT P10</span></div>
-      </div>
-    </section>
-
-    <section class="testbox">
-      <h3>센서 테스트</h3>
-      <p>빛센서는 손으로 가리거나 휴대폰 플래시를 비추고, 토양수분센서는 마른 상태와 물에 닿은 상태를 비교해 보세요. BME280은 손으로 감싸면 온도와 습도 변화가 나타납니다. 미세먼지 값은 공기 상태와 센서 안정화에 따라 천천히 변할 수 있습니다.</p>
-      <div id="log" class="log"></div>
-    </section>
-  </main>
-</div>
-
+<header class="topbar"><div class="brand"><div class="logo">••</div><div><strong>micro:bit</strong><small>BLE MONITOR</small></div></div><button id="connectBtn" class="connect">ᛒ 연결하기</button></header>
+<section class="hero"><div class="eyebrow">— WEB BLUETOOTH · SMART SENSOR</div><h1>환경 센서 6종을<br><span>스마트폰에서 실시간 확인합니다.</span></h1><p>BME280 온도·습도·기압, 미세먼지, 토양수분, 외부 빛센서를 IoT:bit에 연결하고 BLE로 약 2초마다 모니터링합니다.</p><div class="status"><div class="statusLeft"><div id="dot" class="dot"></div><div><small>현재 상태</small><b id="statusText">연결 대기 중</b></div></div><button id="disconnectBtn" class="disconnect" disabled>연결 해제</button></div></section>
+<section class="device"><div class="deviceName"><small>연결 장치 / Bluetooth 이름</small><strong id="deviceName">아직 연결되지 않음</strong></div><div id="team" class="team">TEAM --</div></section>
+<div class="tabsWrap"><div class="tabs"><button class="tabBtn active" data-tab="live">실시간 센서</button><button class="tabBtn" data-tab="graph">그래프</button></div></div>
+<main>
+<section id="tab-live" class="tabPanel active">
+<div class="sectionTitle"><small>LIVE DATA</small><h2>실시간 환경 센서</h2></div>
+<section class="cards">
+<article class="card temp"><span class="live">● LIVE</span><div class="icon">T</div><div class="label">BME280 온도</div><div class="value"><span id="temp">--</span><span class="unit">℃</span></div></article>
+<article class="card hum"><span class="live">● LIVE</span><div class="icon">H</div><div class="label">BME280 습도</div><div class="value"><span id="hum">--</span><span class="unit">%</span></div></article>
+<article class="card press"><span class="live">● LIVE</span><div class="icon">P</div><div class="label">BME280 기압</div><div class="value"><span id="press">--</span><span class="unit">hPa</span></div></article>
+<article class="card dust"><span class="live">● LIVE</span><div class="icon">PM</div><div class="label">미세먼지</div><div class="value"><span id="dust">--</span><span class="unit">㎍/㎥</span></div></article>
+<article class="card soil"><span class="live">● LIVE</span><div class="icon">S</div><div class="label">토양 수분</div><div class="value"><span id="soil">--</span><span class="unit">%</span></div></article>
+<article class="card light"><span class="live">● LIVE</span><div class="icon">☀</div><div class="label">외부 빛 센서</div><div class="value"><span id="light">--</span><span class="unit">%</span></div></article>
+</section>
+<section class="meta"><div class="metaBox"><b>TEAM</b><span id="teamText">--</span></div><div class="metaBox"><b>micro:bit 이름</b><span id="bleName">--</span></div><div class="metaBox"><b>전송 번호</b><span id="seq">--</span></div><div class="metaBox"><b>최근 수신</b><span id="last">--</span></div></section>
+<section class="wiring"><h3>IoT:bit 연결</h3><div class="wireGrid"><div class="wire"><b>BME280</b><span>IIC · SCL P19 / SDA P20</span></div><div class="wire"><b>빛 센서</b><span>P1</span></div><div class="wire"><b>토양수분</b><span>P2</span></div><div class="wire"><b>미세먼지</b><span>LED IN P9 / OUT P10</span></div></div></section>
+<section class="testbox"><h3>센서 테스트</h3><p>빛센서는 손으로 가리거나 휴대폰 플래시를 비추고, 토양수분센서는 마른 상태와 물에 닿은 상태를 비교해 보세요. BME280은 손으로 감싸면 온도와 습도 변화가 나타납니다. 미세먼지 값은 공기 상태와 센서 안정화에 따라 천천히 변할 수 있습니다.</p><div id="log" class="log"></div></section>
+</section>
+<section id="tab-graph" class="tabPanel">
+<div class="graphTop"><div><div class="sectionTitle"><small>LIVE GRAPH</small><h2 style="margin-bottom:6px">센서 변화 그래프</h2></div><p>센서를 선택하면 최근 측정값의 변화를 실시간 선그래프로 확인할 수 있습니다.</p></div><button id="clearGraphBtn" class="clearBtn">그래프 초기화</button></div>
+<div class="sensorPicker"><button class="sensorBtn active" data-sensor="temp">온도</button><button class="sensorBtn" data-sensor="hum">습도</button><button class="sensorBtn" data-sensor="press">기압</button><button class="sensorBtn" data-sensor="dust">미세먼지</button><button class="sensorBtn" data-sensor="soil">토양수분</button><button class="sensorBtn" data-sensor="light">빛</button></div>
+<section class="graphCard"><div class="graphHeader"><div><h3 id="graphTitle">BME280 온도</h3><div class="graphHint">최근 최대 150개 측정값을 저장합니다.</div></div><div class="graphCurrent"><span id="graphCurrent">--</span><span id="graphUnit" class="unit">℃</span></div></div><div class="chartWrap"><canvas id="sensorChart"></canvas><div id="emptyGraph" class="emptyGraph">BLE 연결 후 데이터가 들어오면 그래프가 시작됩니다.</div></div><div class="graphStats"><div class="stat"><b>현재</b><strong id="statCurrent">--</strong></div><div class="stat"><b>최저</b><strong id="statMin">--</strong></div><div class="stat"><b>최고</b><strong id="statMax">--</strong></div><div class="stat"><b>평균</b><strong id="statAvg">--</strong></div></div><div class="graphNote">실시간 센서 탭과 그래프 탭은 같은 BLE 데이터를 사용합니다. 탭을 이동해도 연결은 유지됩니다.</div></section>
+</section>
+</main></div>
 <script>
-(() => {
-  const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-  const $ = id => document.getElementById(id);
-
-  let device = null;
-  let notifyCharacteristic = null;
-  let textBuffer = "";
-  const decoder = new TextDecoder();
-
-  function time(){
-    return new Date().toLocaleTimeString("ko-KR",{hour12:false});
-  }
-
-  function log(text, kind="INFO"){
-    const row = document.createElement("div");
-    row.textContent = `[${time()}] ${kind} ${text}`;
-    $("log").prepend(row);
-  }
-
-  function status(on, text){
-    $("dot").classList.toggle("on", on);
-    $("statusText").textContent = text;
-    $("connectBtn").disabled = on;
-    $("disconnectBtn").disabled = !on;
-  }
-
-  function setInfo(team, bleName){
-    if(team){
-      $("team").textContent = team;
-      $("teamText").textContent = team;
-    }
-    if(bleName){
-      $("bleName").textContent = bleName;
-    }
-    if(device){
-      $("deviceName").textContent =
-        `${device.name || "BBC micro:bit"}${team ? " · " + team : ""}`;
-    }
-  }
-
-  function parseLine(line){
-    const p = line.trim().split(",").map(v => v.trim());
-
-    if(p[0] === "HELLO"){
-      setInfo(p[1] || "", p[2] || "");
-      return;
-    }
-
-    // DATA,TEAM01,guziv,26,58,1012,25,64,73,18
-    if(p[0] === "DATA" && p.length >= 10){
-      setInfo(p[1], p[2]);
-      $("temp").textContent = p[3];
-      $("hum").textContent = p[4];
-      $("press").textContent = p[5];
-      $("dust").textContent = p[6];
-      $("soil").textContent = p[7];
-      $("light").textContent = p[8];
-      $("seq").textContent = p[9];
-      $("last").textContent = time();
-      return;
-    }
-
-    log("알 수 없는 데이터: " + line, "WARN");
-  }
-
-  function onNotification(event){
-    textBuffer += decoder.decode(event.target.value);
-    const lines = textBuffer.split(/\r?\n/);
-    textBuffer = lines.pop() || "";
-
-    for(const line of lines){
-      if(!line.trim()) continue;
-      log(line, "RECV");
-      parseLine(line);
-    }
-  }
-
-  async function connect(){
-    try{
-      if(!navigator.bluetooth){
-        throw new Error("Web Bluetooth를 사용할 수 없습니다. Android Chrome/데스크톱 Chrome·Edge에서 열어주세요.");
-      }
-
-      status(false, "micro:bit 선택 중…");
-
-      device = await navigator.bluetooth.requestDevice({
-        filters:[
-          {namePrefix:"BBC micro:bit"},
-          {namePrefix:"micro:bit"}
-        ],
-        optionalServices:[UART_SERVICE_UUID]
-      });
-
-      device.addEventListener("gattserverdisconnected", disconnected);
-      $("deviceName").textContent = device.name || "BBC micro:bit";
-      status(false, "연결됨 · UART 서비스 확인 중…");
-
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(UART_SERVICE_UUID);
-      const characteristics = await service.getCharacteristics();
-
-      notifyCharacteristic =
-        characteristics.find(c => c.properties.notify || c.properties.indicate);
-
-      if(!notifyCharacteristic){
-        throw new Error("UART 알림 특성을 찾지 못했습니다. MakeCode에서 Bluetooth UART 서비스를 시작했는지 확인하세요.");
-      }
-
-      await notifyCharacteristic.startNotifications();
-      notifyCharacteristic.addEventListener("characteristicvaluechanged", onNotification);
-
-      status(true, "BLE 연결됨 · 센서 수신 중");
-      log("연결 성공: " + (device.name || "micro:bit"));
-
-    }catch(e){
-      status(false, "연결 실패");
-      log(e.message || String(e), "ERROR");
-    }
-  }
-
-  function disconnected(){
-    status(false, "연결 대기 중");
-    notifyCharacteristic = null;
-    textBuffer = "";
-    log("Bluetooth 연결 해제");
-  }
-
-  function disconnect(){
-    if(device?.gatt?.connected) device.gatt.disconnect();
-    else disconnected();
-  }
-
-  $("connectBtn").addEventListener("click", connect);
-  $("disconnectBtn").addEventListener("click", disconnect);
-
-  if(!window.isSecureContext){
-    status(false, "HTTPS에서 열어주세요");
-    log("Web Bluetooth는 보안 연결이 필요합니다.", "WARN");
-  }else{
-    log("준비 완료. 연결하기를 누르세요.");
-  }
+(()=>{
+const UART_SERVICE_UUID="6e400001-b5a3-f393-e0a9-e50e24dcca9e",$=id=>document.getElementById(id);let device=null,notifyCharacteristic=null,textBuffer="";const decoder=new TextDecoder();
+const sensorMeta={temp:{title:"BME280 온도",unit:"℃"},hum:{title:"BME280 습도",unit:"%"},press:{title:"BME280 기압",unit:"hPa"},dust:{title:"미세먼지",unit:"㎍/㎥"},soil:{title:"토양 수분",unit:"%"},light:{title:"외부 빛 센서",unit:"%"}};
+const history={temp:[],hum:[],press:[],dust:[],soil:[],light:[]},labels=[];const MAX_POINTS=150;let selectedSensor="temp",chart=null;
+const time=()=>new Date().toLocaleTimeString("ko-KR",{hour12:false});const shortTime=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0")};
+function log(text,kind="INFO"){const row=document.createElement("div");row.textContent=`[${time()}] ${kind} ${text}`;$("log").prepend(row)}
+function status(on,text){$("dot").classList.toggle("on",on);$("statusText").textContent=text;$("connectBtn").disabled=on;$("disconnectBtn").disabled=!on}
+function setInfo(team,bleName){if(team){$("team").textContent=team;$("teamText").textContent=team}if(bleName)$("bleName").textContent=bleName;if(device)$("deviceName").textContent=`${device.name||"BBC micro:bit"}${team?" · "+team:""}`}
+const num=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+function pushHistory(values){labels.push(shortTime());Object.keys(history).forEach(k=>history[k].push(values[k]));if(labels.length>MAX_POINTS){labels.shift();Object.keys(history).forEach(k=>history[k].shift())}$("emptyGraph").classList.toggle("hide",labels.length>0);updateChart()}
+function selectedValues(){return history[selectedSensor].filter(v=>Number.isFinite(v))}
+function formatValue(v){if(!Number.isFinite(v))return"--";const u=sensorMeta[selectedSensor].unit,d=selectedSensor==="temp"?1:0;return`${v.toFixed(d)} ${u}`}
+function updateStats(){const v=selectedValues();if(!v.length){["statCurrent","statMin","statMax","statAvg"].forEach(id=>$(id).textContent="--");return}const c=v[v.length-1],mn=Math.min(...v),mx=Math.max(...v),av=v.reduce((a,b)=>a+b,0)/v.length;$("statCurrent").textContent=formatValue(c);$("statMin").textContent=formatValue(mn);$("statMax").textContent=formatValue(mx);$("statAvg").textContent=formatValue(av)}
+function initChart(){if(typeof Chart==="undefined"){log("그래프 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.","WARN");return}chart=new Chart($("sensorChart"),{type:"line",data:{labels:[],datasets:[{label:sensorMeta[selectedSensor].title,data:[],borderWidth:3,pointRadius:1.5,pointHoverRadius:5,tension:.28,fill:true,backgroundColor:"rgba(8,118,248,.08)",borderColor:"#0876f8"}]},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${sensorMeta[selectedSensor].title}: ${ctx.parsed.y} ${sensorMeta[selectedSensor].unit}`}}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:7,color:"#8190a4",maxRotation:0}},y:{beginAtZero:false,grid:{color:"rgba(112,132,160,.13)"},ticks:{color:"#8190a4"}}}}})}
+function updateChart(){const m=sensorMeta[selectedSensor];$("graphTitle").textContent=m.title;$("graphUnit").textContent=m.unit;const v=history[selectedSensor],last=v.length?v[v.length-1]:null;$("graphCurrent").textContent=Number.isFinite(last)?last:"--";if(chart){chart.data.labels=labels.slice();chart.data.datasets[0].label=m.title;chart.data.datasets[0].data=v.slice();chart.update("none")}updateStats()}
+function selectSensor(key){selectedSensor=key;document.querySelectorAll(".sensorBtn").forEach(b=>b.classList.toggle("active",b.dataset.sensor===key));updateChart()}
+function clearGraph(){labels.length=0;Object.keys(history).forEach(k=>history[k].length=0);$("emptyGraph").classList.remove("hide");updateChart()}
+function parseLine(line){const p=line.trim().split(",").map(v=>v.trim());if(p[0]==="HELLO"){setInfo(p[1]||"",p[2]||"");return}if(p[0]==="DATA"&&p.length>=10){setInfo(p[1],p[2]);const v={temp:num(p[3]),hum:num(p[4]),press:num(p[5]),dust:num(p[6]),soil:num(p[7]),light:num(p[8])};$("temp").textContent=v.temp??"--";$("hum").textContent=v.hum??"--";$("press").textContent=v.press??"--";$("dust").textContent=v.dust??"--";$("soil").textContent=v.soil??"--";$("light").textContent=v.light??"--";$("seq").textContent=p[9];$("last").textContent=time();pushHistory(v);return}log("알 수 없는 데이터: "+line,"WARN")}
+function onNotification(event){textBuffer+=decoder.decode(event.target.value);const lines=textBuffer.split(/\r?\n/);textBuffer=lines.pop()||"";for(const line of lines){if(!line.trim())continue;log(line,"RECV");parseLine(line)}}
+async function connect(){try{if(!navigator.bluetooth)throw new Error("Web Bluetooth를 사용할 수 없습니다. Android Chrome 또는 지원되는 Edge/Chrome에서 실행하세요.");status(false,"micro:bit 선택 중…");device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"BBC micro:bit"},{namePrefix:"micro:bit"}],optionalServices:[UART_SERVICE_UUID]});device.addEventListener("gattserverdisconnected",disconnected);$("deviceName").textContent=device.name||"BBC micro:bit";status(false,"연결됨 · UART 서비스 확인 중…");const server=await device.gatt.connect(),service=await server.getPrimaryService(UART_SERVICE_UUID),chs=await service.getCharacteristics();notifyCharacteristic=chs.find(c=>c.properties.notify||c.properties.indicate);if(!notifyCharacteristic)throw new Error("UART 알림 특성을 찾지 못했습니다. MakeCode의 Bluetooth UART 설정을 확인하세요.");await notifyCharacteristic.startNotifications();notifyCharacteristic.addEventListener("characteristicvaluechanged",onNotification);status(true,"BLE 연결됨 · 실시간 수신 중");log("연결 성공: "+(device.name||"micro:bit"))}catch(e){status(false,"연결 실패");log(e.message||String(e),"ERROR")}}
+function disconnected(){status(false,"연결 대기 중");notifyCharacteristic=null;textBuffer="";log("Bluetooth 연결 해제")}
+function disconnect(){if(device?.gatt?.connected)device.gatt.disconnect();else disconnected()}
+document.querySelectorAll(".tabBtn").forEach(btn=>btn.addEventListener("click",()=>{const tab=btn.dataset.tab;document.querySelectorAll(".tabBtn").forEach(b=>b.classList.toggle("active",b===btn));document.querySelectorAll(".tabPanel").forEach(p=>p.classList.remove("active"));$("tab-"+tab).classList.add("active");if(tab==="graph"&&chart)setTimeout(()=>chart.resize(),50)}));
+document.querySelectorAll(".sensorBtn").forEach(btn=>btn.addEventListener("click",()=>selectSensor(btn.dataset.sensor)));$("clearGraphBtn").addEventListener("click",clearGraph);$("connectBtn").addEventListener("click",connect);$("disconnectBtn").addEventListener("click",disconnect);
+if(!window.isSecureContext){status(false,"HTTPS 또는 localhost에서 열어주세요");log("Web Bluetooth는 보안 연결이 필요합니다.","WARN")}else log("준비 완료. 연결하기를 누르세요.");initChart();updateChart();
 })();
 </script>
-</body>
-</html>
+</body></html>
