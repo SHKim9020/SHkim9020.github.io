@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>micro:bit BLE 온도·조도 테스트</title>
+<title>micro:bit BLE 환경 센서 모니터</title>
 <style>
 :root{
   --bg:#f2f6fc;--card:#fff;--ink:#10213f;--muted:#7c8799;--line:#e1e8f2;
-  --blue:#0876f8;--green:#08b894;--red:#e45b66;--shadow:0 16px 40px rgba(25,58,110,.10)
+  --blue:#0876f8;--green:#08b894;--red:#e45b66;--orange:#f49a35;--purple:#735be5;
+  --shadow:0 16px 40px rgba(25,58,110,.10)
 }
 *{box-sizing:border-box}
 body{margin:0;background:linear-gradient(180deg,#fff 0,#f5f9ff 340px,#eef4fb 100%);color:var(--ink);
 font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Arial,sans-serif}
-.app{max-width:980px;margin:auto;min-height:100vh}
+.app{max-width:1050px;margin:auto;min-height:100vh}
 .topbar{height:104px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid #edf2f7;position:sticky;top:0;z-index:10}
 .brand{display:flex;align-items:center;gap:15px}.logo{width:54px;height:54px;border-radius:15px;background:var(--blue);display:grid;place-items:center;color:white;font-size:28px;font-weight:900;box-shadow:0 10px 24px rgba(8,118,248,.25)}
 .brand strong{display:block;font-size:30px}.brand small{display:block;color:#8792a2;letter-spacing:4px;font-size:11px;margin-top:2px}
@@ -27,16 +28,21 @@ font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Ari
 .device{background:white;margin:0 28px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px}
 .deviceName small{display:block;color:#8a95a7;margin-bottom:6px}.deviceName strong{font-size:22px}.team{background:#eef5ff;color:#1d6ed6;padding:10px 15px;border-radius:999px;font-weight:900}
 main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;letter-spacing:2.5px}.sectionTitle h2{font-size:32px;margin:8px 0 22px}
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.card{position:relative;background:white;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);padding:26px;min-height:235px}
-.icon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;font-size:23px;font-weight:900;margin-bottom:30px}
-.temp .icon{background:#fff0f1;color:#e35c67}.light .icon{background:#fff8df;color:#d3a71a}
-.label{color:#7f8a9b;font-weight:750}.value{font-size:64px;font-weight:950;letter-spacing:-3px;margin-top:8px}.unit{font-size:20px;color:#7d899b;margin-left:5px}
-.live{position:absolute;right:20px;top:20px;border-radius:999px;padding:8px 10px;background:#eafbf6;color:#05a27f;font-size:12px;font-weight:900}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{position:relative;background:white;border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);padding:24px;min-height:205px}
+.icon{width:50px;height:50px;border-radius:15px;display:grid;place-items:center;font-size:20px;font-weight:900;margin-bottom:24px}
+.temp .icon{background:#fff0f1;color:#e35c67}.hum .icon{background:#eef7ff;color:#1681e8}.press .icon{background:#f1edff;color:#7159e1}
+.dust .icon{background:#fff4e8;color:#ed9432}.soil .icon{background:#edf8e9;color:#4d9a42}.light .icon{background:#fff8df;color:#d3a71a}
+.label{color:#7f8a9b;font-weight:750}.value{font-size:48px;font-weight:950;letter-spacing:-2px;margin-top:8px}.unit{font-size:17px;color:#7d899b;margin-left:4px}
+.live{position:absolute;right:18px;top:18px;border-radius:999px;padding:7px 9px;background:#eafbf6;color:#05a27f;font-size:11px;font-weight:900}
 .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}.metaBox{background:white;border:1px solid var(--line);border-radius:16px;padding:14px}.metaBox b{display:block;color:#8b96a7;font-size:12px;margin-bottom:6px}
+.wiring{margin-top:32px;background:white;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow)}
+.wiring h3{margin:0 0 16px}.wireGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.wire{background:#f6f9fd;border:1px solid #e5ebf3;border-radius:14px;padding:13px}.wire b{display:block;font-size:13px;margin-bottom:5px}.wire span{color:#617087;font-size:13px}
 .testbox{margin-top:18px;background:white;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow)}.testbox h3{margin-top:0}.testbox p{color:#718096;line-height:1.65}
 .log{height:150px;overflow:auto;background:#0a1730;color:#dce9ff;border-radius:14px;padding:12px;font:12px/1.55 Consolas,monospace}
-@media(max-width:650px){.topbar{height:92px;padding:0 16px}.brand strong{font-size:24px}.brand small{font-size:9px}.logo{width:46px;height:46px}.connect{font-size:15px;padding:14px 15px}.hero{padding:39px 20px}.hero h1{font-size:34px}.status{align-items:flex-start;flex-direction:column}.device{margin:0;padding:20px}.cards{grid-template-columns:1fr}.meta{grid-template-columns:1fr 1fr}main{padding:38px 16px}.value{font-size:58px}}
+@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.wireGrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:650px){.topbar{height:92px;padding:0 16px}.brand strong{font-size:24px}.brand small{font-size:9px}.logo{width:46px;height:46px}.connect{font-size:15px;padding:14px 15px}.hero{padding:39px 20px}.hero h1{font-size:34px}.hero p{font-size:16px}.status{align-items:flex-start;flex-direction:column}.device{margin:0;padding:20px}.cards{grid-template-columns:1fr}.meta{grid-template-columns:1fr 1fr}.wireGrid{grid-template-columns:1fr 1fr}main{padding:38px 16px}.value{font-size:50px}}
 </style>
 </head>
 <body>
@@ -50,9 +56,9 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
   </header>
 
   <section class="hero">
-    <div class="eyebrow">— WEB BLUETOOTH · SENSOR TEST</div>
-    <h1>내장 온도와 조도를<br><span>먼저 정확히 테스트합니다.</span></h1>
-    <p>IoT:bit의 외부 센서는 아직 사용하지 않습니다. micro:bit 본체의 온도와 LED 조도센서 값만 2초마다 BLE로 확인합니다.</p>
+    <div class="eyebrow">— WEB BLUETOOTH · SMART SENSOR</div>
+    <h1>환경 센서 6종을<br><span>스마트폰에서 실시간 확인합니다.</span></h1>
+    <p>BME280 온도·습도·기압, 미세먼지, 토양수분, 외부 빛센서를 IoT:bit에 연결하고 BLE로 약 2초마다 모니터링합니다.</p>
 
     <div class="status">
       <div class="statusLeft">
@@ -72,22 +78,15 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
   </section>
 
   <main>
-    <div class="sectionTitle"><small>LIVE DATA</small><h2>실시간 센서</h2></div>
+    <div class="sectionTitle"><small>LIVE DATA</small><h2>실시간 환경 센서</h2></div>
 
     <section class="cards">
-      <article class="card temp">
-        <span class="live">● LIVE</span>
-        <div class="icon">T</div>
-        <div class="label">micro:bit 내장 온도</div>
-        <div class="value"><span id="temp">--</span><span class="unit">℃</span></div>
-      </article>
-
-      <article class="card light">
-        <span class="live">● LIVE</span>
-        <div class="icon">☀</div>
-        <div class="label">micro:bit 내장 조도</div>
-        <div class="value"><span id="light">--</span><span class="unit">/255</span></div>
-      </article>
+      <article class="card temp"><span class="live">● LIVE</span><div class="icon">T</div><div class="label">BME280 온도</div><div class="value"><span id="temp">--</span><span class="unit">℃</span></div></article>
+      <article class="card hum"><span class="live">● LIVE</span><div class="icon">H</div><div class="label">BME280 습도</div><div class="value"><span id="hum">--</span><span class="unit">%</span></div></article>
+      <article class="card press"><span class="live">● LIVE</span><div class="icon">P</div><div class="label">BME280 기압</div><div class="value"><span id="press">--</span><span class="unit">hPa</span></div></article>
+      <article class="card dust"><span class="live">● LIVE</span><div class="icon">PM</div><div class="label">미세먼지</div><div class="value"><span id="dust">--</span><span class="unit">㎍/㎥</span></div></article>
+      <article class="card soil"><span class="live">● LIVE</span><div class="icon">S</div><div class="label">토양 수분</div><div class="value"><span id="soil">--</span><span class="unit">%</span></div></article>
+      <article class="card light"><span class="live">● LIVE</span><div class="icon">☀</div><div class="label">외부 빛 센서</div><div class="value"><span id="light">--</span><span class="unit">%</span></div></article>
     </section>
 
     <section class="meta">
@@ -97,9 +96,19 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
       <div class="metaBox"><b>최근 수신</b><span id="last">--</span></div>
     </section>
 
+    <section class="wiring">
+      <h3>IoT:bit 연결</h3>
+      <div class="wireGrid">
+        <div class="wire"><b>BME280</b><span>IIC · SCL P19 / SDA P20</span></div>
+        <div class="wire"><b>빛 센서</b><span>P1</span></div>
+        <div class="wire"><b>토양수분</b><span>P2</span></div>
+        <div class="wire"><b>미세먼지</b><span>LED IN P9 / OUT P10</span></div>
+      </div>
+    </section>
+
     <section class="testbox">
-      <h3>조도센서 테스트 방법</h3>
-      <p>연결 후 micro:bit 앞면의 5×5 LED 부분을 손바닥으로 완전히 가려보세요. 약 2초 뒤 조도 값이 크게 내려가면 정상입니다. 반대로 휴대폰 플래시나 밝은 조명을 비추면 값이 올라가야 합니다.</p>
+      <h3>센서 테스트</h3>
+      <p>빛센서는 손으로 가리거나 휴대폰 플래시를 비추고, 토양수분센서는 마른 상태와 물에 닿은 상태를 비교해 보세요. BME280은 손으로 감싸면 온도와 습도 변화가 나타납니다. 미세먼지 값은 공기 상태와 센서 안정화에 따라 천천히 변할 수 있습니다.</p>
       <div id="log" class="log"></div>
     </section>
   </main>
@@ -154,11 +163,16 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
       return;
     }
 
-    if(p[0] === "DATA" && p.length >= 6){
+    // DATA,TEAM01,guziv,26,58,1012,25,64,73,18
+    if(p[0] === "DATA" && p.length >= 10){
       setInfo(p[1], p[2]);
       $("temp").textContent = p[3];
-      $("light").textContent = p[4];
-      $("seq").textContent = p[5];
+      $("hum").textContent = p[4];
+      $("press").textContent = p[5];
+      $("dust").textContent = p[6];
+      $("soil").textContent = p[7];
+      $("light").textContent = p[8];
+      $("seq").textContent = p[9];
       $("last").textContent = time();
       return;
     }
@@ -181,7 +195,7 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
   async function connect(){
     try{
       if(!navigator.bluetooth){
-        throw new Error("Web Bluetooth를 사용할 수 없습니다. Chrome/Edge에서 HTTPS 또는 localhost로 실행하세요.");
+        throw new Error("Web Bluetooth를 사용할 수 없습니다. Android Chrome/데스크톱 Chrome·Edge에서 열어주세요.");
       }
 
       status(false, "micro:bit 선택 중…");
@@ -212,7 +226,7 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
       await notifyCharacteristic.startNotifications();
       notifyCharacteristic.addEventListener("characteristicvaluechanged", onNotification);
 
-      status(true, "BLE 연결됨 · 실시간 수신 중");
+      status(true, "BLE 연결됨 · 센서 수신 중");
       log("연결 성공: " + (device.name || "micro:bit"));
 
     }catch(e){
@@ -237,8 +251,8 @@ main{padding:46px 28px 64px}.sectionTitle small{color:#1981eb;font-weight:900;le
   $("disconnectBtn").addEventListener("click", disconnect);
 
   if(!window.isSecureContext){
-    status(false, "localhost 또는 HTTPS에서 열어주세요");
-    log("Web Bluetooth는 보안 컨텍스트가 필요합니다.", "WARN");
+    status(false, "HTTPS에서 열어주세요");
+    log("Web Bluetooth는 보안 연결이 필요합니다.", "WARN");
   }else{
     log("준비 완료. 연결하기를 누르세요.");
   }
