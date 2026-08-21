@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#17233d">
+  <meta name="description" content="ESP32-CAM 2휠 영상탐사 RC카 수업용 블록 코딩 웹앱">
+  <title>OneMaker ESP32-CAM RC Studio</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/rc-studio.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=0.1.0">
+  <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="brand-mark">OM</span><span><b>OneMaker</b><small>ESP32-CAM RC STUDIO</small></span></a>
+    <label class="project-name"><span>프로젝트</span><input id="projectName" value="나의 영상탐사 RC카" maxlength="40"></label>
+    <div class="top-actions">
+      <button id="pwaInstallBtn" class="install-app" type="button" hidden>⬇ 앱 설치</button>
+      <button id="exampleBtn" class="ghost">예제</button>
+      <button id="saveBtn" class="ghost">저장</button>
+      <button id="openBtn" class="ghost">열기</button><input id="openFile" type="file" accept=".omrc,.json" hidden>
+      <button id="firmwareBtn" class="outline">① 펌웨어 설치</button>
+      <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
+      <button id="uploadBtn" class="primary">③ RC카에 저장·실행</button>
+      <button id="stopBtn" class="danger">■ 긴급 정지</button>
+    </div>
+  </header>
+
+  <section class="lesson-strip">
+    <div><b>수업 흐름</b><span>블록 코딩 → USB‑TTL 전송 → 스마트폰 Wi‑Fi 연결 → 실시간 영상 조종</span></div>
+    <ol><li class="active">블록 만들기</li><li>보드에 저장</li><li>영상 원격조종</li></ol>
+    <span id="connectionStatus" class="status disconnected">USB 연결 안 됨</span>
+  </section>
+
+  <main class="app-shell">
+    <section class="editor-pane">
+      <div class="editor-toolbar">
+        <div class="toolbar-group"><button id="undoBtn" title="실행 취소">↶</button><button id="redoBtn" title="다시 실행">↷</button><button id="copyBtn">복사</button><button id="pasteBtn">붙여넣기</button><button id="deleteBtn">삭제</button></div>
+        <p>왼쪽 블록을 끌어서 <b>시작하면</b> 또는 <b>계속 반복하기</b> 안에 연결하세요.</p>
+        <div class="toolbar-group"><button id="zoomOutBtn">−</button><button id="zoomResetBtn">100%</button><button id="zoomInBtn">＋</button><button id="centerBtn">블록 찾기</button><button id="clearBtn">모두 지우기</button></div>
+      </div>
+      <div id="blocklyDiv"></div>
+    </section>
+
+    <aside class="side-pane">
+      <nav class="side-tabs"><div class="side-tab-buttons"><button class="active" data-tab="board">보드</button><button data-tab="test">빠른 테스트</button><button data-tab="remote">영상 원격조종</button><button data-tab="code">텍스트 코드</button><button data-tab="serial">시리얼 모니터</button></div><button id="sideCollapseBtn" class="side-collapse-btn" type="button" aria-expanded="true" title="오른쪽 패널 접기"><span class="collapse-arrow">›</span><span class="collapse-label">접기</span></button></nav>
+
+      <section class="tab-panel active" data-panel="board">
+        <div class="hero-card">
+          <div><small>선택 보드</small><h2>ESP32‑CAM <span>AI Thinker</span></h2><p>OV2640 카메라 · Wi‑Fi AP · 2휠 DC모터</p></div>
+          <svg viewBox="0 0 180 110" aria-label="ESP32-CAM RC카"><rect class="car-body" x="42" y="18" width="96" height="74" rx="15"/><circle class="wheel" cx="35" cy="42" r="18"/><circle class="wheel" cx="145" cy="42" r="18"/><circle class="wheel" cx="35" cy="78" r="18"/><circle class="wheel" cx="145" cy="78" r="18"/><rect class="board" x="65" y="28" width="50" height="55" rx="6"/><circle class="lens" cx="90" cy="44" r="13"/><circle class="lens-eye" cx="90" cy="44" r="6"/><path class="wifi" d="M75 17q15-14 30 0M81 20q9-8 18 0M88 24q2-2 4 0"/></svg>
+        </div>
+
+        <div class="settings-card">
+          <div class="card-head"><h3>수업용 RC카 번호</h3><span>01~16</span></div>
+          <div class="inline-row"><label>번호 <select id="carNumber"></select></label><button id="saveNumberBtn" class="primary">USB로 번호 저장</button></div>
+          <p class="note">Wi‑Fi 이름이 <b id="wifiNamePreview">OneMaker‑RC‑01</b>로 저장됩니다. 비밀번호는 <b>onemaker1</b>입니다.</p>
+        </div>
+
+        <div class="settings-card">
+          <div class="card-head"><h3>모터드라이버 배선</h3><button id="resetPinsBtn">기본값</button></div>
+          <div class="pin-grid"><label>왼쪽 A‑IA<select id="pinIn1"></select></label><label>왼쪽 A‑IB<select id="pinIn2"></select></label><label>오른쪽 B‑IA<select id="pinIn3"></select></label><label>오른쪽 B‑IB<select id="pinIn4"></select></label></div>
+          <div class="switch-row"><label><input id="invertLeft" type="checkbox"> 왼쪽 방향 반전</label><label><input id="invertRight" type="checkbox" checked> 오른쪽 방향 반전</label></div>
+          <p class="warning">기본값 GPIO 12·13·14·15는 microSD를 사용하지 않을 때만 가능합니다. ESP32‑CAM과 모터드라이버 GND는 반드시 공통 연결하세요.</p>
+        </div>
+
+        <div class="settings-card">
+          <div class="card-head"><h3>카메라 기본 설정</h3><span>OV2640</span></div>
+          <div class="pin-grid"><label>화질<select id="frameSize"><option value="QVGA">QVGA 320×240</option><option value="VGA" selected>VGA 640×480</option><option value="SVGA">SVGA 800×600</option></select></label><label>JPEG 품질<select id="jpegQuality"><option>10</option><option selected>12</option><option>15</option><option>20</option></select></label></div>
+          <label class="enable-row"><input id="flipCamera" type="checkbox"> 카메라 화면 180° 회전</label>
+        </div>
+
+      </section>
+
+      <section class="tab-panel test-panel" data-panel="test">
+        <div class="test-card"><div class="card-head"><h3>USB 빠른 모터 테스트</h3><span>바퀴 점검</span></div><label class="range-row">속도 <input id="testSpeed" type="range" min="0" max="255" value="150"><output id="testSpeedValue">150</output></label><div class="drive-pad"><button data-test="forward">▲<small>전진</small></button><button data-test="left">◀<small>좌회전</small></button><button data-test="stop" class="stop">■<small>정지</small></button><button data-test="right">▶<small>우회전</small></button><button data-test="backward">▼<small>후진</small></button></div><p>먼저 바퀴를 바닥에서 띄운 뒤 짧게 시험하세요.</p></div>
+        <div class="test-card"><div class="card-head"><h3>카메라 빠른 설정</h3><span>USB 명령</span></div><div class="button-row"><button id="testFlashOnBtn">💡 조명 켜기</button><button id="testFlashOffBtn">조명 끄기</button></div><div class="button-row"><button data-camera-test="QVGA">QVGA</button><button data-camera-test="VGA" class="primary">VGA</button><button data-camera-test="SVGA">SVGA</button></div><p>실시간 영상 화면에서도 같은 설정을 변경할 수 있습니다.</p></div>
+        <div class="settings-card mode-note"><h3>테스트 순서</h3><p>① USB 연결 → ② 좌우 모터 방향 확인 → ③ 필요하면 보드 탭에서 모터 방향 반전 → ④ 카메라 조명과 화질 확인 → ⑤ 블록을 저장합니다.</p></div>
+      </section>
+
+      <section class="tab-panel" data-panel="remote">
+        <div class="remote-hero"><span>📹</span><div><h2>실시간 영상 원격조종</h2><p>RC카가 직접 만드는 Wi‑Fi에 스마트폰을 연결합니다.</p></div></div>
+        <div class="step-list"><div><b>1</b><span>RC카 전원을 켭니다.</span></div><div><b>2</b><span>스마트폰 Wi‑Fi에서 <strong id="remoteWifiName">OneMaker‑RC‑01</strong> 선택<br><small>비밀번호: onemaker1</small></span></div><div><b>3</b><span>아래 버튼을 눌러 영상 조종기를 엽니다.</span></div></div>
+        <a id="openRemoteBtn" class="remote-open" href="http://192.168.4.1" target="_blank" rel="noopener">📡 ESP32‑CAM 영상 조종기 열기</a>
+        <div class="camera-mock"><div class="scan-line"></div><span>RC카에 연결하면<br>이곳 대신 실시간 영상 조종기가 열립니다.</span><div class="hud"><i>REC</i><b>ESP32‑CAM</b></div></div>
+        <div class="tip-card"><b>왜 새 창에서 열리나요?</b><p>이 웹앱은 HTTPS이고 RC카는 인터넷 없이 HTTP로 영상을 보냅니다. 보안 제한을 피하기 위해 RC카 자체 조종 화면을 새 창에서 엽니다.</p></div>
+      </section>
+
+      <section class="tab-panel code-panel" data-panel="code"><div class="panel-head"><div><h3>Arduino C++</h3><p>학생이 만든 블록에 해당하는 교육용 코드입니다.</p></div><div><button id="copyCodeBtn">복사</button><button id="downloadInoBtn">INO 다운로드</button></div></div><pre id="codePreview"><code></code></pre></section>
+      <section class="tab-panel serial-panel" data-panel="serial"><div class="panel-head"><div><h3>시리얼 모니터</h3><p>115200 baud</p></div><button id="clearSerialBtn">지우기</button></div><pre id="serialOutput">ESP32‑CAM RC Studio 준비됨\n</pre></section>
+    </aside>
+  </main>
+
+  <dialog id="pwaInstallDialog"><form method="dialog"><button class="dialog-close">×</button><img src="icons/rc-studio.svg" width="76" height="76" alt="RC Studio 앱 아이콘"><h2>홈 화면에 RC Studio 설치</h2><ol><li>Android Chrome 오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 선택합니다.</li><li>설치된 OneMaker RC 아이콘으로 실행합니다.</li></ol><button class="primary install-button">확인</button></form></dialog>
+  <dialog id="firmwareDialog"><form method="dialog"><button class="dialog-close">×</button><h2>ESP32‑CAM 펌웨어 설치</h2><ol><li>USB‑TTL의 <b>5V·GND·U0R·U0T</b>를 연결합니다.</li><li><b>GPIO0과 GND</b>를 연결한 채 전원을 다시 넣습니다.</li><li>아래 설치 버튼에서 USB‑TTL 포트를 선택합니다.</li><li>설치 후 GPIO0‑GND를 분리하고 RST를 누릅니다.</li></ol><div class="boot-wiring"><span>USB‑TTL TX → U0R</span><span>USB‑TTL RX → U0T</span><span>5V → 5V</span><span>GND → GND</span><b>설치할 때만 GPIO0 → GND</b></div><esp-web-install-button manifest="firmware/manifest.json"><button slot="activate" class="primary install-button">펌웨어 설치 시작</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></form></dialog>
+  <div id="toast" role="status"></div>
+  <script src="app.js?v=0.1.0"></script>
+</body>
+</html>
