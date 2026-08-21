@@ -5,6 +5,7 @@
   const DEFAULT_PINS = { in1: 12, in2: 13, in3: 14, in4: 15 };
   const COLORS = { event: 38, motor: 210, camera: 285, output: 65 };
   const SIDE_PANEL_KEY = "onemaker-esp32cam-rc-side-collapsed";
+  const REMOTE_URL = "http://192.168.4.1/";
   let workspace, port, reader, writer, readLoopActive = false, uploadWaiter = null;
   let selectedBlockId = null, copiedBlockState = null, deferredInstallPrompt = null;
 
@@ -141,11 +142,13 @@
   function setSidePanelCollapsed(collapsed,persist=true){const shell=$(".app-shell"),button=$("#sideCollapseBtn");shell.classList.toggle("side-collapsed",collapsed);button.setAttribute("aria-expanded",String(!collapsed));button.title=collapsed?"오른쪽 패널 펼치기":"오른쪽 패널 접기";button.querySelector(".collapse-label").textContent=collapsed?"펼치기":"접기";if(persist)localStorage.setItem(SIDE_PANEL_KEY,collapsed?"1":"0");requestAnimationFrame(()=>{Blockly.svgResize(workspace);setTimeout(()=>Blockly.svgResize(workspace),240)})}
   function initPwaInstall(){const button=$("#pwaInstallBtn"),standalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;if(/Android/i.test(navigator.userAgent)&&!standalone())button.hidden=false;addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstallPrompt=e;if(!standalone())button.hidden=false});addEventListener("appinstalled",()=>{deferredInstallPrompt=null;button.hidden=true;toast("RC Studio가 홈 화면에 설치되었습니다.")})}
   async function installPwa(){if(deferredInstallPrompt){deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;return}$("#pwaInstallDialog").showModal()}
+  function openRemote(e){e.preventDefault();const status=$("#remoteOpenStatus");status.textContent="영상 조종기로 이동합니다… 연결되지 않으면 OneMaker‑RC Wi‑Fi를 다시 확인하세요.";status.classList.add("opening");toast("RC카 영상 조종기로 이동합니다.");setTimeout(()=>window.location.assign(REMOTE_URL),120)}
 
   function bindUi(){
     $$(".side-tabs [data-tab]").forEach(b=>b.onclick=()=>{$$(".side-tabs [data-tab]").forEach(x=>x.classList.toggle("active",x===b));$$(".tab-panel").forEach(p=>p.classList.toggle("active",p.dataset.panel===b.dataset.tab));if(b.dataset.tab==="code")updateCode()});
     $("#sideCollapseBtn").onclick=()=>setSidePanelCollapsed(!$(".app-shell").classList.contains("side-collapsed"));
     $("#pwaInstallBtn").onclick=installPwa;
+    $("#openRemoteBtn").onclick=openRemote;
     $("#firmwareBtn").onclick=()=>$("#firmwareDialog").showModal();$("#connectBtn").onclick=connectSerial;$("#uploadBtn").onclick=uploadProgram;$("#stopBtn").onclick=()=>command({cmd:"stop"}).catch(e=>toast(e.message));
     $("#saveNumberBtn").onclick=()=>command({cmd:"setNumber",number:Number($("#carNumber").value)}).then(()=>toast("RC카 번호를 저장했습니다. 보드가 재시작됩니다.")).catch(e=>toast(e.message));
     $("#resetPinsBtn").onclick=()=>{applyDefaultPins();updateCode();saveLocal()};

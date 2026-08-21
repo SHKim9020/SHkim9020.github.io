@@ -8,7 +8,7 @@
   <title>OneMaker ESP32-CAM RC Studio</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/rc-studio.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=0.1.0">
+  <link rel="stylesheet" href="style.css?v=0.1.1">
   <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
@@ -84,10 +84,11 @@
 
       <section class="tab-panel" data-panel="remote">
         <div class="remote-hero"><span>📹</span><div><h2>실시간 영상 원격조종</h2><p>RC카가 직접 만드는 Wi‑Fi에 스마트폰을 연결합니다.</p></div></div>
-        <div class="step-list"><div><b>1</b><span>RC카 전원을 켭니다.</span></div><div><b>2</b><span>스마트폰 Wi‑Fi에서 <strong id="remoteWifiName">OneMaker‑RC‑01</strong> 선택<br><small>비밀번호: onemaker1</small></span></div><div><b>3</b><span>아래 버튼을 눌러 영상 조종기를 엽니다.</span></div></div>
-        <a id="openRemoteBtn" class="remote-open" href="http://192.168.4.1" target="_blank" rel="noopener">📡 ESP32‑CAM 영상 조종기 열기</a>
+        <div class="step-list"><div><b>1</b><span>RC카 전원을 켭니다.</span></div><div><b>2</b><span>스마트폰 Wi‑Fi에서 <strong id="remoteWifiName">OneMaker‑RC‑01</strong> 선택<br><small>비밀번호: onemaker1 · “인터넷 없음”이어도 연결 유지</small></span></div><div><b>3</b><span>아래 버튼을 누르면 현재 화면에서 영상 조종기로 이동합니다.</span></div></div>
+        <a id="openRemoteBtn" class="remote-open" href="http://192.168.4.1/">📡 ESP32‑CAM 영상 조종기 열기</a>
+        <p id="remoteOpenStatus" class="remote-status" role="status">연결 주소: http://192.168.4.1</p>
         <div class="camera-mock"><div class="scan-line"></div><span>RC카에 연결하면<br>이곳 대신 실시간 영상 조종기가 열립니다.</span><div class="hud"><i>REC</i><b>ESP32‑CAM</b></div></div>
-        <div class="tip-card"><b>왜 새 창에서 열리나요?</b><p>이 웹앱은 HTTPS이고 RC카는 인터넷 없이 HTTP로 영상을 보냅니다. 보안 제한을 피하기 위해 RC카 자체 조종 화면을 새 창에서 엽니다.</p></div>
+        <div class="tip-card"><b>버튼을 눌러도 연결되지 않나요?</b><p>스마트폰 Wi‑Fi가 반드시 OneMaker‑RC에 연결되어 있어야 합니다. 모바일 데이터는 잠시 끄고, “인터넷에 연결되지 않음” 안내가 나오면 <b>연결 유지</b>를 선택하세요.</p><a class="remote-direct-link" href="http://192.168.4.1/">주소 직접 열기: 192.168.4.1</a></div>
       </section>
 
       <section class="tab-panel code-panel" data-panel="code"><div class="panel-head"><div><h3>Arduino C++</h3><p>학생이 만든 블록에 해당하는 교육용 코드입니다.</p></div><div><button id="copyCodeBtn">복사</button><button id="downloadInoBtn">INO 다운로드</button></div></div><pre id="codePreview"><code></code></pre></section>
@@ -98,6 +99,6 @@
   <dialog id="pwaInstallDialog"><form method="dialog"><button class="dialog-close">×</button><img src="icons/rc-studio.svg" width="76" height="76" alt="RC Studio 앱 아이콘"><h2>홈 화면에 RC Studio 설치</h2><ol><li>Android Chrome 오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 선택합니다.</li><li>설치된 OneMaker RC 아이콘으로 실행합니다.</li></ol><button class="primary install-button">확인</button></form></dialog>
   <dialog id="firmwareDialog"><form method="dialog"><button class="dialog-close">×</button><h2>ESP32‑CAM 펌웨어 설치</h2><ol><li>USB‑TTL의 <b>5V·GND·U0R·U0T</b>를 연결합니다.</li><li><b>GPIO0과 GND</b>를 연결한 채 전원을 다시 넣습니다.</li><li>아래 설치 버튼에서 USB‑TTL 포트를 선택합니다.</li><li>설치 후 GPIO0‑GND를 분리하고 RST를 누릅니다.</li></ol><div class="boot-wiring"><span>USB‑TTL TX → U0R</span><span>USB‑TTL RX → U0T</span><span>5V → 5V</span><span>GND → GND</span><b>설치할 때만 GPIO0 → GND</b></div><esp-web-install-button manifest="firmware/manifest.json"><button slot="activate" class="primary install-button">펌웨어 설치 시작</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></form></dialog>
   <div id="toast" role="status"></div>
-  <script src="app.js?v=0.1.0"></script>
+  <script src="app.js?v=0.1.1"></script>
 </body>
 </html>
