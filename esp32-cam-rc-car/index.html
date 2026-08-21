@@ -8,7 +8,8 @@
   <title>OneMaker ESP32-CAM RC Studio</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/rc-studio.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=0.1.1">
+  <link rel="stylesheet" href="style.css?v=0.1.2">
+  <link rel="stylesheet" href="responsive-fix.css?v=0.1.2">
   <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
@@ -99,6 +100,6 @@
   <dialog id="pwaInstallDialog"><form method="dialog"><button class="dialog-close">×</button><img src="icons/rc-studio.svg" width="76" height="76" alt="RC Studio 앱 아이콘"><h2>홈 화면에 RC Studio 설치</h2><ol><li>Android Chrome 오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 선택합니다.</li><li>설치된 OneMaker RC 아이콘으로 실행합니다.</li></ol><button class="primary install-button">확인</button></form></dialog>
   <dialog id="firmwareDialog"><form method="dialog"><button class="dialog-close">×</button><h2>ESP32‑CAM 펌웨어 설치</h2><ol><li>USB‑TTL의 <b>5V·GND·U0R·U0T</b>를 연결합니다.</li><li><b>GPIO0과 GND</b>를 연결한 채 전원을 다시 넣습니다.</li><li>아래 설치 버튼에서 USB‑TTL 포트를 선택합니다.</li><li>설치 후 GPIO0‑GND를 분리하고 RST를 누릅니다.</li></ol><div class="boot-wiring"><span>USB‑TTL TX → U0R</span><span>USB‑TTL RX → U0T</span><span>5V → 5V</span><span>GND → GND</span><b>설치할 때만 GPIO0 → GND</b></div><esp-web-install-button manifest="firmware/manifest.json"><button slot="activate" class="primary install-button">펌웨어 설치 시작</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></form></dialog>
   <div id="toast" role="status"></div>
-  <script src="app.js?v=0.1.1"></script>
+  <script src="app.js?v=0.1.2"></script>
 </body>
 </html>
