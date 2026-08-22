@@ -4,6 +4,43 @@
   z-index: 60;
 }
 
+.camera-test-install,
+.full-firmware-install {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dbe2ee;
+  border-radius: 14px;
+  background: #f7f9fc;
+}
+
+.camera-test-install {
+  border-color: #9edfcf;
+  background: #eefbf7;
+}
+
+.camera-test-install h3,
+.full-firmware-install h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.camera-test-install p,
+.full-firmware-install p {
+  margin: 0;
+  color: #5f6f83;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.camera-install-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px;
+  border-color: #0f9f89;
+  background: #0f9f89;
+  color: #fff;
+}
+
 @media (min-width: 901px) {
   html,
   body {
