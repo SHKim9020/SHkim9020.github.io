@@ -29,7 +29,7 @@ bool cameraReady = false;
 String cameraError;
 
 static const char PAGE[] PROGMEM = R"HTML(
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OneMaker ESP32-CAM Test</title><style>*{box-sizing:border-box}body{margin:0;background:#07121f;color:#e9f6ff;font-family:system-ui,sans-serif}main{max-width:720px;margin:auto;padding:16px}h1{font-size:22px;margin:0 0 8px}.status{padding:12px;border-radius:12px;background:#13283a;margin-bottom:12px}.ok{color:#54e5ac}.bad{color:#ff818d}.video{width:100%;aspect-ratio:4/3;object-fit:contain;background:#000;border:1px solid #315066;border-radius:16px}a{display:block;margin-top:12px;padding:12px;text-align:center;border-radius:12px;background:#1677ff;color:#fff;text-decoration:none;font-weight:800}small{display:block;color:#9fb6c8;margin-top:12px;line-height:1.6}</style></head><body><main><h1>📷 ESP32-CAM 카메라 전용 테스트</h1><div id="status" class="status">카메라 상태 확인 중…</div><img id="video" class="video" alt="ESP32-CAM 영상"><a href="/capture.jpg" target="_blank">사진 한 장 열기</a><small>Wi-Fi: OneMaker-CAM-TEST<br>주소: http://192.168.4.1<br>영상이 보이면 카메라와 전원은 정상입니다.</small></main><script>fetch('/status').then(r=>r.json()).then(s=>{const e=document.querySelector('#status');if(s.camera){e.classList.add('ok');e.textContent='● 카메라 정상 · PSRAM '+(s.psram?'정상':'없음');document.querySelector('#video').src='http://'+location.hostname+':81/stream'}else{e.classList.add('bad');e.textContent='● 카메라 초기화 실패: '+s.error}}).catch(()=>document.querySelector('#status').textContent='상태 확인 실패');</script></body></html>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OneMaker ESP32-CAM Test</title><style>*{box-sizing:border-box}body{margin:0;background:#07121f;color:#e9f6ff;font-family:system-ui,sans-serif}main{max-width:720px;margin:auto;padding:16px}h1{font-size:22px;margin:0 0 8px}.status{padding:12px;border-radius:12px;background:#13283a;margin-bottom:12px}.ok{color:#54e5ac}.bad{color:#ff818d}.video{width:100%;aspect-ratio:4/3;object-fit:contain;background:#000;border:1px solid #315066;border-radius:16px}a{display:block;margin-top:12px;padding:12px;text-align:center;border-radius:12px;background:#1677ff;color:#fff;text-decoration:none;font-weight:800}small{display:block;color:#9fb6c8;margin-top:12px;line-height:1.6}</style></head><body><main><h1>📷 ESP32-CAM 카메라 전용 테스트</h1><div id="status" class="status">카메라 상태 확인 중…</div><img id="video" class="video" alt="ESP32-CAM 영상"><a href="/capture.jpg" target="_blank">사진 한 장 열기</a><small>빠른 영상 모드: QVGA 320×240<br>Wi-Fi: OneMaker-CAM-TEST<br>주소: http://192.168.4.1<br>영상이 보이면 카메라와 전원은 정상입니다.</small></main><script>fetch('/status').then(r=>r.json()).then(s=>{const e=document.querySelector('#status');if(s.camera){e.classList.add('ok');e.textContent='● 카메라 정상 · 빠른 QVGA · PSRAM '+(s.psram?'정상':'없음');document.querySelector('#video').src='http://'+location.hostname+':81/stream'}else{e.classList.add('bad');e.textContent='● 카메라 초기화 실패: '+s.error}}).catch(()=>document.querySelector('#status').textContent='상태 확인 실패');</script></body></html>
 )HTML";
 
 bool initCamera() {
@@ -41,13 +41,14 @@ bool initCamera() {
   c.pin_xclk = XCLK_GPIO_NUM; c.pin_pclk = PCLK_GPIO_NUM; c.pin_vsync = VSYNC_GPIO_NUM; c.pin_href = HREF_GPIO_NUM;
   c.pin_sccb_sda = SIOD_GPIO_NUM; c.pin_sccb_scl = SIOC_GPIO_NUM; c.pin_pwdn = PWDN_GPIO_NUM; c.pin_reset = RESET_GPIO_NUM;
   c.xclk_freq_hz = 20000000; c.pixel_format = PIXFORMAT_JPEG;
-  c.frame_size = psramFound() ? FRAMESIZE_VGA : FRAMESIZE_QVGA;
-  c.jpeg_quality = 12; c.fb_count = psramFound() ? 2 : 1;
+  // The camera-only diagnostic prioritizes live frame rate over resolution.
+  c.frame_size = FRAMESIZE_QVGA;
+  c.jpeg_quality = 15; c.fb_count = psramFound() ? 2 : 1;
   c.grab_mode = CAMERA_GRAB_LATEST; c.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   esp_err_t err = esp_camera_init(&c);
   if (err != ESP_OK) { cameraError = String("0x") + String(err, HEX); return false; }
   sensor_t *sensor = esp_camera_sensor_get();
-  if (sensor) sensor->set_framesize(sensor, FRAMESIZE_VGA);
+  if (sensor) sensor->set_framesize(sensor, FRAMESIZE_QVGA);
   return true;
 }
 
@@ -114,6 +115,7 @@ void setup() {
   cameraReady = initCamera();
   WiFi.mode(WIFI_AP);
   WiFi.setSleep(false);
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
   WiFi.softAP(AP_NAME, AP_PASSWORD, 1, false, 4);
   startServers();
   Serial.printf("Camera: %s %s\n", cameraReady ? "OK" : "FAIL", cameraError.c_str());
