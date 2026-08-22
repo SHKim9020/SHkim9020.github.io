@@ -13,6 +13,50 @@
   background: #f7f9fc;
 }
 
+.shield-guide {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #9fc9ff;
+  border-radius: 14px;
+  background: #eef6ff;
+}
+
+.shield-guide h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.shield-guide ol {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.shield-guide p,
+.ttl-guide {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.shield-guide p {
+  margin: 8px 0 0;
+  color: #45617f;
+}
+
+.ttl-guide {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbe2ee;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.ttl-guide summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
 .camera-test-install {
   border-color: #9edfcf;
   background: #eefbf7;
