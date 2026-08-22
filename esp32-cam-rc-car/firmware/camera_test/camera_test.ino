@@ -27,9 +27,14 @@ httpd_handle_t pageServer = nullptr;
 httpd_handle_t streamServer = nullptr;
 bool cameraReady = false;
 String cameraError;
+String activeFrameSize = "QVGA";
 
 static const char PAGE[] PROGMEM = R"HTML(
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OneMaker ESP32-CAM Test</title><style>*{box-sizing:border-box}body{margin:0;background:#07121f;color:#e9f6ff;font-family:system-ui,sans-serif}main{max-width:720px;margin:auto;padding:16px}h1{font-size:22px;margin:0 0 8px}.status{padding:12px;border-radius:12px;background:#13283a;margin-bottom:12px}.ok{color:#54e5ac}.bad{color:#ff818d}.video{width:100%;aspect-ratio:4/3;object-fit:contain;background:#000;border:1px solid #315066;border-radius:16px}a{display:block;margin-top:12px;padding:12px;text-align:center;border-radius:12px;background:#1677ff;color:#fff;text-decoration:none;font-weight:800}small{display:block;color:#9fb6c8;margin-top:12px;line-height:1.6}</style></head><body><main><h1>📷 ESP32-CAM 카메라 전용 테스트</h1><div id="status" class="status">카메라 상태 확인 중…</div><img id="video" class="video" alt="ESP32-CAM 영상"><a href="/capture.jpg" target="_blank">사진 한 장 열기</a><small>빠른 영상 모드: QVGA 320×240<br>Wi-Fi: OneMaker-CAM-TEST<br>주소: http://192.168.4.1<br>영상이 보이면 카메라와 전원은 정상입니다.</small></main><script>fetch('/status').then(r=>r.json()).then(s=>{const e=document.querySelector('#status');if(s.camera){e.classList.add('ok');e.textContent='● 카메라 정상 · 빠른 QVGA · PSRAM '+(s.psram?'정상':'없음');document.querySelector('#video').src='http://'+location.hostname+':81/stream'}else{e.classList.add('bad');e.textContent='● 카메라 초기화 실패: '+s.error}}).catch(()=>document.querySelector('#status').textContent='상태 확인 실패');</script></body></html>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OneMaker ESP32-CAM Test</title><style>
+*{box-sizing:border-box}body{margin:0;background:#07121f;color:#e9f6ff;font-family:system-ui,sans-serif}main{max-width:720px;margin:auto;padding:16px}h1{font-size:22px;margin:0 0 8px}.status,.settings{padding:12px;border-radius:12px;background:#13283a;margin-bottom:12px}.ok{color:#54e5ac}.bad{color:#ff818d}.settings b{display:block;margin-bottom:10px}.buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}button{border:1px solid #315d7a;border-radius:10px;background:#18364b;color:#dceeff;padding:11px 5px;font-weight:800;cursor:pointer}button.active{border-color:#35ddff;background:#087fc5;color:#fff}.hint{display:block;margin-top:9px;color:#9fb6c8}.video{width:100%;aspect-ratio:4/3;object-fit:contain;background:#000;border:1px solid #315066;border-radius:16px}a{display:block;margin-top:12px;padding:12px;text-align:center;border-radius:12px;background:#1677ff;color:#fff;text-decoration:none;font-weight:800}small{display:block;color:#9fb6c8;margin-top:12px;line-height:1.6}@media(max-width:480px){.buttons{grid-template-columns:1fr}button{font-size:15px}}
+</style></head><body><main><h1>📷 ESP32-CAM 카메라 전용 테스트</h1><div id="status" class="status">카메라 상태 확인 중…</div><section class="settings"><b>영상 해상도</b><div class="buttons"><button data-size="QQVGA">빠름<br>160×120</button><button data-size="QVGA">권장<br>320×240</button><button data-size="VGA">고화질<br>640×480</button></div><span id="hint" class="hint">RC카 조종에는 320×240을 권장합니다.</span></section><img id="video" class="video" alt="ESP32-CAM 영상"><a href="/capture.jpg" target="_blank">사진 한 장 열기</a><small>Wi-Fi: OneMaker-CAM-TEST<br>주소: http://192.168.4.1<br>해상도가 높을수록 영상 움직임이 느려질 수 있습니다.</small></main><script>
+const statusEl=document.querySelector('#status'),video=document.querySelector('#video'),hint=document.querySelector('#hint');function mark(size){document.querySelectorAll('[data-size]').forEach(b=>b.classList.toggle('active',b.dataset.size===size))}function startVideo(){video.src='http://'+location.hostname+':81/stream?t='+Date.now()}fetch('/status').then(r=>r.json()).then(s=>{if(s.camera){statusEl.classList.add('ok');statusEl.textContent='● 카메라 정상 · '+s.size+' · PSRAM '+(s.psram?'정상':'없음');mark(s.size);startVideo()}else{statusEl.classList.add('bad');statusEl.textContent='● 카메라 초기화 실패: '+s.error}}).catch(()=>statusEl.textContent='상태 확인 실패');document.querySelectorAll('[data-size]').forEach(b=>b.onclick=()=>{hint.textContent='해상도 변경 중…';fetch('/settings?size='+b.dataset.size).then(r=>{if(!r.ok)throw Error();return r.json()}).then(s=>{mark(s.size);statusEl.textContent='● 카메라 정상 · '+s.size;hint.textContent=s.size==='QQVGA'?'가장 빠른 영상 모드입니다.':s.size==='QVGA'?'RC카 조종 권장 모드입니다.':'화질이 높아 영상이 느려질 수 있습니다.';startVideo()}).catch(()=>hint.textContent='해상도 변경에 실패했습니다.')});
+</script></body></html>
 )HTML";
 
 bool initCamera() {
@@ -58,7 +63,30 @@ static esp_err_t pageHandler(httpd_req_t *req) {
 }
 
 static esp_err_t statusHandler(httpd_req_t *req) {
-  String json = String("{\"camera\":") + (cameraReady ? "true" : "false") + ",\"error\":\"" + cameraError + "\",\"psram\":" + (psramFound() ? "true" : "false") + "}";
+  String json = String("{\"camera\":") + (cameraReady ? "true" : "false") + ",\"error\":\"" + cameraError + "\",\"psram\":" + (psramFound() ? "true" : "false") + ",\"size\":\"" + activeFrameSize + "\"}";
+  httpd_resp_set_type(req, "application/json");
+  return httpd_resp_send(req, json.c_str(), json.length());
+}
+
+static esp_err_t settingsHandler(httpd_req_t *req) {
+  if (!cameraReady) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Camera failed");
+  char query[48] = {};
+  char size[16] = {};
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+      httpd_query_key_value(query, "size", size, sizeof(size)) != ESP_OK) {
+    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing size");
+  }
+  framesize_t frameSize;
+  if (!strcmp(size, "QQVGA")) frameSize = FRAMESIZE_QQVGA;
+  else if (!strcmp(size, "QVGA")) frameSize = FRAMESIZE_QVGA;
+  else if (!strcmp(size, "VGA")) frameSize = FRAMESIZE_VGA;
+  else return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid size");
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (!sensor || sensor->set_framesize(sensor, frameSize) != 0) {
+    return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Resolution failed");
+  }
+  activeFrameSize = size;
+  String json = String("{\"ok\":true,\"size\":\"") + activeFrameSize + "\"}";
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_send(req, json.c_str(), json.length());
 }
@@ -96,9 +124,11 @@ void startServers() {
   httpd_start(&pageServer, &pageConfig);
   httpd_uri_t page = {.uri = "/", .method = HTTP_GET, .handler = pageHandler, .user_ctx = nullptr};
   httpd_uri_t status = {.uri = "/status", .method = HTTP_GET, .handler = statusHandler, .user_ctx = nullptr};
+  httpd_uri_t settings = {.uri = "/settings", .method = HTTP_GET, .handler = settingsHandler, .user_ctx = nullptr};
   httpd_uri_t capture = {.uri = "/capture.jpg", .method = HTTP_GET, .handler = captureHandler, .user_ctx = nullptr};
   httpd_register_uri_handler(pageServer, &page);
   httpd_register_uri_handler(pageServer, &status);
+  httpd_register_uri_handler(pageServer, &settings);
   httpd_register_uri_handler(pageServer, &capture);
 
   httpd_config_t streamConfig = HTTPD_DEFAULT_CONFIG();
