@@ -40,7 +40,15 @@ test("app is installable as a standalone PWA with icons", () => {
   assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /serviceWorker\.register/);
-  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.22/);
+  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.23/);
+});
+
+test("remote control stops when Android loses the button release event", () => {
+  assert.match(app, /lostpointercapture/);
+  assert.match(app, /window\.addEventListener\("pointerup", stopHeldRemote, true\)/);
+  assert.match(app, /window\.addEventListener\("pointercancel", stopHeldRemote, true\)/);
+  assert.match(app, /window\.addEventListener\("blur", stopHeldRemote\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange"/);
 });
 
 test("board, remote control, and serial monitor expose stable scrollbars", () => {

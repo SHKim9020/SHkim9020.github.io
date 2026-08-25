@@ -369,7 +369,13 @@
         if (!serialWriter && !bleRxCharacteristic) {
           throw new Error("먼저 Bluetooth 또는 USB로 보트를 연결하세요.");
         }
-        return writeLine(JSON.stringify(command));
+        const isStop = command.cmd === "remote" && command.button === "stop";
+        return writeLine(JSON.stringify(command), null, {
+          group: "remote",
+          replaceKey: command.cmd === "heartbeat" ? "remote-heartbeat" : null,
+          clearGroup: isStop ? "remote" : null,
+          priority: isStop
+        });
       },
       {
         maxSpeed: CLASSROOM_MAX_PWM,
@@ -509,8 +515,18 @@
       if (button.dataset.remote !== "stop") {
         button.addEventListener("pointerup", () => remoteDrive("stop"));
         button.addEventListener("pointercancel", () => remoteDrive("stop"));
+        button.addEventListener("lostpointercapture", () => remoteDrive("stop"));
         button.addEventListener("pointerleave", event => { if (event.buttons) remoteDrive("stop"); });
       }
+    });
+    const stopHeldRemote = () => {
+      if (remoteSafetyController?.direction !== "stop") remoteDrive("stop");
+    };
+    window.addEventListener("pointerup", stopHeldRemote, true);
+    window.addEventListener("pointercancel", stopHeldRemote, true);
+    window.addEventListener("blur", stopHeldRemote);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopHeldRemote();
     });
     ["boatNumber", "pinIn1", "pinIn2", "pinIn3", "pinIn4", "invertLeft", "invertRight", "waitForBluetoothStart", "huskyEnabled", "huskySda", "huskyScl"].forEach(id => {
       $(`#${id}`).addEventListener("change", () => {
@@ -1470,7 +1486,7 @@ ${loopCode}}
     });
   }
 
-  async function writeLine(text, preferredTransport = null) {
+  async function writeLine(text, preferredTransport = null, bleQueueOptions = null) {
     const bytes = new TextEncoder().encode(`${text}\n`);
     if (preferredTransport !== "ble" && serialWriter) {
       for (let offset = 0; offset < bytes.length; offset += 64) {
@@ -1480,7 +1496,7 @@ ${loopCode}}
       return;
     }
     if (bleWriteTransport && bleDevice?.gatt?.connected) {
-      await bleWriteTransport.write(bytes);
+      await bleWriteTransport.write(bytes, bleQueueOptions || {});
       return;
     }
     throw new Error("먼저 USB 또는 Bluetooth로 보드와 연결하세요.");

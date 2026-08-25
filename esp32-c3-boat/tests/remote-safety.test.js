@@ -62,6 +62,35 @@ test("heartbeat is lightweight and releasing sends one stop", async () => {
   assert.equal(timers.size, 0);
 });
 
+test("a slow BLE heartbeat never accumulates more heartbeat writes", async () => {
+  const commands = [];
+  const timers = new Map();
+  let releaseHeartbeat;
+  const heartbeatGate = new Promise(resolve => { releaseHeartbeat = resolve; });
+  const controller = new globalThis.BoatRemoteSafetyController(
+    async command => {
+      commands.push(command);
+      if (command.cmd === "heartbeat") await heartbeatGate;
+    },
+    {
+      setIntervalFn(callback) { timers.set(1, callback); return 1; },
+      clearIntervalFn(id) { timers.delete(id); }
+    }
+  );
+
+  await controller.press("right", 130);
+  const tick = [...timers.values()][0];
+  const firstHeartbeat = tick();
+  const skippedHeartbeat = await tick();
+  assert.equal(skippedHeartbeat, false);
+  assert.equal(commands.filter(command => command.cmd === "heartbeat").length, 1);
+
+  releaseHeartbeat();
+  await firstHeartbeat;
+  await controller.stop();
+  assert.deepEqual(commands.at(-1), { cmd: "remote", button: "stop", speed: 0 });
+});
+
 test("disconnect clears hold state without sending another BLE command", async () => {
   const { commands, controller, timers } = harness();
   await controller.press("backward", 120);

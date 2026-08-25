@@ -73,3 +73,38 @@ test("three rapid controller taps remain ordered", async () => {
     buttons
   );
 });
+
+test("priority stop drops pending remote commands instead of waiting behind them", async () => {
+  const received = [];
+  let releaseActiveWrite;
+  let firstWrite = true;
+  const activeGate = new Promise(resolve => { releaseActiveWrite = resolve; });
+  const characteristic = {
+    async writeValueWithResponse(chunk) {
+      if (firstWrite) {
+        firstWrite = false;
+        await activeGate;
+      }
+      received.push(...chunk);
+    }
+  };
+  const queue = new globalThis.BoatBleWriteQueue(characteristic);
+
+  const moving = queue.write(Uint8Array.of(1), { group: "remote" });
+  const staleHeartbeat = queue.write(Uint8Array.of(2), {
+    group: "remote",
+    replaceKey: "remote-heartbeat"
+  });
+  const staleDirection = queue.write(Uint8Array.of(3), { group: "remote" });
+  const stop = queue.write(Uint8Array.of(9), {
+    group: "remote",
+    clearGroup: "remote",
+    priority: true
+  });
+
+  assert.equal(await staleHeartbeat, false);
+  assert.equal(await staleDirection, false);
+  releaseActiveWrite();
+  assert.deepEqual(await Promise.all([moving, stop]), [true, true]);
+  assert.deepEqual(received, [1, 9]);
+});

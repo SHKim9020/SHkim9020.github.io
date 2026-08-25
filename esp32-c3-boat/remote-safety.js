@@ -14,6 +14,8 @@
       this.direction = "stop";
       this.speed = 0;
       this.heartbeatTimer = null;
+      this.heartbeatInFlight = false;
+      this.heartbeatGeneration = 0;
     }
 
     clampSpeed(speed) {
@@ -29,18 +31,32 @@
       this.clearHeartbeat();
       this.direction = direction;
       this.speed = this.clampSpeed(speed);
+      const generation = this.heartbeatGeneration;
       const command = { cmd: "remote", button: direction, speed: this.speed };
       if (motorSpeeds) {
         command.leftSpeed = this.clampSpeed(motorSpeeds.leftSpeed);
         command.rightSpeed = this.clampSpeed(motorSpeeds.rightSpeed);
       }
       await this.sendCommand(command);
-      this.heartbeatTimer = this.setIntervalFn(() => {
-        if (this.direction === "stop") return;
-        Promise.resolve(this.sendCommand({ cmd: "heartbeat", button: this.direction }))
-          .catch(error => this.onError(error));
-      }, this.heartbeatMs);
+      if (this.direction !== direction || generation !== this.heartbeatGeneration) return false;
+      this.heartbeatTimer = this.setIntervalFn(() => this.sendHeartbeat(), this.heartbeatMs);
       return true;
+    }
+
+    async sendHeartbeat() {
+      if (this.direction === "stop" || this.heartbeatInFlight) return false;
+      const direction = this.direction;
+      const generation = this.heartbeatGeneration;
+      this.heartbeatInFlight = true;
+      try {
+        await this.sendCommand({ cmd: "heartbeat", button: direction });
+        return true;
+      } catch (error) {
+        if (generation === this.heartbeatGeneration && this.direction !== "stop") this.onError(error);
+        return false;
+      } finally {
+        this.heartbeatInFlight = false;
+      }
     }
 
     async stop(force = false) {
@@ -60,6 +76,7 @@
     }
 
     clearHeartbeat() {
+      this.heartbeatGeneration++;
       if (this.heartbeatTimer !== null) {
         this.clearIntervalFn(this.heartbeatTimer);
         this.heartbeatTimer = null;
