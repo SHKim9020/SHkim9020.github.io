@@ -6,7 +6,7 @@
   const COLORS = { event: 38, motor: 210, camera: 285, output: 65 };
   const SIDE_PANEL_KEY = "onemaker-esp32cam-rc-side-collapsed";
   const REMOTE_URL = "http://192.168.4.1/";
-  let workspace, port, reader, writer, readLoopActive = false, uploadWaiter = null;
+  let workspace, port, reader, writer, readLoopActive = false, uploadWaiter = null, serialByteCount = 0;
   let selectedBlockId = null, copiedBlockState = null, deferredInstallPrompt = null;
 
   function toast(message) {
@@ -136,18 +136,29 @@
     try{
       if(port)await closeSerial();
       port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();readLoopActive=true;readSerial();
+      $("#connectionStatus").textContent="보드 자동 리셋 중…";
+      const trafficStart=serialByteCount;
+      try{
+        await port.setSignals({dataTerminalReady:false,requestToSend:true});
+        await new Promise(resolve=>setTimeout(resolve,150));
+        await port.setSignals({dataTerminalReady:false,requestToSend:false});
+        await new Promise(resolve=>setTimeout(resolve,900));
+      }catch{}
       $("#connectionStatus").textContent="보드 준비 중…";
       const deadline=Date.now()+30000;let connected=false;
       while(Date.now()<deadline&&!connected){
         try{await command({cmd:"stop"},2500);connected=true}
         catch{await new Promise(resolve=>setTimeout(resolve,400))}
       }
-      if(!connected)throw new Error("RC 펌웨어 응답 없음 — 전체 펌웨어 0.1.5를 다시 설치하세요.");
+      if(!connected){
+        if(serialByteCount===trafficStart)throw new Error("보드 시리얼 출력 없음 — 모터 전원을 분리하고 USB 재연결 후 다시 시도하세요.");
+        throw new Error("RC 명령 응답 없음 — 카메라 테스트가 아닌 전체 펌웨어 0.1.5를 설치하세요.");
+      }
       setConnected(true);toast("ESP32‑CAM이 안전 정지 상태로 연결되었습니다.");
     }catch(e){setConnected(false);await closeSerial();toast("USB 연결 실패: "+e.message)}
   }
   function setConnected(on){$("#connectionStatus").textContent=on?"USB 연결됨":"USB 연결 안 됨";$("#connectionStatus").classList.toggle("connected",on);$("#connectionStatus").classList.toggle("disconnected",!on);$("#connectBtn .dot").style.background=on?"#41e0a4":"#98a5ba"}
-  async function readSerial(){const decoder=new TextDecoder();let buffer="";try{reader=port.readable.getReader();while(readLoopActive){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,n).trim();buffer=buffer.slice(n+1);if(line){$("#serialOutput").textContent+=line+"\n";$("#serialOutput").scrollTop=$("#serialOutput").scrollHeight;try{const j=JSON.parse(line);if(uploadWaiter&&(j.type==="ack"||j.type==="uploadDone"||j.type==="error")){const w=uploadWaiter;uploadWaiter=null;j.type==="error"?w.reject(new Error(j.message)):w.resolve(j)}}catch{}}}}}catch(e){if(readLoopActive)toast("USB 연결이 끊어졌습니다.")}finally{reader?.releaseLock();setConnected(false)}}
+  async function readSerial(){const decoder=new TextDecoder();let buffer="";try{reader=port.readable.getReader();while(readLoopActive){const {value,done}=await reader.read();if(done)break;serialByteCount+=value?.byteLength||0;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,n).trim();buffer=buffer.slice(n+1);if(line){$("#serialOutput").textContent+=line+"\n";$("#serialOutput").scrollTop=$("#serialOutput").scrollHeight;try{const j=JSON.parse(line);if(uploadWaiter&&(j.type==="ack"||j.type==="uploadDone"||j.type==="error")){const w=uploadWaiter;uploadWaiter=null;j.type==="error"?w.reject(new Error(j.message)):w.resolve(j)}}catch{}}}}}catch(e){if(readLoopActive)toast("USB 연결이 끊어졌습니다.")}finally{reader?.releaseLock();setConnected(false)}}
   async function sendLine(obj){if(!writer)throw new Error("먼저 USB를 연결하세요.");await writer.write(new TextEncoder().encode(JSON.stringify(obj)+"\n"))}
   function waitAck(timeout=3000){return new Promise((resolve,reject)=>{const waiter={timer:null,resolve:value=>{clearTimeout(waiter.timer);resolve(value)},reject:error=>{clearTimeout(waiter.timer);reject(error)}};waiter.timer=setTimeout(()=>{if(uploadWaiter===waiter){uploadWaiter=null;reject(new Error("보드 응답 시간 초과"))}},timeout);uploadWaiter=waiter})}
   async function command(obj,timeout=3000){const response=waitAck(timeout);try{await sendLine(obj);return await response}catch(e){if(uploadWaiter)uploadWaiter=null;throw e}}
