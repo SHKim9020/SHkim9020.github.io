@@ -131,28 +131,38 @@
     try{await port?.close()}catch{}
     port=null;
   }
+  async function tryStopHandshake(duration){
+    const deadline=Date.now()+duration;
+    while(Date.now()<deadline){
+      try{await command({cmd:"stop"},1800);return true}
+      catch{await new Promise(resolve=>setTimeout(resolve,300))}
+    }
+    return false;
+  }
   async function connectSerial(){
     if(!("serial" in navigator)){toast("PC Chrome/Edge에서 Web Serial을 사용할 수 있습니다.");return}
     try{
       if(port)await closeSerial();
-      port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();readLoopActive=true;readSerial();
-      $("#connectionStatus").textContent="보드 자동 리셋 중…";
+      port=await navigator.serial.requestPort();await port.open({baudRate:115200,bufferSize:1024});writer=port.writable.getWriter();readLoopActive=true;readSerial();
       const trafficStart=serialByteCount;
-      try{
-        await port.setSignals({dataTerminalReady:false,requestToSend:true});
-        await new Promise(resolve=>setTimeout(resolve,150));
-        await port.setSignals({dataTerminalReady:false,requestToSend:false});
-        await new Promise(resolve=>setTimeout(resolve,900));
-      }catch{}
-      $("#connectionStatus").textContent="보드 준비 중…";
-      const deadline=Date.now()+30000;let connected=false;
-      while(Date.now()<deadline&&!connected){
-        try{await command({cmd:"stop"},2500);connected=true}
-        catch{await new Promise(resolve=>setTimeout(resolve,400))}
+      $("#connectionStatus").textContent="실행 중인 보드 확인 중…";
+      try{await port.setSignals({dataTerminalReady:false,requestToSend:false})}catch{}
+      await new Promise(resolve=>setTimeout(resolve,500));
+      let connected=await tryStopHandshake(8000);
+      if(!connected){
+        $("#connectionStatus").textContent="보드 자동 복구 중…";
+        try{
+          await port.setSignals({dataTerminalReady:false,requestToSend:true});
+          await new Promise(resolve=>setTimeout(resolve,150));
+          await port.setSignals({dataTerminalReady:false,requestToSend:false});
+        }catch{}
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        $("#connectionStatus").textContent="보드 준비 중…";
+        connected=await tryStopHandshake(35000);
       }
       if(!connected){
-        if(serialByteCount===trafficStart)throw new Error("보드 시리얼 출력 없음 — 모터 전원을 분리하고 USB 재연결 후 다시 시도하세요.");
-        throw new Error("RC 명령 응답 없음 — 카메라 테스트가 아닌 전체 펌웨어 0.1.5를 설치하세요.");
+        if(serialByteCount===trafficStart)throw new Error("보드 시리얼 출력 없음 — 모터 전원을 분리하고 RST를 누른 뒤 다시 시도하세요.");
+        throw new Error("RC 명령 응답 없음 — RC카 전체 펌웨어 0.1.7 설치 상태를 확인하세요.");
       }
       setConnected(true);toast("ESP32‑CAM이 안전 정지 상태로 연결되었습니다.");
     }catch(e){setConnected(false);await closeSerial();toast("USB 연결 실패: "+e.message)}
