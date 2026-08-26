@@ -121,13 +121,30 @@
   function loadExample(notify=true){const xml=`<xml xmlns="https://developers.google.com/blockly/xml"><block type="event_start" x="35" y="35"><statement name="DO"><block type="camera_flash"><field name="STATE">on</field><next><block type="wait_ms"><value name="SECONDS"><shadow type="math_number"><field name="NUM">1</field></shadow></value><next><block type="camera_flash"><field name="STATE">off</field><next><block type="serial_print"><value name="VALUE"><shadow type="text"><field name="TEXT">영상탐사 RC카 준비 완료!</field></shadow></value></block></next></block></next></block></statement></block><block type="remote_when" x="390" y="35"><field name="BUTTON">forward</field><statement name="DO"><block type="car_drive"><field name="DIR">forward</field><value name="SPEED"><shadow type="math_number"><field name="NUM">150</field></shadow></value></block></statement></block><block type="remote_when" x="390" y="190"><field name="BUTTON">stop</field><statement name="DO"><block type="car_stop"/></statement></block></xml>`;workspace.clear();Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xml),workspace);workspace.zoomToFit();if(notify)toast("기본 영상탐사 예제를 불러왔습니다.")}
   function download(name,text,type="application/json"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 
+  async function closeSerial(){
+    readLoopActive=false;
+    const activeReader=reader;reader=null;
+    try{await activeReader?.cancel()}catch{}
+    try{activeReader?.releaseLock()}catch{}
+    try{writer?.releaseLock()}catch{}
+    writer=null;
+    try{await port?.close()}catch{}
+    port=null;
+  }
   async function connectSerial(){
     if(!("serial" in navigator)){toast("PC Chrome/Edge에서 Web Serial을 사용할 수 있습니다.");return}
     try{
+      if(port)await closeSerial();
       port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();readLoopActive=true;readSerial();
-      const stopped=waitAck(15000);await sendLine({cmd:"stop"});await stopped;
+      $("#connectionStatus").textContent="보드 준비 중…";
+      const deadline=Date.now()+30000;let connected=false;
+      while(Date.now()<deadline&&!connected){
+        try{await command({cmd:"stop"},2500);connected=true}
+        catch{await new Promise(resolve=>setTimeout(resolve,400))}
+      }
+      if(!connected)throw new Error("RC 펌웨어 응답 없음 — 전체 펌웨어 0.1.5를 다시 설치하세요.");
       setConnected(true);toast("ESP32‑CAM이 안전 정지 상태로 연결되었습니다.");
-    }catch(e){setConnected(false);toast("USB 연결 실패: "+e.message)}
+    }catch(e){setConnected(false);await closeSerial();toast("USB 연결 실패: "+e.message)}
   }
   function setConnected(on){$("#connectionStatus").textContent=on?"USB 연결됨":"USB 연결 안 됨";$("#connectionStatus").classList.toggle("connected",on);$("#connectionStatus").classList.toggle("disconnected",!on);$("#connectBtn .dot").style.background=on?"#41e0a4":"#98a5ba"}
   async function readSerial(){const decoder=new TextDecoder();let buffer="";try{reader=port.readable.getReader();while(readLoopActive){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,n).trim();buffer=buffer.slice(n+1);if(line){$("#serialOutput").textContent+=line+"\n";$("#serialOutput").scrollTop=$("#serialOutput").scrollHeight;try{const j=JSON.parse(line);if(uploadWaiter&&(j.type==="ack"||j.type==="uploadDone"||j.type==="error")){const w=uploadWaiter;uploadWaiter=null;j.type==="error"?w.reject(new Error(j.message)):w.resolve(j)}}catch{}}}}}catch(e){if(readLoopActive)toast("USB 연결이 끊어졌습니다.")}finally{reader?.releaseLock();setConnected(false)}}
