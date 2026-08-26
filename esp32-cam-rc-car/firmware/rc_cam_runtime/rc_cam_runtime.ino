@@ -8,7 +8,7 @@
 #include "esp_http_server.h"
 #include "mbedtls/base64.h"
 
-// OneMaker ESP32-CAM RC Runtime 0.1.2 — AI Thinker + L9110S/MX1508
+// OneMaker ESP32-CAM RC Runtime 0.1.3 — AI Thinker + L9110S/MX1508
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const int FLASH_LED = 4;
@@ -37,7 +37,7 @@ static const int MOTOR_CHANNELS[4] = {4, 5, 6, 7};
 
 struct RcConfig {
   int in1=12, in2=13, in3=14, in4=15;
-  bool invertLeft=false, invertRight=true;
+  bool invertLeft=true, invertRight=true;
   String frameSize="QVGA";
   int quality=12;
   bool flip=false;
@@ -159,7 +159,7 @@ void stopProgram(){programTaskStop=true;delay(2);if(programTaskHandle){vTaskDele
 void startProgram(){stopRemoteHandler();stopProgram();programTaskStop=false;memset(variables,0,sizeof(variables));variableCount=0;xTaskCreatePinnedToCore(programTask,"rc-program",8192,nullptr,1,&programTaskHandle,0);}
 
 String decodeBase64(const String &encoded){size_t outLen=0,cap=encoded.length();unsigned char *out=(unsigned char*)malloc(cap+1);if(!out)return"";int result=mbedtls_base64_decode(out,cap,&outLen,(const unsigned char*)encoded.c_str(),encoded.length());String decoded;if(result==0){out[outLen]=0;decoded=String((char*)out).substring(0,outLen);}free(out);return decoded;}
-void applyConfig(JsonObjectConst c){JsonObjectConst p=c["pins"];config.in1=p["in1"]|12;config.in2=p["in2"]|13;config.in3=p["in3"]|14;config.in4=p["in4"]|15;config.invertLeft=c["invertLeft"]|false;config.invertRight=c["invertRight"]|true;JsonObjectConst cam=c["camera"];config.frameSize=(const char*)(cam["frameSize"]|"QVGA");config.quality=cam["quality"]|12;config.flip=cam["flip"]|false;setupMotorOutputs();stopCar();applyCameraSettings();}
+void applyConfig(JsonObjectConst c){JsonObjectConst p=c["pins"];config.in1=p["in1"]|12;config.in2=p["in2"]|13;config.in3=p["in3"]|14;config.in4=p["in4"]|15;config.invertLeft=c["invertLeft"]|true;config.invertRight=c["invertRight"]|true;JsonObjectConst cam=c["camera"];config.frameSize=(const char*)(cam["frameSize"]|"QVGA");config.quality=cam["quality"]|12;config.flip=cam["flip"]|false;setupMotorOutputs();stopCar();applyCameraSettings();}
 bool loadProgram(){if(!LittleFS.exists(PROGRAM_PATH))return false;File f=LittleFS.open(PROGRAM_PATH,"r");DeserializationError e=deserializeJson(activeDocument,f);f.close();if(e)return false;applyConfig(activeDocument["config"]);return true;}
 bool saveUploadedProgram(){JsonDocument test;DeserializationError e=deserializeJson(test,uploadBuffer);if(e){emit("error",String("JSON: ")+e.c_str());return false;}File f=LittleFS.open(PROGRAM_PATH,"w");if(!f){emit("error","file open");return false;}f.print(uploadBuffer);f.close();activeDocument.clear();deserializeJson(activeDocument,uploadBuffer);applyConfig(activeDocument["config"]);return true;}
 
@@ -180,7 +180,7 @@ void startWifi(){WiFi.mode(WIFI_AP);WiFi.setSleep(false);WiFi.setTxPower(WIFI_PO
 
 void handleSerialLine(const String &line){
   JsonDocument d;DeserializationError e=deserializeJson(d,line);if(e){emit("error","JSON command");return;}String cmd=d["cmd"]|"";
-  if(cmd=="hello"){JsonDocument info;info["type"]="info";info["runtime"]="0.1.2";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
+  if(cmd=="hello"){JsonDocument info;info["type"]="info";info["runtime"]="0.1.3";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
   if(cmd=="stop"){stopProgram();ack("stopped");return;}
   if(cmd=="drive"){drive(d["dir"]|"stop",d["speed"]|150,d["speed"]|150);ack();return;}
   if(cmd=="setNumber"){int n=d["number"]|1;if(n<1||n>16){emit("error","number 1-16");return;}Preferences p;p.begin("onemaker-rc",false);p.putUChar("number",n);p.end();ack("number saved");delay(200);ESP.restart();return;}
