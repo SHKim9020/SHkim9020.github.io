@@ -1,9 +1,9 @@
-const CACHE_NAME = "onemaker-boat-studio-1.4.23";
+const CACHE_NAME = "onemaker-boat-studio-1.4.24";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=1.4.22",
-  "./app.js?v=1.4.23",
+  "./style.css?v=1.4.24",
+  "./app.js?v=1.4.24",
   "./ble-transport.js?v=1.4.7",
   "./remote-safety.js?v=1.4.14",
   "./remote-handler.js?v=1.4.10",

@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=1.4.22">
   <link rel="icon" href="icons/boat-studio-192.png?v=1.4.22" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="icons/boat-studio-192.png?v=1.4.22">
-  <link rel="stylesheet" href="style.css?v=1.4.22">
+  <link rel="stylesheet" href="style.css?v=1.4.24">
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </head>
 <body>
@@ -190,6 +190,11 @@
           <div class="remote-card-toolbar">
             <button id="remoteFullscreenBtn" type="button" class="outline remote-fullscreen-btn" aria-pressed="false">⛶ 전체화면</button>
           </div>
+          <div class="remote-mode-control">
+            <span>동작 모드</span>
+            <button id="smallPoolModeBtn" type="button" class="outline remote-mode-btn" aria-pressed="false">💧 작은 수조 모드</button>
+          </div>
+          <p id="remoteModeNote" class="remote-mode-note">일반 모드: 방향 버튼을 누르는 동안 계속 동작합니다.</p>
           <div class="remote-speed-control dual-motor-speed">
             <label for="remoteLeftSpeed">왼쪽 모터</label>
             <input id="remoteLeftSpeed" type="range" min="0" max="250" value="150">
@@ -320,6 +325,6 @@
   <script src="ble-transport.js?v=1.4.7"></script>
   <script src="remote-safety.js?v=1.4.14"></script>
   <script src="remote-handler.js?v=1.4.10"></script>
-  <script src="app.js?v=1.4.23"></script>
+  <script src="app.js?v=1.4.24"></script>
 </body>
 </html>

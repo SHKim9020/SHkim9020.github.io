@@ -40,7 +40,16 @@ test("app is installable as a standalone PWA with icons", () => {
   assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /serviceWorker\.register/);
-  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.23/);
+  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.24/);
+});
+
+test("small pool mode limits turns without requiring a new firmware command", () => {
+  assert.match(html, /id="smallPoolModeBtn"/);
+  assert.match(app, /const SMALL_POOL_TURN_PWM = 90/);
+  assert.match(app, /const SMALL_POOL_TURN_MS = 120/);
+  assert.match(app, /direction === "left"\) return \{ leftSpeed: 0, rightSpeed: safeRight \}/);
+  assert.match(app, /direction === "right"\) return \{ leftSpeed: safeLeft, rightSpeed: 0 \}/);
+  assert.match(app, /remoteDrive\("stop", true\)/);
 });
 
 test("remote control stops when Android loses the button release event", () => {

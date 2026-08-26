@@ -7,10 +7,13 @@
   const SAFE_PINS = [0, 1, 3, 4, 5, 6, 7, 10, 20, 21];
   const ALL_PINS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21];
   const STORAGE_KEY = "onemaker-esp32-c3-boat-autosave-v1";
+  const SMALL_POOL_MODE_KEY = "onemaker-esp32-c3-boat-small-pool-v1";
   const BLE_SERVICE_UUID = "7a1f0001-7c73-4d9b-9e4b-4f4d4b000001";
   const BLE_RX_UUID = "7a1f0002-7c73-4d9b-9e4b-4f4d4b000002";
   const BLE_TX_UUID = "7a1f0003-7c73-4d9b-9e4b-4f4d4b000003";
   const CLASSROOM_MAX_PWM = 250;
+  const SMALL_POOL_TURN_PWM = 90;
+  const SMALL_POOL_TURN_MS = 120;
   const NUMBERED_FIRMWARE_MIN = [1, 4, 0];
   const STABLE_BLE_FIRMWARE_MIN = [1, 4, 6];
   const BLUETOOTH_START_FIRMWARE_MIN = [1, 4, 5];
@@ -26,6 +29,8 @@
   let bleTxCharacteristic;
   let bleWriteTransport;
   let remoteSafetyController;
+  let smallPoolMode = false;
+  let smallPoolTurnTimer = null;
   let bleProgramRunning = false;
   let readLoopActive = false;
   let receiveBuffer = "";
@@ -388,6 +393,7 @@
       }
     );
     bindEvents();
+    restoreSmallPoolMode();
     restoreAutosave();
     if (!workspace.getAllBlocks(false).length) loadExample(false);
     refreshGeneratedCode();
@@ -493,6 +499,7 @@
       });
     });
     $("#remoteFullscreenBtn").addEventListener("click", toggleRemoteFullscreen);
+    $("#smallPoolModeBtn").addEventListener("click", toggleSmallPoolMode);
     document.addEventListener("fullscreenchange", syncRemoteFullscreenButton);
     const remotePad = $(".remote-pad");
     ["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
@@ -1669,20 +1676,77 @@ ${loopCode}}
   }
 
   async function remoteDrive(button, forceStop = false) {
+    clearSmallPoolTurnTimer();
     setRemoteVisual(button);
     try {
       if (button === "stop") {
         await remoteSafetyController.stop(forceStop);
       } else {
-        const leftSpeed = Number($("#remoteLeftSpeed").value);
-        const rightSpeed = Number($("#remoteRightSpeed").value);
+        let leftSpeed = Number($("#remoteLeftSpeed").value);
+        let rightSpeed = Number($("#remoteRightSpeed").value);
+        const isSmallPoolTurn = smallPoolMode && (button === "left" || button === "right");
+        if (isSmallPoolTurn) {
+          ({ leftSpeed, rightSpeed } = smallPoolMotorSpeeds(button, leftSpeed, rightSpeed));
+        }
         await remoteSafetyController.press(button, Math.round((leftSpeed + rightSpeed) / 2), { leftSpeed, rightSpeed });
+        if (isSmallPoolTurn && remoteSafetyController.direction === button) {
+          smallPoolTurnTimer = setTimeout(() => {
+            smallPoolTurnTimer = null;
+            remoteDrive("stop", true);
+          }, SMALL_POOL_TURN_MS);
+        }
       }
     } catch (error) {
       remoteSafetyController.disconnect();
       setRemoteVisual("stop");
       toast(error.message);
     }
+  }
+
+  function smallPoolMotorSpeeds(direction, leftSpeed, rightSpeed) {
+    const safeLeft = Math.min(SMALL_POOL_TURN_PWM, Math.max(0, Number(leftSpeed) || 0));
+    const safeRight = Math.min(SMALL_POOL_TURN_PWM, Math.max(0, Number(rightSpeed) || 0));
+    if (direction === "left") return { leftSpeed: 0, rightSpeed: safeRight };
+    if (direction === "right") return { leftSpeed: safeLeft, rightSpeed: 0 };
+    return { leftSpeed: safeLeft, rightSpeed: safeRight };
+  }
+
+  function clearSmallPoolTurnTimer() {
+    if (smallPoolTurnTimer === null) return;
+    clearTimeout(smallPoolTurnTimer);
+    smallPoolTurnTimer = null;
+  }
+
+  function restoreSmallPoolMode() {
+    try {
+      smallPoolMode = localStorage.getItem(SMALL_POOL_MODE_KEY) === "true";
+    } catch (_error) {
+      smallPoolMode = false;
+    }
+    syncSmallPoolMode();
+  }
+
+  function toggleSmallPoolMode() {
+    smallPoolMode = !smallPoolMode;
+    try {
+      localStorage.setItem(SMALL_POOL_MODE_KEY, String(smallPoolMode));
+    } catch (_error) {}
+    if (remoteSafetyController?.direction !== "stop") remoteDrive("stop", true);
+    syncSmallPoolMode();
+    toast(smallPoolMode ? "작은 수조 모드가 켜졌습니다." : "일반 모드로 전환했습니다.");
+  }
+
+  function syncSmallPoolMode() {
+    const button = $("#smallPoolModeBtn");
+    const note = $("#remoteModeNote");
+    if (!button || !note) return;
+    button.classList.toggle("active", smallPoolMode);
+    button.setAttribute("aria-pressed", String(smallPoolMode));
+    button.textContent = smallPoolMode ? "💧 작은 수조 모드 켜짐" : "💧 작은 수조 모드";
+    note.classList.toggle("active", smallPoolMode);
+    note.textContent = smallPoolMode
+      ? "좌·우회전은 한쪽 모터 최대 PWM 90으로 0.12초만 동작한 뒤 자동 정지합니다."
+      : "일반 모드: 방향 버튼을 누르는 동안 계속 동작합니다.";
   }
 
   function setRemoteVisual(direction) {
@@ -1693,8 +1757,8 @@ ${loopCode}}
     const labels = {
       forward: "전진 중",
       backward: "후진 중",
-      left: "좌회전 중",
-      right: "우회전 중",
+      left: smallPoolMode ? "좌회전 · 미세 조정" : "좌회전 중",
+      right: smallPoolMode ? "우회전 · 미세 조정" : "우회전 중",
       stop: "정지"
     };
     $("#boatMotionLabel").textContent = labels[direction] || "조종 대기";
