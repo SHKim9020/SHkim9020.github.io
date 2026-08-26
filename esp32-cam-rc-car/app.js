@@ -123,16 +123,21 @@
 
   async function connectSerial(){
     if(!("serial" in navigator)){toast("PC Chrome/Edge에서 Web Serial을 사용할 수 있습니다.");return}
-    try{port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();readLoopActive=true;readSerial();setConnected(true);await sendLine({cmd:"hello"});toast("ESP32‑CAM USB가 연결되었습니다.")}catch(e){toast("USB 연결 실패: "+e.message)}
+    try{
+      port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();readLoopActive=true;readSerial();
+      const stopped=waitAck(15000);await sendLine({cmd:"stop"});await stopped;
+      setConnected(true);toast("ESP32‑CAM이 안전 정지 상태로 연결되었습니다.");
+    }catch(e){setConnected(false);toast("USB 연결 실패: "+e.message)}
   }
   function setConnected(on){$("#connectionStatus").textContent=on?"USB 연결됨":"USB 연결 안 됨";$("#connectionStatus").classList.toggle("connected",on);$("#connectionStatus").classList.toggle("disconnected",!on);$("#connectBtn .dot").style.background=on?"#41e0a4":"#98a5ba"}
   async function readSerial(){const decoder=new TextDecoder();let buffer="";try{reader=port.readable.getReader();while(readLoopActive){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,n).trim();buffer=buffer.slice(n+1);if(line){$("#serialOutput").textContent+=line+"\n";$("#serialOutput").scrollTop=$("#serialOutput").scrollHeight;try{const j=JSON.parse(line);if(uploadWaiter&&(j.type==="ack"||j.type==="uploadDone"||j.type==="error")){const w=uploadWaiter;uploadWaiter=null;j.type==="error"?w.reject(new Error(j.message)):w.resolve(j)}}catch{}}}}}catch(e){if(readLoopActive)toast("USB 연결이 끊어졌습니다.")}finally{reader?.releaseLock();setConnected(false)}}
   async function sendLine(obj){if(!writer)throw new Error("먼저 USB를 연결하세요.");await writer.write(new TextEncoder().encode(JSON.stringify(obj)+"\n"))}
-  function waitAck(timeout=3000){return new Promise((resolve,reject)=>{uploadWaiter={resolve,reject};setTimeout(()=>{if(uploadWaiter){uploadWaiter=null;reject(new Error("보드 응답 시간 초과"))}},timeout)})}
+  function waitAck(timeout=3000){return new Promise((resolve,reject)=>{const waiter={timer:null,resolve:value=>{clearTimeout(waiter.timer);resolve(value)},reject:error=>{clearTimeout(waiter.timer);reject(error)}};waiter.timer=setTimeout(()=>{if(uploadWaiter===waiter){uploadWaiter=null;reject(new Error("보드 응답 시간 초과"))}},timeout);uploadWaiter=waiter})}
   async function command(obj,timeout=3000){const response=waitAck(timeout);try{await sendLine(obj);return await response}catch(e){if(uploadWaiter)uploadWaiter=null;throw e}}
   function bytesToBase64(bytes){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s)}
   async function uploadProgram(){
-    try{const payload={config:settings(),program:compileProgram()};const bytes=new TextEncoder().encode(JSON.stringify(payload));await command({cmd:"uploadBegin",size:bytes.length});for(let i=0,index=0;i<bytes.length;i+=384,index++){await command({cmd:"uploadChunk",index,data:bytesToBase64(bytes.slice(i,i+384))},5000)}await command({cmd:"uploadEnd"},8000);toast("RC카에 저장하고 실행했습니다.")}catch(e){toast("전송 실패: "+e.message)}
+    const button=$("#uploadBtn");button.disabled=true;
+    try{await command({cmd:"stop"},12000);const payload={config:settings(),program:compileProgram()};const bytes=new TextEncoder().encode(JSON.stringify(payload));await command({cmd:"uploadBegin",size:bytes.length},12000);for(let i=0,index=0;i<bytes.length;i+=384,index++){await command({cmd:"uploadChunk",index,data:bytesToBase64(bytes.slice(i,i+384))},8000)}await command({cmd:"uploadEnd"},15000);toast("RC카에 저장하고 실행했습니다.")}catch(e){toast("전송 실패: "+e.message)}finally{button.disabled=false}
   }
   async function quickTest(dir){try{await command({cmd:"drive",dir,speed:Number($("#testSpeed").value)});}catch(e){toast(e.message)}}
 
