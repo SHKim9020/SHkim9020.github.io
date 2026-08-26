@@ -54,6 +54,9 @@ int carNumber=1;
 TaskHandle_t programTaskHandle=nullptr;
 TaskHandle_t handlerTaskHandle=nullptr;
 String pendingHandlerDirection;
+volatile bool remoteUiSpeedActive=false;
+volatile int remoteUiLeftSpeed=150;
+volatile int remoteUiRightSpeed=150;
 volatile bool programTaskStop=false;
 volatile unsigned long lastRemoteAt=0;
 volatile bool remoteMoving=false;
@@ -68,7 +71,7 @@ static const char REMOTE_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#07121f"><title>OneMaker 영상탐사 RC카</title><style>
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#07121f;color:#e9f6ff;font-family:system-ui,sans-serif;touch-action:manipulation}main{max-width:680px;margin:auto;padding:12px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.top h1{font-size:18px;margin:0}.top span{font-size:10px;color:#75dce8}.video{position:relative;background:#02070d;border:1px solid #28475b;border-radius:17px;overflow:hidden;aspect-ratio:4/3;display:grid;place-items:center}.video img{width:100%;height:100%;object-fit:contain}.hud{position:absolute;inset:10px 12px auto;display:flex;justify-content:space-between;font:700 10px monospace;text-shadow:0 1px 4px #000}.hud i{color:#ff6370}.controls{margin-top:10px;background:#101f2d;border:1px solid #284052;border-radius:17px;padding:12px}.speed{display:grid;grid-template-columns:42px 1fr 35px;gap:8px;align-items:center;font-size:11px}.speed input{width:100%;accent-color:#22c5dc}.speed output{font-weight:900;color:#5fe5f2}.pad{display:grid;grid-template:64px 64px 64px/repeat(3,78px);gap:7px;justify-content:center;margin:9px auto}button{border:0;border-radius:15px;background:#21384a;color:#e9f6ff;font-size:25px;font-weight:900;touch-action:none;box-shadow:inset 0 -3px #152938}.up{grid-column:2}.left{grid-row:2;grid-column:1}.stop{grid-row:2;grid-column:2;background:#5b2630;color:#ffced2}.right{grid-row:2;grid-column:3}.down{grid-row:3;grid-column:2}button small{display:block;font-size:9px}.on{outline:3px solid #4fe5ef;background:#205568}.resolution{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}.resolution button{font-size:10px;padding:9px 3px;background:#18384b}.resolution button.on{outline:2px solid #4fe5ef;background:#087fc5}.tools{display:flex;justify-content:center;gap:8px}.tools button{font-size:11px;padding:9px 12px;background:#1a3041}.status{text-align:center;font-size:10px;color:#8ba5b4;margin:7px}.landscape{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px}@media(max-width:620px){.landscape{display:block}}@media(orientation:landscape) and (max-height:560px){main{max-width:100%;padding:6px}.landscape{display:grid;grid-template-columns:minmax(0,1fr) 290px}.video{max-height:calc(100vh - 48px)}.top{margin-bottom:4px}.controls{margin-top:0}.pad{grid-template:55px 55px 55px/repeat(3,74px)}}
 </style></head><body><main><div class="top"><h1>📹 OneMaker 영상탐사 RC카</h1><span id="net">● Wi‑Fi 연결됨</span></div><div class="landscape"><div class="video"><img id="stream" alt="ESP32-CAM 실시간 영상"><div class="hud"><i>● LIVE</i><b id="motion">정지</b></div></div><section class="controls"><label class="speed">왼쪽<input id="leftSpeed" type="range" min="0" max="255" value="150"><output id="lv">150</output></label><label class="speed">오른쪽<input id="rightSpeed" type="range" min="0" max="255" value="150"><output id="rv">150</output></label><div class="pad"><button class="up" data-dir="forward">▲<small>전진</small></button><button class="left" data-dir="left">◀<small>좌회전</small></button><button class="stop" data-dir="stop">■<small>정지</small></button><button class="right" data-dir="right">▶<small>우회전</small></button><button class="down" data-dir="backward">▼<small>후진</small></button></div><div class="resolution"><button data-frame="QQVGA">빠름<br>160×120</button><button data-frame="QVGA" class="on">권장<br>320×240</button><button data-frame="VGA">고화질<br>640×480</button></div><div class="tools"><button id="flash">💡 조명</button><button id="flip">🔄 화면회전</button></div><p class="status">버튼을 누르는 동안만 움직이며 연결이 끊기면 자동 정지합니다.</p></section></div></main><script>
-const $=s=>document.querySelector(s),L=$('#leftSpeed'),R=$('#rightSpeed');$('#stream').src='http://'+location.hostname+':81/stream';L.oninput=()=>$('#lv').value=L.value;R.oninput=()=>$('#rv').value=R.value;let held='stop',timer=null,light=false,flipped=false,size='QVGA';const labels={forward:'전진 중',backward:'후진 중',left:'좌회전 중',right:'우회전 중',stop:'정지'};
+const $=s=>document.querySelector(s),L=$('#leftSpeed'),R=$('#rightSpeed');$('#stream').src='http://'+location.hostname+':81/stream';let held='stop',timer=null,speedTimer=null,light=false,flipped=false,size='QVGA';const labels={forward:'전진 중',backward:'후진 중',left:'좌회전 중',right:'우회전 중',stop:'정지'};function speedInput(output,value){$(output).value=value;clearTimeout(speedTimer);speedTimer=setTimeout(()=>{if(held!=='stop')send(held)},70)}L.oninput=()=>speedInput('#lv',L.value);R.oninput=()=>speedInput('#rv',R.value);
 fetch('/api/status',{cache:'no-store'}).then(r=>r.json()).then(s=>{$('#net').textContent=s.camera?'● 카메라 정상':'● 카메라 오류 '+s.cameraError;if(!s.camera){$('#stream').alt='카메라 초기화 실패: '+s.cameraError}}).catch(()=>$('#net').textContent='● 상태 확인 실패');
 function call(path){return fetch(path,{cache:'no-store'}).catch(()=>$('#net').textContent='● 연결 확인')}
 function show(d){$('#motion').textContent=labels[d];document.querySelectorAll('[data-dir]').forEach(b=>b.classList.toggle('on',b.dataset.dir===d))}
@@ -138,7 +141,7 @@ double eval(JsonVariantConst e){
 String evalText(JsonVariantConst e){if(String(e["type"]|"")=="text")return e["value"]|"";return String(eval(e));}
 bool executeSteps(JsonArrayConst steps){
   for(JsonObjectConst s:steps){if(programTaskStop)return false;String op=s["op"]|"";
-    if(op=="drive")drive(s["dir"]|"stop",(int)eval(s["speed"]),(int)eval(s["speed"]));
+    if(op=="drive"){int speed=(int)eval(s["speed"]);drive(s["dir"]|"stop",remoteUiSpeedActive?remoteUiLeftSpeed:speed,remoteUiSpeedActive?remoteUiRightSpeed:speed);}
     else if(op=="motors")setMotors((int)eval(s["left"]),(int)eval(s["right"]));
     else if(op=="stop")stopCar();
     else if(op=="flash")digitalWrite(FLASH_LED,(bool)(s["on"]|false));
@@ -154,7 +157,7 @@ bool executeSteps(JsonArrayConst steps){
   }return true;
 }
 void programTask(void*){programTaskStop=false;executeSteps(activeDocument["program"]["start"].as<JsonArrayConst>());JsonArrayConst forever=activeDocument["program"]["forever"].as<JsonArrayConst>();while(!programTaskStop&&forever.size()){executeSteps(forever);delay(1);}programTaskHandle=nullptr;vTaskDelete(nullptr);}
-void stopRemoteHandler(){if(handlerTaskHandle){vTaskDelete(handlerTaskHandle);handlerTaskHandle=nullptr;}}
+void stopRemoteHandler(){remoteUiSpeedActive=false;if(handlerTaskHandle){vTaskDelete(handlerTaskHandle);handlerTaskHandle=nullptr;}}
 void stopProgram(){programTaskStop=true;delay(2);if(programTaskHandle){vTaskDelete(programTaskHandle);programTaskHandle=nullptr;}stopCar();}
 void startProgram(){stopRemoteHandler();stopProgram();programTaskStop=false;memset(variables,0,sizeof(variables));variableCount=0;xTaskCreatePinnedToCore(programTask,"rc-program",8192,nullptr,1,&programTaskHandle,0);}
 
@@ -163,12 +166,12 @@ void applyConfig(JsonObjectConst c){JsonObjectConst p=c["pins"];config.in1=p["in
 bool loadProgram(){if(!LittleFS.exists(PROGRAM_PATH))return false;File f=LittleFS.open(PROGRAM_PATH,"r");DeserializationError e=deserializeJson(activeDocument,f);f.close();if(e)return false;applyConfig(activeDocument["config"]);return true;}
 bool saveUploadedProgram(){JsonDocument test;DeserializationError e=deserializeJson(test,uploadBuffer);if(e){emit("error",String("JSON: ")+e.c_str());return false;}File f=LittleFS.open(PROGRAM_PATH,"w");if(!f){emit("error","file open");return false;}f.print(uploadBuffer);f.close();activeDocument.clear();deserializeJson(activeDocument,uploadBuffer);applyConfig(activeDocument["config"]);return true;}
 
-void remoteHandlerTask(void*){String dir=pendingHandlerDirection;JsonArrayConst h=activeDocument["program"]["handlers"][dir].as<JsonArrayConst>();executeSteps(h);handlerTaskHandle=nullptr;vTaskDelete(nullptr);}
+void remoteHandlerTask(void*){String dir=pendingHandlerDirection;remoteUiSpeedActive=true;JsonArrayConst h=activeDocument["program"]["handlers"][dir].as<JsonArrayConst>();executeSteps(h);remoteUiSpeedActive=false;handlerTaskHandle=nullptr;vTaskDelete(nullptr);}
 void runRemoteHandler(const String &dir){JsonArrayConst h=activeDocument["program"]["handlers"][dir].as<JsonArrayConst>();if(h.isNull()||!h.size())return;stopRemoteHandler();programTaskStop=false;pendingHandlerDirection=dir;xTaskCreatePinnedToCore(remoteHandlerTask,"rc-handler",6144,nullptr,2,&handlerTaskHandle,0);}
 void setupWebRoutes(){
   webServer.on("/",HTTP_GET,[](){webServer.send_P(200,"text/html; charset=utf-8",REMOTE_PAGE);});
   webServer.on("/api/status",HTTP_GET,[](){JsonDocument d;d["camera"]=cameraReady;d["cameraError"]=cameraError;d["frameSize"]=config.frameSize;d["psram"]=psramFound();d["freeHeap"]=ESP.getFreeHeap();d["wifi"]=wifiName();d["ip"]=WiFi.softAPIP().toString();String out;serializeJson(d,out);webServer.send(200,"application/json",out);});
-  webServer.on("/api/drive",HTTP_GET,[](){String dir=webServer.arg("dir");int l=webServer.arg("left").toInt(),r=webServer.arg("right").toInt();stopProgram();stopRemoteHandler();if(dir=="stop")stopCar();else drive(dir,l,r);runRemoteHandler(dir);webServer.send(200,"application/json","{\"ok\":true}");});
+  webServer.on("/api/drive",HTTP_GET,[](){String dir=webServer.arg("dir");int l=constrain(webServer.arg("left").toInt(),0,255),r=constrain(webServer.arg("right").toInt(),0,255);stopProgram();stopRemoteHandler();remoteUiLeftSpeed=l;remoteUiRightSpeed=r;if(dir=="stop")stopCar();else drive(dir,l,r);runRemoteHandler(dir);webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/heartbeat",HTTP_GET,[](){lastRemoteAt=millis();webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/stop",HTTP_ANY,[](){stopProgram();stopRemoteHandler();stopCar();webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/flash",HTTP_GET,[](){digitalWrite(FLASH_LED,webServer.arg("on")=="1");webServer.send(200,"application/json","{\"ok\":true}");});
@@ -180,7 +183,7 @@ void startWifi(){WiFi.mode(WIFI_AP);WiFi.setSleep(false);WiFi.setTxPower(WIFI_PO
 
 void handleSerialLine(const String &line){
   JsonDocument d;DeserializationError e=deserializeJson(d,line);if(e){emit("error","JSON command");return;}String cmd=d["cmd"]|"";
-  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.5";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
+  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.6";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
   if(cmd=="stop"){stopProgram();ack("stopped");return;}
   if(cmd=="drive"){drive(d["dir"]|"stop",d["speed"]|150,d["speed"]|150);ack();return;}
   if(cmd=="setNumber"){int n=d["number"]|1;if(n<1||n>16){emit("error","number 1-16");return;}Preferences p;p.begin("onemaker-rc",false);p.putUChar("number",n);p.end();ack("number saved");delay(200);ESP.restart();return;}
@@ -192,7 +195,7 @@ void handleSerialLine(const String &line){
 
 void setup(){
   setupMotorOutputs();stopCar();Serial.begin(115200);delay(100);pinMode(FLASH_LED,OUTPUT);digitalWrite(FLASH_LED,LOW);Preferences p;p.begin("onemaker-rc",true);carNumber=p.getUChar("number",1);p.end();if(carNumber<1||carNumber>16)carNumber=1;
-  LittleFS.begin(true);setupCamera();loadProgram();startWifi();bool usbCommandWaiting=false;unsigned long safetyStart=millis();while(millis()-safetyStart<5000){if(Serial.available()){usbCommandWaiting=true;break;}delay(10);}if(activeDocument.size()&&!usbCommandWaiting)startProgram();else stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.5 / camera ")+(cameraReady?"OK":cameraError));
+  LittleFS.begin(true);setupCamera();loadProgram();startWifi();bool usbCommandWaiting=false;unsigned long safetyStart=millis();while(millis()-safetyStart<5000){if(Serial.available()){usbCommandWaiting=true;break;}delay(10);}if(activeDocument.size()&&!usbCommandWaiting)startProgram();else stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.6 / camera ")+(cameraReady?"OK":cameraError));
 }
 void loop(){
   webServer.handleClient();if(remoteMoving&&millis()-lastRemoteAt>REMOTE_WATCHDOG_MS){stopRemoteHandler();stopCar();}static String input;while(Serial.available()){char c=Serial.read();if(c=='\n'){input.trim();if(input.length())handleSerialLine(input);input="";}else if(c!='\r'&&input.length()<2048)input+=c;}delay(2);
