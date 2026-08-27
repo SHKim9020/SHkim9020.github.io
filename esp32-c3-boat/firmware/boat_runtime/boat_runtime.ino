@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.8: accept deeply nested Blockly program JSON safely.
+// OneMaker Boat Runtime 1.4.9: store a per-boat left/right motor speed calibration.
 const uint8_t PROGRAM_JSON_NESTING_LIMIT = 32;
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
@@ -86,6 +86,9 @@ String uploadBuffer;
 size_t uploadExpectedSize = 0;
 int uploadNextIndex = 0;
 int boatNumber = 1;
+int motorTrimLeft = CLASSROOM_MAX_PWM;
+int motorTrimRight = CLASSROOM_MAX_PWM;
+bool motorTrimLocked = false;
 int currentLeftSpeed = 0;
 int currentRightSpeed = 0;
 int targetLeftSpeed = 0;
@@ -163,6 +166,28 @@ bool persistBoatNumber(int number) {
   size_t written = preferences.putUChar("number", number);
   preferences.end();
   return written == sizeof(uint8_t);
+}
+
+void loadMotorTrim() {
+  Preferences preferences;
+  preferences.begin("onemaker-boat", true);
+  motorTrimLeft = constrain((int)preferences.getUChar("trimL", CLASSROOM_MAX_PWM), 0, CLASSROOM_MAX_PWM);
+  motorTrimRight = constrain((int)preferences.getUChar("trimR", CLASSROOM_MAX_PWM), 0, CLASSROOM_MAX_PWM);
+  motorTrimLocked = preferences.getBool("trimOn", false);
+  preferences.end();
+  if (motorTrimLeft == 0 && motorTrimRight == 0) motorTrimLocked = false;
+}
+
+bool persistMotorTrim(int left, int right, bool locked) {
+  if (left < 0 || left > CLASSROOM_MAX_PWM || right < 0 || right > CLASSROOM_MAX_PWM) return false;
+  if (locked && left == 0 && right == 0) return false;
+  Preferences preferences;
+  if (!preferences.begin("onemaker-boat", false)) return false;
+  size_t leftWritten = preferences.putUChar("trimL", left);
+  size_t rightWritten = preferences.putUChar("trimR", right);
+  size_t lockWritten = preferences.putBool("trimOn", locked);
+  preferences.end();
+  return leftWritten > 0 && rightWritten > 0 && lockWritten > 0;
 }
 
 void sendBleLine(const String &line) {
@@ -302,6 +327,14 @@ int safeMotorSpeed(int speed) {
   return constrain(speed, -CLASSROOM_MAX_PWM, CLASSROOM_MAX_PWM);
 }
 
+int trimMotorSpeed(int speed, int reference) {
+  if (!motorTrimLocked) return speed;
+  int peak = max(motorTrimLeft, motorTrimRight);
+  if (peak <= 0) return 0;
+  int magnitude = (abs(speed) * reference + peak / 2) / peak;
+  return speed < 0 ? -magnitude : magnitude;
+}
+
 bool changesDirection(int current, int target) {
   return current != 0 && target != 0 && ((current > 0) != (target > 0));
 }
@@ -350,10 +383,12 @@ void serviceMotorSafety() {
 
 void driveDirection(const String &direction, int speed) {
   speed = constrain(speed, 0, CLASSROOM_MAX_PWM);
-  if (direction == "forward") setDrive(speed, speed);
-  else if (direction == "backward") setDrive(-speed, -speed);
-  else if (direction == "left") setDrive(-speed, speed);
-  else if (direction == "right") setDrive(speed, -speed);
+  int leftSpeed = trimMotorSpeed(speed, motorTrimLeft);
+  int rightSpeed = trimMotorSpeed(speed, motorTrimRight);
+  if (direction == "forward") setDrive(leftSpeed, rightSpeed);
+  else if (direction == "backward") setDrive(-leftSpeed, -rightSpeed);
+  else if (direction == "left") setDrive(-leftSpeed, rightSpeed);
+  else if (direction == "right") setDrive(leftSpeed, -rightSpeed);
   else stopBoat();
 }
 
@@ -605,9 +640,11 @@ bool executeStep(JsonObjectConst step) {
     int speed = constrain((int)evaluateNumber(step["speed"]), -255, 255);
     const char *motor = step["motor"] | "left";
     if (strcmp(motor, "left") == 0) {
+      speed = trimMotorSpeed(speed, motorTrimLeft);
       if (config.invertLeft) speed = -speed;
       setChannel(config.in1, config.in2, speed);
     } else {
+      speed = trimMotorSpeed(speed, motorTrimRight);
       if (config.invertRight) speed = -speed;
       setChannel(config.in3, config.in4, speed);
     }
@@ -856,11 +893,14 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.8";
+    response["runtime"] = "OneMaker Boat 1.4.9";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
     response["wifi"] = wifiName();
+    response["motorTrimLeft"] = motorTrimLeft;
+    response["motorTrimRight"] = motorTrimRight;
+    response["motorTrimLocked"] = motorTrimLocked;
     String output;
     serializeJson(response, output);
     Serial.println(output);
@@ -899,6 +939,29 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     Serial.flush();
     delay(350);
     ESP.restart();
+    return true;
+  }
+  if (strcmp(command, "setMotorTrim") == 0) {
+    int requestedLeft = document["left"] | -1;
+    int requestedRight = document["right"] | -1;
+    bool requestedLocked = document["locked"] | false;
+    if (!persistMotorTrim(requestedLeft, requestedRight, requestedLocked)) {
+      emit("error", "속도 보정값은 0~250 범위여야 하며 두 값을 모두 0으로 고정할 수 없습니다.");
+      return false;
+    }
+    motorTrimLeft = requestedLeft;
+    motorTrimRight = requestedRight;
+    motorTrimLocked = requestedLocked;
+    stopBoat();
+    JsonDocument response;
+    response["type"] = "motorTrimSaved";
+    response["left"] = motorTrimLeft;
+    response["right"] = motorTrimRight;
+    response["locked"] = motorTrimLocked;
+    String output;
+    serializeJson(response, output);
+    Serial.println(output);
+    sendBleLine(output);
     return true;
   }
   if (strcmp(command, "loadBegin") == 0) {
@@ -988,7 +1051,12 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/remote", HTTP_GET, []() {
     String button = webServer.arg("button");
     int speed = constrain(webServer.arg("speed").toInt(), 0, CLASSROOM_MAX_PWM);
-    handleRemote(button.length() ? button : "stop", speed, speed, speed);
+    handleRemote(
+      button.length() ? button : "stop",
+      speed,
+      trimMotorSpeed(speed, motorTrimLeft),
+      trimMotorSpeed(speed, motorTrimRight)
+    );
     webServer.send(200, "application/json", "{\"ok\":true}");
   });
   webServer.on("/api/heartbeat", HTTP_GET, []() {
@@ -1001,10 +1069,13 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.8";
+    status["runtime"] = "1.4.9";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
+    status["motorTrimLeft"] = motorTrimLeft;
+    status["motorTrimRight"] = motorTrimRight;
+    status["motorTrimLocked"] = motorTrimLocked;
     String output;
     serializeJson(status, output);
     webServer.send(200, "application/json", output);
@@ -1030,6 +1101,7 @@ void setup() {
   LittleFS.begin(true);
   bleDataMutex = xSemaphoreCreateMutex();
   loadBoatNumber();
+  loadMotorTrim();
   JsonDocument defaults;
   JsonObject pins = defaults["pins"].to<JsonObject>();
   pins["in1"] = DEFAULT_IN1;
@@ -1046,7 +1118,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.8 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.9 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH) && loadActiveProgram()) {
     bool waitForBluetoothStart = activeProgram["config"]["waitForBluetoothStart"] | false;

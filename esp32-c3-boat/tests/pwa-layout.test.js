@@ -40,7 +40,7 @@ test("app is installable as a standalone PWA with icons", () => {
   assert.ok(manifest.icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /serviceWorker\.register/);
-  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.24/);
+  assert.match(serviceWorker, /onemaker-boat-studio-1\.4\.25/);
 });
 
 test("small pool mode limits turns without requiring a new firmware command", () => {

@@ -19,6 +19,7 @@
   const BLUETOOTH_START_FIRMWARE_MIN = [1, 4, 5];
   const HUSKYLENS_FIRMWARE_MIN = [1, 4, 7];
   const DEEP_PROGRAM_FIRMWARE_MIN = [1, 4, 8];
+  const MOTOR_TRIM_FIRMWARE_MIN = [1, 4, 9];
 
   let workspace;
   let serialPort;
@@ -31,6 +32,7 @@
   let remoteSafetyController;
   let smallPoolMode = false;
   let smallPoolTurnTimer = null;
+  let motorTrimLocked = false;
   let bleProgramRunning = false;
   let readLoopActive = false;
   let receiveBuffer = "";
@@ -500,6 +502,7 @@
     });
     $("#remoteFullscreenBtn").addEventListener("click", toggleRemoteFullscreen);
     $("#smallPoolModeBtn").addEventListener("click", toggleSmallPoolMode);
+    $("#motorTrimLockBtn").addEventListener("click", toggleMotorTrimLock);
     document.addEventListener("fullscreenchange", syncRemoteFullscreenButton);
     const remotePad = $(".remote-pad");
     ["contextmenu", "selectstart", "dragstart"].forEach(eventName => {
@@ -1034,6 +1037,8 @@
 
   function generateCpp() {
     const cfg = config();
+    const trimLeft = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number($("#remoteLeftSpeed").value) || 0));
+    const trimRight = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number($("#remoteRightSpeed").value) || 0));
     const variables = workspace.getVariableMap().getAllVariables().map(variable => `double ${cppVariable(variable.name)} = 0;`).join("\n");
     const sections = arduinoProgramSections();
     const procedureBlocks = workspace.getTopBlocks(true)
@@ -1137,6 +1142,9 @@ const int LED_ON = LOW;
 const int LED_OFF = HIGH;
 const bool INVERT_LEFT = ${cfg.invertLeft ? "true" : "false"};
 const bool INVERT_RIGHT = ${cfg.invertRight ? "true" : "false"};
+const bool MOTOR_TRIM_LOCKED = ${motorTrimLocked ? "true" : "false"};
+const int MOTOR_TRIM_LEFT = ${trimLeft};
+const int MOTOR_TRIM_RIGHT = ${trimRight};
 
 ${variables || "// 사용자가 만든 변수 없음"}${huskyGlobals}
 ${procedureDeclarations || "// 사용자가 만든 내 블록 없음"}
@@ -1162,11 +1170,21 @@ void setDrive(int left, int right) {
   setChannel(IN3, IN4, right);
 }
 
+int trimMotorSpeed(int speed, int reference) {
+  if (!MOTOR_TRIM_LOCKED) return speed;
+  int peak = max(MOTOR_TRIM_LEFT, MOTOR_TRIM_RIGHT);
+  if (peak <= 0) return 0;
+  int scaled = (abs(speed) * reference + peak / 2) / peak;
+  return speed < 0 ? -scaled : scaled;
+}
+
 void driveBoat(const String &direction, int speed) {
-  if (direction == "forward") setDrive(speed, speed);
-  else if (direction == "backward") setDrive(-speed, -speed);
-  else if (direction == "left") setDrive(-speed, speed);
-  else if (direction == "right") setDrive(speed, -speed);
+  int left = trimMotorSpeed(speed, MOTOR_TRIM_LEFT);
+  int right = trimMotorSpeed(speed, MOTOR_TRIM_RIGHT);
+  if (direction == "forward") setDrive(left, right);
+  else if (direction == "backward") setDrive(-left, -right);
+  else if (direction == "left") setDrive(-left, right);
+  else if (direction == "right") setDrive(left, -right);
 }
 
 void stopBoat() {
@@ -1175,9 +1193,11 @@ void stopBoat() {
 
 void setSingleMotor(const String &motor, int speed) {
   if (motor == "left") {
+    speed = trimMotorSpeed(speed, MOTOR_TRIM_LEFT);
     if (INVERT_LEFT) speed = -speed;
     setChannel(IN1, IN2, speed);
   } else {
+    speed = trimMotorSpeed(speed, MOTOR_TRIM_RIGHT);
     if (INVERT_RIGHT) speed = -speed;
     setChannel(IN3, IN4, speed);
   }
@@ -1454,6 +1474,9 @@ ${loopCode}}
           boardRuntime = String(message.runtime || "");
           boardUploadProtocol = String(message.uploadProtocol || "");
           boardBluetoothName = String(message.bluetoothName || "");
+          if ("motorTrimLocked" in message) {
+            syncMotorTrim(message.motorTrimLeft, message.motorTrimRight, message.motorTrimLocked);
+          }
           const connectedBoatNumber = Number(message.boatNumber);
           if (connectedBoatNumber >= 1 && connectedBoatNumber <= 16) {
             $("#boatNumber").value = String(connectedBoatNumber);
@@ -1703,9 +1726,58 @@ ${loopCode}}
     }
   }
 
+  function syncMotorTrim(left, right, locked) {
+    const safeLeft = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number(left) || 0));
+    const safeRight = Math.min(CLASSROOM_MAX_PWM, Math.max(0, Number(right) || 0));
+    motorTrimLocked = Boolean(locked);
+    [["remoteLeftSpeed", "remoteLeftSpeedValue", safeLeft], ["remoteRightSpeed", "remoteRightSpeedValue", safeRight]]
+      .forEach(([inputId, outputId, value]) => {
+        $(`#${inputId}`).value = value;
+        $(`#${inputId}`).disabled = motorTrimLocked;
+        $(`#${outputId}`).textContent = value;
+      });
+    const button = $("#motorTrimLockBtn");
+    button.classList.toggle("active", motorTrimLocked);
+    button.setAttribute("aria-pressed", String(motorTrimLocked));
+    button.textContent = motorTrimLocked ? "🔓 보정값 수정" : "🔒 속도 보정 고정";
+    $("#motorTrimStatus").classList.toggle("locked", motorTrimLocked);
+    $("#motorTrimStatus").textContent = motorTrimLocked
+      ? `고정됨 ${safeLeft}:${safeRight} · 블록코딩에도 자동 적용`
+      : "직진값을 맞춘 뒤 고정하세요.";
+    codeManuallyEdited = false;
+    refreshGeneratedCode();
+  }
+
+  async function toggleMotorTrimLock() {
+    const transport = serialWriter ? "serial" : (bleRxCharacteristic ? "ble" : null);
+    if (!transport) return toast("속도 보정을 저장하려면 USB 또는 Bluetooth로 선박을 연결하세요.");
+    try {
+      await ensureBoardRuntime(transport);
+      if (!supportsFirmware(MOTOR_TRIM_FIRMWARE_MIN)) {
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+        return toast(`선박별 속도 보정은 펌웨어 1.4.9가 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
+      }
+      const response = await sendCommandAndWait({
+        cmd: "setMotorTrim",
+        left: Number($("#remoteLeftSpeed").value),
+        right: Number($("#remoteRightSpeed").value),
+        locked: !motorTrimLocked
+      }, ["motorTrimSaved"], 5000, transport);
+      syncMotorTrim(response.left, response.right, response.locked);
+      toast(response.locked
+        ? `속도 보정 ${response.left}:${response.right}을 이 선박에 저장했습니다.`
+        : "속도 보정을 풀었습니다. 직진값을 다시 맞춰주세요.");
+    } catch (error) {
+      toast(error.message || "속도 보정을 저장하지 못했습니다.");
+    }
+  }
+
   function smallPoolMotorSpeeds(direction, leftSpeed, rightSpeed) {
-    const safeLeft = Math.min(SMALL_POOL_TURN_PWM, Math.max(0, Number(leftSpeed) || 0));
-    const safeRight = Math.min(SMALL_POOL_TURN_PWM, Math.max(0, Number(rightSpeed) || 0));
+    const left = Math.max(0, Number(leftSpeed) || 0);
+    const right = Math.max(0, Number(rightSpeed) || 0);
+    const peak = motorTrimLocked ? Math.max(left, right) : SMALL_POOL_TURN_PWM;
+    const safeLeft = peak > 0 ? Math.min(SMALL_POOL_TURN_PWM, Math.round(SMALL_POOL_TURN_PWM * left / peak)) : 0;
+    const safeRight = peak > 0 ? Math.min(SMALL_POOL_TURN_PWM, Math.round(SMALL_POOL_TURN_PWM * right / peak)) : 0;
     if (direction === "left") return { leftSpeed: 0, rightSpeed: safeRight };
     if (direction === "right") return { leftSpeed: safeLeft, rightSpeed: 0 };
     return { leftSpeed: safeLeft, rightSpeed: safeRight };
