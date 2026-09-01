@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.4">
+  <link rel="stylesheet" href="style.css?v=1.2.5">
 </head>
 <body>
   <header class="topbar">
@@ -34,6 +34,7 @@
       <button id="firmwareBtn" class="outline">① 런타임 설치</button>
       <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
       <button id="saveBoardBtn" class="primary">③ 보드에 저장·실행</button>
+      <button id="aiRunBtn" class="ai-run">④ AI 음성 실행</button>
       <button id="stopBtn" class="danger">■ 정지</button>
       <button id="accountBtn" class="ghost" type="button">👤 로그인</button>
     </div>
@@ -41,7 +42,7 @@
 
   <section class="class-strip">
     <div><b>수업 순서</b><span>런타임은 보드당 처음 한 번만 설치합니다.</span></div>
-    <ol><li class="active">블록 만들기</li><li>런타임 설치</li><li>USB 연결·보드 저장</li></ol>
+    <ol><li class="active">블록 만들기</li><li>런타임 설치</li><li>USB 연결</li><li>보드 저장 또는 AI 실행</li></ol>
     <span id="connectionStatus" class="status disconnected">연결 안 됨</span>
   </section>
 
@@ -112,6 +113,7 @@
             <span>🌱 토양수분</span><span>🔘 버튼</span><span>💡 LED</span><span>⚙️ DC모터</span>
             <span>🦾 서보</span><span>🔊 피에조</span><span>🖥️ I²C LCD</span><span>◼️ 0.96 OLED</span>
             <span>🌈 네오픽셀</span><span>🎵 MP3</span><span>📶 Bluetooth</span><span>👁️ HuskyLens</span>
+            <span>🎤 AI 음성인식</span><span>🗣️ 음성합성</span>
           </div>
         </div>
 
@@ -119,6 +121,12 @@
           <h3>실행 방식</h3>
           <p><b>보드에 저장·실행</b>을 누르면 블록 프로그램이 UNO·Nano의 EEPROM에 저장됩니다. 저장 후 USB를 분리해도 보드가 단독으로 실행됩니다.</p>
           <p class="mode-limit">프로그램 저장 공간은 최대 약 1KB이며, 수업용 중소 규모 블록 프로젝트에 적합합니다.</p>
+        </div>
+
+        <div class="settings-card ai-mode-note">
+          <h3>AI 음성인식</h3>
+          <p id="aiSpeechStatus">인공지능 탭에서 음성 명령 블록을 만든 뒤 USB를 연결하고 ④ AI 음성 실행을 누르세요.</p>
+          <p class="ai-mode-limit">마이크가 있는 Chrome·Edge에서 동작하며, 실행 중에는 USB 연결과 인터넷 연결을 유지하세요.</p>
         </div>
 
         <div class="settings-card pin-warning">
@@ -317,7 +325,7 @@
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="cloud-config.js?v=1.0.0"></script>
-  <script src="app.js?v=1.4.5"></script>
+  <script src="app.js?v=1.4.6"></script>
   <script src="cloud.js?v=1.0.0"></script>
 </body>
 </html>
