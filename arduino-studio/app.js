@@ -265,11 +265,13 @@
     },
     {
       type: "speech_wake_word",
-      message0: "🎤 호출어 %1 감지하면",
-      args0: [{ type: "field_input", name: "WAKE", text: "지니야" }],
-      message1: "다음 명령을 %1 초 동안 기다리기",
-      args1: [{ type: "field_number", name: "TIMEOUT", value: 8, min: 3, max: 30, precision: 1 }],
+      message0: "🎤 호출어 %1 → %2초 대기",
+      args0: [
+        { type: "field_input", name: "WAKE", text: "지니야" },
+        { type: "field_number", name: "TIMEOUT", value: 8, min: 3, max: 30, precision: 1 }
+      ],
       nextStatement: null,
+      inputsInline: true,
       colour: 315,
       tooltip: "호출어를 들은 뒤에만 음성 명령 블록이 동작합니다."
     },
@@ -917,6 +919,7 @@
     $("#copyCodeBtn").addEventListener("click", copyCode);
     $("#downloadInoBtn").addEventListener("click", downloadIno);
     $("#clearSerialBtn").addEventListener("click", clearSerialOutput);
+    $("#clearSpeechChatBtn").addEventListener("click", clearSpeechChat);
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
     $("#testHighBtn").addEventListener("click", () => sendAction("DW", $("#testPin").value, 1));
@@ -1838,6 +1841,34 @@
     return korean ? koreanNumberValue(korean[0]) : 0;
   }
 
+  function appendSpeechChat(role, value) {
+    const log = $("#speechChatLog");
+    const text = String(value ?? "").trim();
+    if (!log || !text) return;
+    log.querySelector(".speech-chat-empty")?.remove();
+    const row = document.createElement("div");
+    row.className = `speech-chat-message ${role}`;
+    const label = document.createElement("small");
+    label.textContent = { user: "나", assistant: "AI", system: "알림" }[role] || "알림";
+    const bubble = document.createElement("p");
+    bubble.textContent = text;
+    const time = document.createElement("time");
+    time.textContent = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    row.append(label, bubble, time);
+    log.append(row);
+    while (log.children.length > 80) log.firstElementChild?.remove();
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function clearSpeechChat() {
+    const log = $("#speechChatLog");
+    if (!log) return;
+    const empty = document.createElement("p");
+    empty.className = "speech-chat-empty";
+    empty.textContent = "인식한 음성과 AI의 답변이 여기에 표시됩니다.";
+    log.replaceChildren(empty);
+  }
+
   function setSpeechUi(message) {
     const button = $("#aiRunBtn");
     button.classList.toggle("listening", speechListening || speechShouldRestart);
@@ -1914,6 +1945,7 @@
     if (!lastSpeechText) return;
     lastSpeechNumber = extractSpeechNumber(lastSpeechText);
     appendSerial(`[AI 음성] ${lastSpeechText}`);
+    appendSpeechChat("user", lastSpeechText);
     const heard = normalizeSpeechText(lastSpeechText);
     const wakeMatches = wakeWordBlocks()
       .map(block => ({ block, word: normalizeSpeechText(block.getFieldValue("WAKE")) }))
@@ -1925,6 +1957,7 @@
       const wake = wakeMatches[0];
       openSpeechCommandWindow(wake.block);
       appendSerial(`[AI 호출어] ${wake.block.getFieldValue("WAKE")}`);
+      appendSpeechChat("system", `호출어 감지 · ${wake.block.getFieldValue("TIMEOUT") || 8}초 동안 명령 대기`);
       enqueueSpeechChain(wake.block);
       commandText = heard.replace(wake.word, "");
       if (!commandText) return;
@@ -1946,10 +1979,12 @@
     if (!matches.length) {
       const seconds = Math.max(1, Math.ceil((speechCommandActiveUntil - Date.now()) / 1000));
       setSpeechUi(`명령을 이해하지 못했습니다. ${seconds}초 안에 다시 말하세요.`);
+      appendSpeechChat("system", `명령을 이해하지 못했습니다. ${seconds}초 안에 다시 말하세요.`);
       return;
     }
     const command = matches[0];
     appendSerial(`[AI 명령] ${command.getFieldValue("COMMAND")}`);
+    appendSpeechChat("system", `명령 실행 · ${command.getFieldValue("COMMAND")}`);
     closeSpeechCommandWindow("명령을 실행 중입니다.");
     enqueueSpeechChain(command, () => showWakeWordWaiting());
   }
@@ -2006,6 +2041,8 @@
         };
       }
       speechShouldRestart = true;
+      activateTab("chat");
+      appendSpeechChat("system", `AI 음성인식 시작 · 호출어 “${primaryWakeWord()}” 대기`);
       speechRecognition.start();
     } catch (error) {
       speechShouldRestart = false;
@@ -2017,7 +2054,9 @@
   function speakSpeech(value) {
     if (!("speechSynthesis" in window)) return Promise.resolve();
     return new Promise(resolve => {
-      const utterance = new SpeechSynthesisUtterance(String(value ?? ""));
+      const spokenText = String(value ?? "");
+      appendSpeechChat("assistant", spokenText);
+      const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.lang = "ko-KR";
       const resume = () => {
         speechPausedForTts = false;
