@@ -42,6 +42,8 @@
   let lastSpeechText = "";
   let lastSpeechNumber = 0;
   let speechExecutionQueue = Promise.resolve();
+  let speechCommandActiveUntil = 0;
+  let speechCommandTimer = null;
   const valueWaiters = new Map();
   const lineWaiters = [];
   const runtimeReadyWaiters = [];
@@ -262,12 +264,22 @@
       colour: 165
     },
     {
-      type: "speech_when_heard",
-      message0: "🎤 음성에서 %1 이(가) 들리면",
-      args0: [{ type: "field_input", name: "COMMAND", text: "선풍기 켜" }],
+      type: "speech_wake_word",
+      message0: "🎤 호출어 %1 감지하면",
+      args0: [{ type: "field_input", name: "WAKE", text: "지니야" }],
+      message1: "다음 명령을 %1 초 동안 기다리기",
+      args1: [{ type: "field_number", name: "TIMEOUT", value: 8, min: 3, max: 30, precision: 1 }],
       nextStatement: null,
       colour: 315,
-      tooltip: "④ AI 음성 실행을 누른 뒤 한국어 명령이 들리면 아래 블록을 실행합니다."
+      tooltip: "호출어를 들은 뒤에만 음성 명령 블록이 동작합니다."
+    },
+    {
+      type: "speech_when_heard",
+      message0: "🗣️ 호출 후 음성에서 %1 이(가) 들리면",
+      args0: [{ type: "field_input", name: "COMMAND", text: "선풍기 1단 켜" }],
+      nextStatement: null,
+      colour: 315,
+      tooltip: "호출어가 감지된 뒤 지정한 한국어 명령이 들리면 아래 블록을 실행합니다."
     },
     {
       type: "speech_result",
@@ -753,7 +765,8 @@
         { kind: "block", type: "husky_value", inputs: { ID: numberShadow(1) } }
       ] },
       { kind: "category", name: "인공지능", colour: "315", contents: [
-        { kind: "block", type: "speech_when_heard", fields: { COMMAND: "선풍기 켜" } },
+        { kind: "block", type: "speech_wake_word", fields: { WAKE: "지니야", TIMEOUT: 8 } },
+        { kind: "block", type: "speech_when_heard", fields: { COMMAND: "선풍기 1단 켜" } },
         { kind: "block", type: "speech_result" },
         { kind: "block", type: "speech_number" },
         { kind: "block", type: "speech_speak", inputs: { VALUE: textShadow("선풍기를 켭니다") } },
@@ -1836,8 +1849,11 @@
     speechShouldRestart = false;
     speechPausedForTts = false;
     speechListening = false;
+    speechCommandActiveUntil = 0;
     clearTimeout(speechRestartTimer);
+    clearTimeout(speechCommandTimer);
     speechRestartTimer = null;
+    speechCommandTimer = null;
     try { speechRecognition?.abort(); } catch (_) {}
     window.speechSynthesis?.cancel();
     setSpeechUi(message);
@@ -1851,27 +1867,91 @@
     }, 250);
   }
 
+  function wakeWordBlocks() {
+    return workspace.getTopBlocks(true).filter(block => block.type === "speech_wake_word");
+  }
+
+  function primaryWakeWord() {
+    return String(wakeWordBlocks()[0]?.getFieldValue("WAKE") || "지니야").trim() || "지니야";
+  }
+
+  function speechCommandIsActive() {
+    return speechCommandActiveUntil > Date.now();
+  }
+
+  function showWakeWordWaiting() {
+    if (!speechShouldRestart || runCancelled) return;
+    setSpeechUi(`호출어 “${primaryWakeWord()}”를 기다리는 중입니다.`);
+  }
+
+  function closeSpeechCommandWindow(message) {
+    speechCommandActiveUntil = 0;
+    clearTimeout(speechCommandTimer);
+    speechCommandTimer = null;
+    if (speechShouldRestart && !runCancelled) setSpeechUi(message || `명령 대기 시간이 끝났습니다. 다시 “${primaryWakeWord()}”라고 말하세요.`);
+  }
+
+  function openSpeechCommandWindow(block) {
+    const timeout = Math.max(3, Math.min(30, Number(block.getFieldValue("TIMEOUT")) || 8));
+    speechCommandActiveUntil = Date.now() + timeout * 1000;
+    clearTimeout(speechCommandTimer);
+    speechCommandTimer = setTimeout(() => closeSpeechCommandWindow(), timeout * 1000);
+    setSpeechUi(`호출어 감지 · ${timeout}초 동안 명령을 기다립니다.`);
+  }
+
+  function enqueueSpeechChain(block, after) {
+    speechExecutionQueue = speechExecutionQueue
+      .then(() => executeChain(block?.getNextBlock()))
+      .then(() => after?.())
+      .catch(error => {
+        console.error(error);
+        toast(error.message);
+      });
+  }
+
   function handleSpeechResult(transcript) {
     lastSpeechText = String(transcript || "").trim();
     if (!lastSpeechText) return;
     lastSpeechNumber = extractSpeechNumber(lastSpeechText);
     appendSerial(`[AI 음성] ${lastSpeechText}`);
-    setSpeechUi(`인식 결과: ${lastSpeechText}`);
     const heard = normalizeSpeechText(lastSpeechText);
+    const wakeMatches = wakeWordBlocks()
+      .map(block => ({ block, word: normalizeSpeechText(block.getFieldValue("WAKE")) }))
+      .filter(item => item.word && heard.includes(item.word))
+      .sort((left, right) => right.word.length - left.word.length);
+
+    let commandText = heard;
+    if (wakeMatches.length) {
+      const wake = wakeMatches[0];
+      openSpeechCommandWindow(wake.block);
+      appendSerial(`[AI 호출어] ${wake.block.getFieldValue("WAKE")}`);
+      enqueueSpeechChain(wake.block);
+      commandText = heard.replace(wake.word, "");
+      if (!commandText) return;
+    }
+
+    if (!speechCommandIsActive()) {
+      showWakeWordWaiting();
+      return;
+    }
+
     const matches = workspace.getTopBlocks(true).filter(block => {
       if (block.type !== "speech_when_heard") return false;
       const command = normalizeSpeechText(block.getFieldValue("COMMAND"));
-      return command && heard.includes(command);
-    });
-    if (!matches.length) return;
-    for (const block of matches) {
-      speechExecutionQueue = speechExecutionQueue
-        .then(() => executeChain(block.getNextBlock()))
-        .catch(error => {
-          console.error(error);
-          toast(error.message);
-        });
+      return command && commandText.includes(command);
+    }).sort((left, right) =>
+      normalizeSpeechText(right.getFieldValue("COMMAND")).length
+      - normalizeSpeechText(left.getFieldValue("COMMAND")).length
+    );
+    if (!matches.length) {
+      const seconds = Math.max(1, Math.ceil((speechCommandActiveUntil - Date.now()) / 1000));
+      setSpeechUi(`명령을 이해하지 못했습니다. ${seconds}초 안에 다시 말하세요.`);
+      return;
     }
+    const command = matches[0];
+    appendSerial(`[AI 명령] ${command.getFieldValue("COMMAND")}`);
+    closeSpeechCommandWindow("명령을 실행 중입니다.");
+    enqueueSpeechChain(command, () => showWakeWordWaiting());
   }
 
   async function toggleSpeechRecognition() {
@@ -1882,8 +1962,11 @@
     if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) return toast("Chrome 또는 Edge에서 AI 음성인식을 사용할 수 있습니다.");
+    if (!wakeWordBlocks().length) {
+      return toast("인공지능 탭에서 ‘호출어 지니야 감지하면’ 블록을 추가하세요.");
+    }
     if (!workspace.getTopBlocks(true).some(block => block.type === "speech_when_heard")) {
-      return toast("인공지능 탭에서 ‘음성에서 … 들리면’ 블록을 추가하세요.");
+      return toast("인공지능 탭에서 ‘호출 후 음성에서 … 들리면’ 블록을 추가하세요.");
     }
     try {
       await ensureRuntime();
@@ -1896,7 +1979,12 @@
         speechRecognition.maxAlternatives = 1;
         speechRecognition.onstart = () => {
           speechListening = true;
-          setSpeechUi("한국어 음성 명령을 듣고 있습니다.");
+          if (speechCommandIsActive()) {
+            const seconds = Math.max(1, Math.ceil((speechCommandActiveUntil - Date.now()) / 1000));
+            setSpeechUi(`호출어 감지됨 · ${seconds}초 동안 명령을 기다립니다.`);
+          } else {
+            showWakeWordWaiting();
+          }
         };
         speechRecognition.onresult = event => {
           for (let index = event.resultIndex; index < event.results.length; index++) {
