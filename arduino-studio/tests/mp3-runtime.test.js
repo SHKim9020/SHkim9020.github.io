@@ -24,7 +24,7 @@ test("web app and firmware require runtime 1.1.8", () => {
   assert.match(app, /const RUNTIME_VERSION = "1\.1\.8"/);
   assert.match(runtime, /RUNTIME_VERSION = "1\.1\.8"/);
   assert.match(html, /onemaker_runtime-1\.1\.8\.hex/g);
-  assert.match(html, /app\.js\?v=1\.4\.6/);
+  assert.match(html, /app\.js\?v=1\.4\.7/);
   assert.match(html, /https:\/\/raw\.githubusercontent\.com\/SHKim9020\/SHkim9020\.github\.io\/main\/arduino-studio\/firmware\/onemaker_runtime-1\.1\.8\.hex/);
 });
 
