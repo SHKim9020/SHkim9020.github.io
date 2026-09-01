@@ -34,6 +34,14 @@
   let executionSliceStarted = 0;
   let executionSliceSteps = 0;
   let serialFlushTimer = null;
+  let speechRecognition = null;
+  let speechListening = false;
+  let speechShouldRestart = false;
+  let speechPausedForTts = false;
+  let speechRestartTimer = null;
+  let lastSpeechText = "";
+  let lastSpeechNumber = 0;
+  let speechExecutionQueue = Promise.resolve();
   const valueWaiters = new Map();
   const lineWaiters = [];
   const runtimeReadyWaiters = [];
@@ -252,6 +260,44 @@
       output: "Number",
       inputsInline: true,
       colour: 165
+    },
+    {
+      type: "speech_when_heard",
+      message0: "🎤 음성에서 %1 이(가) 들리면",
+      args0: [{ type: "field_input", name: "COMMAND", text: "선풍기 켜" }],
+      nextStatement: null,
+      colour: 315,
+      tooltip: "④ AI 음성 실행을 누른 뒤 한국어 명령이 들리면 아래 블록을 실행합니다."
+    },
+    {
+      type: "speech_result",
+      message0: "음성 인식 결과",
+      output: "String",
+      colour: 315,
+      tooltip: "마지막으로 인식된 전체 문장을 가져옵니다."
+    },
+    {
+      type: "speech_number",
+      message0: "음성에서 숫자 가져오기",
+      output: "Number",
+      colour: 315,
+      tooltip: "‘속도 150’, ‘2단’처럼 마지막 음성에 포함된 숫자를 가져옵니다."
+    },
+    {
+      type: "speech_speak",
+      message0: "음성으로 %1 말하기",
+      args0: [{ type: "input_value", name: "VALUE" }],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 315,
+      tooltip: "브라우저의 한국어 음성합성으로 안내 문장을 말합니다."
+    },
+    {
+      type: "speech_stop",
+      message0: "음성 인식 중지",
+      previousStatement: null,
+      nextStatement: null,
+      colour: 315
     },
     {
       type: "led_digital",
@@ -706,6 +752,13 @@
         { kind: "block", type: "husky_seen", inputs: { ID: numberShadow(1) } },
         { kind: "block", type: "husky_value", inputs: { ID: numberShadow(1) } }
       ] },
+      { kind: "category", name: "인공지능", colour: "315", contents: [
+        { kind: "block", type: "speech_when_heard", fields: { COMMAND: "선풍기 켜" } },
+        { kind: "block", type: "speech_result" },
+        { kind: "block", type: "speech_number" },
+        { kind: "block", type: "speech_speak", inputs: { VALUE: textShadow("선풍기를 켭니다") } },
+        { kind: "block", type: "speech_stop" }
+      ] },
       { kind: "category", name: "LED", colour: "110", contents: [
         { kind: "block", type: "led_digital" },
         { kind: "block", type: "led_pwm", inputs: { VALUE: numberShadow(128) } }
@@ -835,6 +888,7 @@
     $("#confirmPwaInstallDialogBtn").addEventListener("click", () => $("#pwaInstallDialog").close());
     $("#connectBtn").addEventListener("click", toggleSerialConnection);
     $("#saveBoardBtn").addEventListener("click", saveProgramToBoard);
+    $("#aiRunBtn").addEventListener("click", toggleSpeechRecognition);
     $("#closeSaveBoardDialogBtn").addEventListener("click", () => $("#saveBoardDialog").close());
     $("#stopBtn").addEventListener("click", stopWorkspace);
     $("#undoBtn").addEventListener("click", () => workspace.undo(false));
@@ -950,9 +1004,11 @@
 
   function updateBrowserSupport() {
     const supported = "serial" in navigator;
+    const speechSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
     const androidCh340 = window.OneMakerCH340?.active;
     $("#connectBtn").disabled = !supported;
     $("#saveBoardBtn").disabled = !supported;
+    $("#aiRunBtn").disabled = !supported || !speechSupported;
     if (androidCh340) {
       $("#connectBtn").lastChild.textContent = "② CH340 USB 연결";
       $("#connectionStatus").textContent = `Android CH340 준비${window.OneMakerCH340.mode === "patched" ? " · 호환 모드" : ""}`;
@@ -962,6 +1018,7 @@
     } else if (!supported) {
       $("#connectionStatus").textContent = "Chrome·Edge 필요";
     }
+    if (!speechSupported) $("#aiSpeechStatus").textContent = "이 브라우저는 음성인식을 지원하지 않습니다. Chrome 또는 Edge를 사용하세요.";
   }
 
   function openFirmwareDialog() {
@@ -1377,6 +1434,9 @@
   }
 
   function compileStoredProgram() {
+    if (workspace.getAllBlocks(false).some(block => block.type.startsWith("speech_"))) {
+      throw new Error("AI 음성인식 블록은 브라우저의 마이크가 필요합니다. USB를 연결하고 ‘④ AI 음성 실행’을 사용하세요.");
+    }
     const context = {
       variables: new Map(),
       functions: new Map(),
@@ -1575,6 +1635,7 @@
   }
 
   function closeSerialState() {
+    if (speechShouldRestart || speechListening) stopSpeechRecognition("USB 연결이 끊어져 AI 음성인식을 중지했습니다.");
     serialConnected = false;
     runtimeReady = false;
     runtimeVersion = "";
@@ -1730,6 +1791,160 @@
     return new TextDecoder().decode(new Uint8Array(bytes));
   }
 
+  function normalizeSpeechText(value) {
+    return String(value || "")
+      .toLocaleLowerCase("ko-KR")
+      .replace(/[\s.,!?~·'\"“”‘’]/g, "");
+  }
+
+  function koreanNumberValue(value) {
+    const digits = { 영: 0, 공: 0, 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 칠: 7, 팔: 8, 구: 9 };
+    const units = { 십: 10, 백: 100, 천: 1000 };
+    let total = 0;
+    let digit = 0;
+    let found = false;
+    for (const character of String(value || "")) {
+      if (Object.hasOwn(digits, character)) {
+        digit = digits[character];
+        found = true;
+      } else if (units[character]) {
+        total += (digit || 1) * units[character];
+        digit = 0;
+        found = true;
+      } else if (found) {
+        break;
+      }
+    }
+    return found ? total + digit : 0;
+  }
+
+  function extractSpeechNumber(value) {
+    const numeric = String(value || "").match(/-?\d+(?:\.\d+)?/);
+    if (numeric) return Number(numeric[0]);
+    const korean = String(value || "").match(/[영공일이삼사오육칠팔구십백천]+/);
+    return korean ? koreanNumberValue(korean[0]) : 0;
+  }
+
+  function setSpeechUi(message) {
+    const button = $("#aiRunBtn");
+    button.classList.toggle("listening", speechListening || speechShouldRestart);
+    button.textContent = speechListening ? "🎤 AI 듣는 중…" : "④ AI 음성 실행";
+    $("#aiSpeechStatus").textContent = message;
+  }
+
+  function stopSpeechRecognition(message = "AI 음성인식이 중지되었습니다.") {
+    speechShouldRestart = false;
+    speechPausedForTts = false;
+    speechListening = false;
+    clearTimeout(speechRestartTimer);
+    speechRestartTimer = null;
+    try { speechRecognition?.abort(); } catch (_) {}
+    window.speechSynthesis?.cancel();
+    setSpeechUi(message);
+  }
+
+  function scheduleSpeechRestart() {
+    if (!speechShouldRestart || speechPausedForTts || runCancelled) return;
+    clearTimeout(speechRestartTimer);
+    speechRestartTimer = setTimeout(() => {
+      try { speechRecognition?.start(); } catch (_) {}
+    }, 250);
+  }
+
+  function handleSpeechResult(transcript) {
+    lastSpeechText = String(transcript || "").trim();
+    if (!lastSpeechText) return;
+    lastSpeechNumber = extractSpeechNumber(lastSpeechText);
+    appendSerial(`[AI 음성] ${lastSpeechText}`);
+    setSpeechUi(`인식 결과: ${lastSpeechText}`);
+    const heard = normalizeSpeechText(lastSpeechText);
+    const matches = workspace.getTopBlocks(true).filter(block => {
+      if (block.type !== "speech_when_heard") return false;
+      const command = normalizeSpeechText(block.getFieldValue("COMMAND"));
+      return command && heard.includes(command);
+    });
+    if (!matches.length) return;
+    for (const block of matches) {
+      speechExecutionQueue = speechExecutionQueue
+        .then(() => executeChain(block.getNextBlock()))
+        .catch(error => {
+          console.error(error);
+          toast(error.message);
+        });
+    }
+  }
+
+  async function toggleSpeechRecognition() {
+    if (speechShouldRestart || speechListening) {
+      stopSpeechRecognition();
+      return;
+    }
+    if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return toast("Chrome 또는 Edge에서 AI 음성인식을 사용할 수 있습니다.");
+    if (!workspace.getTopBlocks(true).some(block => block.type === "speech_when_heard")) {
+      return toast("인공지능 탭에서 ‘음성에서 … 들리면’ 블록을 추가하세요.");
+    }
+    try {
+      await ensureRuntime();
+      runCancelled = false;
+      if (!speechRecognition) {
+        speechRecognition = new Recognition();
+        speechRecognition.lang = "ko-KR";
+        speechRecognition.continuous = true;
+        speechRecognition.interimResults = false;
+        speechRecognition.maxAlternatives = 1;
+        speechRecognition.onstart = () => {
+          speechListening = true;
+          setSpeechUi("한국어 음성 명령을 듣고 있습니다.");
+        };
+        speechRecognition.onresult = event => {
+          for (let index = event.resultIndex; index < event.results.length; index++) {
+            if (event.results[index].isFinal) handleSpeechResult(event.results[index][0].transcript);
+          }
+        };
+        speechRecognition.onerror = event => {
+          if (["not-allowed", "service-not-allowed"].includes(event.error)) {
+            stopSpeechRecognition("마이크 권한이 필요합니다. 주소창의 마이크 권한을 허용하세요.");
+            toast("마이크 권한을 허용한 뒤 다시 실행하세요.");
+          } else if (!['no-speech', 'aborted'].includes(event.error)) {
+            setSpeechUi(`음성인식 오류: ${event.error}`);
+          }
+        };
+        speechRecognition.onend = () => {
+          speechListening = false;
+          if (speechShouldRestart && !speechPausedForTts && !runCancelled) scheduleSpeechRestart();
+          else if (!speechPausedForTts) setSpeechUi("AI 음성인식이 중지되었습니다.");
+        };
+      }
+      speechShouldRestart = true;
+      speechRecognition.start();
+    } catch (error) {
+      speechShouldRestart = false;
+      setSpeechUi(error.message);
+      toast(error.message);
+    }
+  }
+
+  function speakSpeech(value) {
+    if (!("speechSynthesis" in window)) return Promise.resolve();
+    return new Promise(resolve => {
+      const utterance = new SpeechSynthesisUtterance(String(value ?? ""));
+      utterance.lang = "ko-KR";
+      const resume = () => {
+        speechPausedForTts = false;
+        if (speechShouldRestart && !runCancelled) scheduleSpeechRestart();
+        resolve();
+      };
+      utterance.onend = resume;
+      utterance.onerror = resume;
+      speechPausedForTts = true;
+      try { speechRecognition?.stop(); } catch (_) {}
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+
   function appendSerial(text) {
     const now = new Date().toLocaleTimeString("ko-KR", { hour12: false });
     serialLogLines.push(`[${now}] ${text}`);
@@ -1857,6 +2072,8 @@
       }
       case "bt_value_equals":
         return String(await requestValue("BTREAD")) === String(await evaluate(inputBlock(block, "VALUE"), functionDepth));
+      case "speech_result": return lastSpeechText;
+      case "speech_number": return lastSpeechNumber;
       case "my_function_call_value": {
         if (functionDepth > 12) throw new Error("내 블록 호출이 너무 깊습니다.");
         const definition = workspace.getAllBlocks(false).find(candidate =>
@@ -2041,6 +2258,11 @@
         );
       case "serial_print":
         return sendAction("PRINT", encodeHex(await evaluate(inputBlock(block, "VALUE"), functionDepth)));
+      case "speech_speak":
+        return speakSpeech(await evaluate(inputBlock(block, "VALUE"), functionDepth));
+      case "speech_stop":
+        stopSpeechRecognition();
+        return;
       case "my_function_call": {
         if (functionDepth > 12) throw new Error("내 블록 호출이 너무 깊습니다.");
         const definition = workspace.getAllBlocks(false).find(candidate =>
@@ -2057,6 +2279,7 @@
 
   async function stopWorkspace() {
     runCancelled = true;
+    stopSpeechRecognition("블록과 AI 음성인식을 정지했습니다.");
     try {
       if (runtimeReady) await sendAction("STOP");
       toast("블록과 출력 동작을 정지했습니다.");
@@ -2323,6 +2546,8 @@
       case "bt_read": return "readBluetoothLine()";
       case "bt_received_item": return `readBluetoothItem(${cppInput(block, "COUNT")}, ${cppInput(block, "INDEX")})`;
       case "bt_value_equals": return `(readBluetoothLine() == String(${cppInput(block, "VALUE", '""')}))`;
+      case "speech_result": return 'String("") /* 브라우저 AI 음성 결과 */';
+      case "speech_number": return "0 /* 브라우저 AI 음성 숫자 */";
       case "my_function_call_value":
         return `${functionCppName(block.getFieldValue("NAME"), true)}()`;
       default: return "0";
@@ -2445,6 +2670,8 @@
       case "bt_send_many": return line(`bluetooth.print(${cppInput(block, "VALUE", '""')});`);
       case "bt_set_name": return line(`setBluetoothName(String(${cppInput(block, "NAME", '""')}), ${block.getFieldValue("MODE")});`);
       case "serial_print": return line(`Serial.println(${cppInput(block, "VALUE", '""')});`);
+      case "speech_speak": return line("// AI 음성합성은 웹앱의 ④ AI 음성 실행에서 동작합니다.");
+      case "speech_stop": return line("// AI 음성인식 중지: 웹앱 전용 블록");
       case "my_function_call": return line(`${functionCppName(block.getFieldValue("NAME"))}();`);
       default: return "";
     }
@@ -2695,9 +2922,14 @@ void initializeMp3() {
     const loopBlocks = workspace.getTopBlocks(true).filter(block => block.type === "arduino_loop");
     const loopBody = loopBlocks.map(block => cppChain(block.getNextBlock(), "  ")).join("");
 
+    const speechNote = hardware.types.has("speech_when_heard")
+      ? "// 주의: AI 음성인식 이벤트는 브라우저 전용이며 INO/보드 단독 실행에는 포함되지 않습니다.\n"
+      : "";
+
     return `// OneMaker Arduino UNO·Nano Studio
 // 보드: ${$("#boardTitle").textContent}
 // 생성일: ${new Date().toLocaleDateString("ko-KR")}
+${speechNote}
 
 ${[...new Set(includes)].join("\n")}
 
