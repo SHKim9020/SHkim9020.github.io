@@ -15,7 +15,8 @@ test("AI toolbox exposes classroom speech blocks", () => {
   }
   assert.match(app, /text: "지니야"/);
   assert.match(app, /text: "선풍기 1단 켜"/);
-  assert.match(app, /다음 명령을 %1 초 동안 기다리기/);
+  assert.match(app, /🎤 호출어 %1 → %2초 대기/);
+  assert.match(app, /inputsInline: true/);
 });
 
 test("AI speech runs browser events and existing USB motor blocks", () => {
@@ -36,10 +37,19 @@ test("wake word gates commands and returns to wake-word waiting", () => {
   assert.match(app, /showWakeWordWaiting\(\)/);
 });
 
+test("AI chat tab shows recognized speech, command status, and spoken replies", () => {
+  assert.match(html, /data-tab="chat"[^>]*>AI 채팅/);
+  assert.match(html, /id="speechChatLog"/);
+  assert.match(html, /id="clearSpeechChatBtn"/);
+  assert.match(app, /appendSpeechChat\("user", lastSpeechText\)/);
+  assert.match(app, /appendSpeechChat\("system", `명령 실행/);
+  assert.match(app, /appendSpeechChat\("assistant", spokenText\)/);
+});
+
 test("speech result, number extraction, TTS, and standalone warning are present", () => {
   assert.match(app, /case "speech_result": return lastSpeechText/);
   assert.match(app, /case "speech_number": return lastSpeechNumber/);
   assert.match(app, /new SpeechSynthesisUtterance/);
   assert.match(app, /AI 음성인식 블록은 브라우저의 마이크가 필요합니다/);
-  assert.match(sw, /onemaker-arduino-studio-1\.4\.7/);
+  assert.match(sw, /onemaker-arduino-studio-1\.4\.8/);
 });
