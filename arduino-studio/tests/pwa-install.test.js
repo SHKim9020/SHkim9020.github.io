@@ -22,7 +22,7 @@ test("page exposes install UI, icon metadata, and versioned PWA assets", () => {
   assert.match(html, /id="pwaInstallBtn"/);
   assert.match(html, /id="pwaInstallDialog"/);
   assert.match(html, /rel="apple-touch-icon" href="icons\/icon-192\.png"/);
-  assert.match(html, /app\.js\?v=1\.4\.6/);
+  assert.match(html, /app\.js\?v=1\.4\.7/);
 });
 
 test("app handles native installation and fallback instructions", () => {
@@ -33,7 +33,7 @@ test("app handles native installation and fallback instructions", () => {
 });
 
 test("service worker caches and refreshes the app shell", () => {
-  assert.match(sw, /onemaker-arduino-studio-1\.4\.6/);
+  assert.match(sw, /onemaker-arduino-studio-1\.4\.7/);
   assert.match(sw, /cache\.addAll\(APP_SHELL\)/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
   assert.match(sw, /caches\.delete/);
