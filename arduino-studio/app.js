@@ -1393,11 +1393,30 @@
         writeCompiledExpression(writer, null, context); return;
       case "stepper_28byj_rotate": {
         const rpm = Math.max(1, Math.min(15, Number(block.getFieldValue("RPM")) || 10));
-        const mode = (rpm << 1) | (block.getFieldValue("DIRECTION") === "-1" ? 1 : 0);
-        writer.u8(VM.MOTOR); writer.u8(255); writer.u8(mode); expression("ANGLE"); return;
+        const phases = block.getFieldValue("DIRECTION") === "-1" ? [9, 12, 6, 3] : [9, 3, 6, 12];
+        writer.u8(VM.REPEAT_START);
+        const repeats = new ByteWriter();
+        writeExpressionValue(repeats, inputBlock(block, "ANGLE"), context);
+        repeats.u8(EX.NUMBER); repeats.f32(64); repeats.u8(EX.MULTIPLY);
+        repeats.u8(EX.NUMBER); repeats.f32(45); repeats.u8(EX.DIVIDE);
+        writer.u8(repeats.position); writer.append(repeats.bytes);
+        const endPatch = writer.position; writer.u16(0);
+        const body = writer.position;
+        for (const phase of phases) {
+          for (let bit = 0; bit < 4; bit++) {
+            writer.u8(VM.DIGITAL_WRITE); writer.u8(8 + bit); writer.u8((phase >> bit) & 1);
+          }
+          writer.u8(VM.WAIT); numberExpression(0.029297 / rpm);
+        }
+        writer.u8(VM.REPEAT_END); writer.u16(body);
+        writer.patchU16(endPatch, writer.position);
+        return;
       }
       case "stepper_28byj_release":
-        writer.u8(VM.MOTOR); writer.u8(255); writer.u8(0); writeCompiledExpression(writer, null, context); return;
+        for (let pinNumber = 8; pinNumber <= 11; pinNumber++) {
+          writer.u8(VM.DIGITAL_WRITE); writer.u8(pinNumber); writer.u8(0);
+        }
+        return;
       case "servo_write":
         writer.u8(VM.SERVO); pin("PIN"); expression("ANGLE"); return;
       case "servo_write_for":
@@ -2329,13 +2348,27 @@
       case "motor_stop":
         return sendAction("MOTOR", block.getFieldValue("IN1"), block.getFieldValue("IN2"), 0);
       case "stepper_28byj_rotate": {
-        const rpm = clamp(block.getFieldValue("RPM"), 1, 15);
+        const rpm = Math.round(clamp(block.getFieldValue("RPM"), 1, 15));
         const angle = clamp(await evaluate(inputBlock(block, "ANGLE"), functionDepth), 0, 3600);
-        const mode = (Math.round(rpm) << 1) | (block.getFieldValue("DIRECTION") === "-1" ? 1 : 0);
-        return sendAction("MOTOR", 255, mode, Math.round(angle));
+        const phases = block.getFieldValue("DIRECTION") === "-1" ? [9, 12, 6, 3] : [9, 3, 6, 12];
+        const steps = Math.round(angle * 2048 / 360);
+        const stepDelay = 29.297 / rpm;
+        let previous = 0;
+        for (let step = 0; step < steps && !runCancelled; step++) {
+          const phase = phases[step & 3];
+          for (let bit = 0; bit < 4; bit++) {
+            if (step === 0 || ((previous ^ phase) >> bit) & 1) {
+              await sendAction("DW", 8 + bit, (phase >> bit) & 1);
+            }
+          }
+          previous = phase;
+          await sleep(stepDelay);
+        }
+        return;
       }
       case "stepper_28byj_release":
-        return sendAction("MOTOR", 255, 0, 0);
+        for (let pinNumber = 8; pinNumber <= 11; pinNumber++) await sendAction("DW", pinNumber, 0);
+        return;
       case "servo_write":
         return sendAction("SERVO", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "ANGLE"), functionDepth), 0, 180));
       case "servo_write_for": {
