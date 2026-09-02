@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.8
-static const char *RUNTIME_VERSION = "1.1.8";
+// OneMaker Arduino UNO/Nano Runtime 1.1.9
+static const char *RUNTIME_VERSION = "1.1.9";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -735,6 +735,7 @@ void loadStoredProgram() {
 
 void stopOutputs() {
   for (uint8_t index = 0; index < motorPinCount; index++) analogWrite(motorPins[index], 0);
+  PORTB &= 0xF0;
   if (lastTonePin >= 0) noTone(lastTonePin);
   if (mp3Serial) sendMp3Command(0x16, 0);
 }
@@ -1021,7 +1022,10 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     pinMode(pin, OUTPUT);
     analogWrite(pin, constrain(tokenInt(args[1]), 0, 255));
   } else if (!strcmp(operation, "MOTOR") && count >= 3) {
-    setMotor(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
+    uint8_t pin1 = tokenInt(args[0]);
+    uint8_t pin2 = tokenInt(args[1]);
+    int value = tokenInt(args[2]);
+    setMotor(pin1, pin2, value);
   } else if (!strcmp(operation, "SERVO") && count >= 2) {
     Servo *servo = servoForPin(tokenInt(args[0]));
     int angle = tokenInt(args[1]);

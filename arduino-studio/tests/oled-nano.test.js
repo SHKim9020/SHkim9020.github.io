@@ -33,10 +33,10 @@ test("OLED works in stored, live, and generated INO modes", () => {
   assert.doesNotMatch(runtime, /character >= 'A'/);
 });
 
-test("UNO and both Nano bootloader upload paths use runtime 1.1.8", () => {
-  assert.match(app, /const RUNTIME_VERSION = "1\.1\.8"/);
-  assert.match(runtime, /RUNTIME_VERSION = "1\.1\.8"/);
-  assert.equal((html.match(/onemaker_runtime-1\.1\.8\.hex/g) || []).length, 3);
+test("UNO and both Nano bootloader upload paths use runtime 1.1.9", () => {
+  assert.match(app, /const RUNTIME_VERSION = "1\.1\.9"/);
+  assert.match(runtime, /RUNTIME_VERSION = "1\.1\.9"/);
+  assert.equal((html.match(/onemaker_runtime-1\.1\.9\.hex/g) || []).length, 3);
   for (const board of ["uno", "nano", "nanoOldBootloader"]) {
     assert.match(html, new RegExp(`board="${board}"`));
   }

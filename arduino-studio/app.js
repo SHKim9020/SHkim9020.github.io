@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.8";
+  const RUNTIME_VERSION = "1.1.9";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -420,6 +420,28 @@
       colour: 285
     },
     {
+      type: "stepper_28byj_rotate",
+      message0: "28BYJ-48 D8~D11 %1 속도 %2 RPM 각도 %3° 회전",
+      args0: [
+        { type: "field_dropdown", name: "DIRECTION", options: [["시계방향", "1"], ["반시계방향", "-1"]] },
+        { type: "field_number", name: "RPM", value: 10, min: 1, max: 15, precision: 1 },
+        { type: "input_value", name: "ANGLE", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 285,
+      tooltip: "ULN2003 IN1→D8, IN2→D9, IN3→D10, IN4→D11로 연결합니다. 1~15RPM과 각도를 지정할 수 있습니다. 일반적인 5V 모터는 ULN2003의 +에 5V를 연결하고 GND를 Arduino와 공통으로 연결하세요."
+    },
+    {
+      type: "stepper_28byj_release",
+      message0: "28BYJ-48 D8~D11 코일 전원 끄기",
+      previousStatement: null,
+      nextStatement: null,
+      colour: 285,
+      tooltip: "회전 후 코일 전원을 꺼 발열을 줄입니다. 위치 고정 힘도 함께 해제됩니다."
+    },
+    {
       type: "buzzer_tone",
       message0: "피에조 핀 %1 주파수 %2 Hz %3초",
       args0: [
@@ -784,7 +806,9 @@
         { kind: "block", type: "servo_write_for", fields: { PIN: "8" }, inputs: { FROM: numberShadow(0), TO: numberShadow(180), SECONDS: numberShadow(1) } },
         { kind: "block", type: "servo_detach", fields: { PIN: "8" } },
         { kind: "block", type: "dc_motor_digital", fields: { PIN: "5", STATE: "1" } },
-        { kind: "block", type: "dc_motor_pwm", fields: { PIN: "5" }, inputs: { VALUE: numberShadow(255) } }
+        { kind: "block", type: "dc_motor_pwm", fields: { PIN: "5" }, inputs: { VALUE: numberShadow(255) } },
+        { kind: "block", type: "stepper_28byj_rotate", fields: { DIRECTION: "1", RPM: 10 }, inputs: { ANGLE: numberShadow(360) } },
+        { kind: "block", type: "stepper_28byj_release" }
       ] },
       { kind: "category", name: "피에조", colour: "35", contents: [
         { kind: "block", type: "buzzer_tone", inputs: { FREQ: numberShadow(262), SECONDS: numberShadow(0.5) } },
@@ -1367,6 +1391,32 @@
       case "motor_stop":
         writer.u8(VM.MOTOR); pin("IN1"); pin("IN2");
         writeCompiledExpression(writer, null, context); return;
+      case "stepper_28byj_rotate": {
+        const rpm = Math.max(1, Math.min(15, Number(block.getFieldValue("RPM")) || 10));
+        const phases = block.getFieldValue("DIRECTION") === "-1" ? [9, 12, 6, 3] : [9, 3, 6, 12];
+        writer.u8(VM.REPEAT_START);
+        const repeats = new ByteWriter();
+        writeExpressionValue(repeats, inputBlock(block, "ANGLE"), context);
+        repeats.u8(EX.NUMBER); repeats.f32(64); repeats.u8(EX.MULTIPLY);
+        repeats.u8(EX.NUMBER); repeats.f32(45); repeats.u8(EX.DIVIDE);
+        writer.u8(repeats.position); writer.append(repeats.bytes);
+        const endPatch = writer.position; writer.u16(0);
+        const body = writer.position;
+        for (const phase of phases) {
+          for (let bit = 0; bit < 4; bit++) {
+            writer.u8(VM.DIGITAL_WRITE); writer.u8(8 + bit); writer.u8((phase >> bit) & 1);
+          }
+          writer.u8(VM.WAIT); numberExpression(0.029297 / rpm);
+        }
+        writer.u8(VM.REPEAT_END); writer.u16(body);
+        writer.patchU16(endPatch, writer.position);
+        return;
+      }
+      case "stepper_28byj_release":
+        for (let pinNumber = 8; pinNumber <= 11; pinNumber++) {
+          writer.u8(VM.DIGITAL_WRITE); writer.u8(pinNumber); writer.u8(0);
+        }
+        return;
       case "servo_write":
         writer.u8(VM.SERVO); pin("PIN"); expression("ANGLE"); return;
       case "servo_write_for":
@@ -2297,6 +2347,28 @@
         return sendAction("MOTOR", block.getFieldValue("IN1"), block.getFieldValue("IN2"), clamp(await evaluate(inputBlock(block, "SPEED"), functionDepth), -255, 255));
       case "motor_stop":
         return sendAction("MOTOR", block.getFieldValue("IN1"), block.getFieldValue("IN2"), 0);
+      case "stepper_28byj_rotate": {
+        const rpm = Math.round(clamp(block.getFieldValue("RPM"), 1, 15));
+        const angle = clamp(await evaluate(inputBlock(block, "ANGLE"), functionDepth), 0, 3600);
+        const phases = block.getFieldValue("DIRECTION") === "-1" ? [9, 12, 6, 3] : [9, 3, 6, 12];
+        const steps = Math.round(angle * 2048 / 360);
+        const stepDelay = 29.297 / rpm;
+        let previous = 0;
+        for (let step = 0; step < steps && !runCancelled; step++) {
+          const phase = phases[step & 3];
+          for (let bit = 0; bit < 4; bit++) {
+            if (step === 0 || ((previous ^ phase) >> bit) & 1) {
+              await sendAction("DW", 8 + bit, (phase >> bit) & 1);
+            }
+          }
+          previous = phase;
+          await sleep(stepDelay);
+        }
+        return;
+      }
+      case "stepper_28byj_release":
+        for (let pinNumber = 8; pinNumber <= 11; pinNumber++) await sendAction("DW", pinNumber, 0);
+        return;
       case "servo_write":
         return sendAction("SERVO", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "ANGLE"), functionDepth), 0, 180));
       case "servo_write_for": {
@@ -2753,6 +2825,11 @@
         return line(`setMotor(${block.getFieldValue("IN1")}, ${block.getFieldValue("IN2")}, ${cppInput(block, "SPEED")});`);
       case "motor_stop":
         return line(`setMotor(${block.getFieldValue("IN1")}, ${block.getFieldValue("IN2")}, 0);`);
+      case "stepper_28byj_rotate": {
+        return line(`rotate28BYJ48(${block.getFieldValue("DIRECTION")}, ${block.getFieldValue("RPM")}, ${cppInput(block, "ANGLE")});`);
+      }
+      case "stepper_28byj_release":
+        return line("release28BYJ48();");
       case "servo_write":
         return line(`${cppIdentifier(block.getFieldValue("PIN"), "servo")}.write(constrain(${cppInput(block, "ANGLE")}, 0, 180));`);
       case "servo_write_for": {
@@ -2958,6 +3035,25 @@ void setMotor(uint8_t pin1, uint8_t pin2, int speedValue) {
   } else {
     analogWrite(pin1, 0);
     analogWrite(pin2, 0);
+  }
+}`);
+    if (hardware.types.has("stepper_28byj_rotate") || hardware.types.has("stepper_28byj_release")) helpers.push(`
+void release28BYJ48() {
+  DDRB |= 0x0F;
+  PORTB &= 0xF0;
+}
+
+void rotate28BYJ48(int direction, uint8_t rpm, float degrees) {
+  const uint8_t phases[4] = {0x09, 0x03, 0x06, 0x0C};
+  rpm = constrain(rpm, 1, 15);
+  unsigned long steps = max(0.0f, degrees) * 2048.0f / 360.0f + 0.5f;
+  unsigned int stepDelay = 29297.0f / rpm;
+  uint8_t phase = 0;
+  DDRB |= 0x0F;
+  while (steps--) {
+    PORTB = (PORTB & 0xF0) | phases[phase];
+    phase = (phase + (direction < 0 ? 3 : 1)) & 3;
+    delayMicroseconds(stepDelay);
   }
 }`);
     if (hardware.husky.enabled) helpers.push(`

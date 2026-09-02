@@ -65,5 +65,5 @@ test("speech result, number extraction, TTS, and standalone warning are present"
   assert.match(app, /case "speech_number": return lastSpeechNumber/);
   assert.match(app, /new SpeechSynthesisUtterance/);
   assert.match(app, /AI 음성인식 블록은 브라우저의 마이크가 필요합니다/);
-  assert.match(sw, /onemaker-arduino-studio-1\.4\.9/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.0/);
 });
