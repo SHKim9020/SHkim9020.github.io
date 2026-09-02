@@ -23,7 +23,9 @@ test("AI speech runs browser events and existing USB motor blocks", () => {
   assert.match(html, /id="aiRunBtn"[^>]*>④ AI 음성 실행/);
   assert.match(app, /window\.SpeechRecognition \|\| window\.webkitSpeechRecognition/);
   assert.match(app, /speechRecognition\.lang = "ko-KR"/);
-  assert.match(app, /handleSpeechResult\(event\.results\[index\]\[0\]\.transcript\)/);
+  assert.match(app, /speechRecognition\.interimResults = true/);
+  assert.match(app, /speechRecognition\.maxAlternatives = 3/);
+  assert.match(app, /handleSpeechResult\(transcript\)/);
   assert.match(app, /executeChain\(block\?\.getNextBlock\(\)\)/);
   assert.match(app, /await executeAiStartBlocks\(\)/);
   assert.match(app, /보드 초기화 완료 · 음성 명령을 시작합니다/);
@@ -67,8 +69,10 @@ test("speech result, number extraction, TTS, and standalone warning are present"
   assert.match(app, /case "speech_number": return lastSpeechNumber/);
   assert.match(app, /new SpeechSynthesisUtterance/);
   assert.match(app, /window\.speechSynthesis\.resume\(\)/);
-  assert.match(app, /\(\?:한\|일\|1\).*"1단"/);
+  assert.match(app, /speechPronunciationText\(spokenText\)/);
+  assert.match(app, /utterance\.rate = 1\.18/);
+  assert.match(app, /\(\?:첫째\|첫\|하나\|한\|일\|1\).*"1단"/);
   assert.match(app, /comparesSpeech/);
   assert.match(app, /AI 음성 프로젝트 실행 안내/);
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.1/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.2/);
 });
