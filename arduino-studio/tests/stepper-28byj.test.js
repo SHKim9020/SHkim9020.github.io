@@ -20,18 +20,17 @@ test("motor toolbox exposes classroom 28BYJ-48 blocks", () => {
 });
 
 test("28BYJ-48 works in stored, USB live, and generated INO modes", () => {
-  assert.match(app, /writer\.u8\(VM\.MOTOR\); writer\.u8\(255\); writer\.u8\(mode\)/);
-  assert.match(app, /sendAction\("MOTOR", 255, mode/);
-  assert.match(app, /sendAction\("MOTOR", 255, 0, 0\)/);
+  assert.match(app, /writer\.u8\(VM\.REPEAT_START\)/);
+  assert.match(app, /writer\.u8\(VM\.DIGITAL_WRITE\); writer\.u8\(8 \+ bit\)/);
+  assert.match(app, /await sendAction\("DW", 8 \+ bit/);
+  assert.match(app, /await sendAction\("DW", pinNumber, 0\)/);
   assert.match(app, /rotate28BYJ48\(\$\{block\.getFieldValue\("DIRECTION"\)\}/);
   assert.match(app, /return line\("release28BYJ48\(\);"\)/);
 });
 
 test("runtime drives ULN2003 phases and releases all four coils", () => {
-  assert.match(runtime, /static const uint8_t phases\[4\] = \{0x09, 0x03, 0x06, 0x0C\}/);
-  assert.match(runtime, /\(angle << 2\) \+ angle \+ \(angle >> 1\)/);
-  assert.match(runtime, /static const uint16_t delays\[15\] PROGMEM/);
-  assert.match(runtime, /if \(pin1 == 255\)/);
-  assert.match(runtime, /PORTB = \(PORTB & 0xF0\) \| phases\[phase\]/);
+  assert.match(app, /\[9, 3, 6, 12\]/);
+  assert.match(app, /\[9, 12, 6, 3\]/);
+  assert.match(app, /angle \* 2048 \/ 360/);
   assert.match(runtime, /PORTB &= 0xF0/);
 });
