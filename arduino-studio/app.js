@@ -1556,10 +1556,22 @@
   }
 
   async function saveProgramToBoard() {
-    if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
     const dialog = $("#saveBoardDialog");
     const closeButton = $("#closeSaveBoardDialogBtn");
+    const chip = dialog.querySelector(".upload-chip");
+    if (workspace.getAllBlocks(false).some(block => block.type.startsWith("speech_"))) {
+      dialog.showModal();
+      chip.textContent = "AI는 브라우저에서 실행";
+      closeButton.disabled = false;
+      $("#saveBoardProgress").value = 100;
+      $("#saveBoardTitle").textContent = "AI 음성 프로젝트 실행 안내";
+      $("#saveBoardMessage").textContent = "음성인식은 PC의 마이크를 사용하므로 Arduino에 저장하지 않습니다. 런타임 설치 후 USB를 연결한 상태에서 ④ AI 음성 실행을 누르세요.";
+      setSaveBoardResult("success", "① 런타임 설치(보드당 1회) → ② USB 연결 → ④ AI 음성 실행");
+      return;
+    }
+    if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
     dialog.showModal();
+    chip.textContent = "USB 없이 단독 실행";
     closeButton.disabled = true;
     $("#saveBoardProgress").value = 2;
     $("#saveBoardTitle").textContent = "블록 프로그램 준비 중";
@@ -1860,7 +1872,11 @@
 
   function normalizeSpeechText(value) {
     return String(value || "")
+      .normalize("NFKC")
       .toLocaleLowerCase("ko-KR")
+      .replace(/(?:한|일|1)\s*(?:단계|단)/g, "1단")
+      .replace(/(?:두|이|2)\s*(?:단계|단)/g, "2단")
+      .replace(/(?:세|삼|3)\s*(?:단계|단)/g, "3단")
       .replace(/[\s.,!?~·'\"“”‘’]/g, "");
   }
 
@@ -1994,6 +2010,23 @@
       });
   }
 
+  async function executeAiStartBlocks() {
+    const starts = workspace.getTopBlocks(true).filter(block => block.type === "arduino_start");
+    for (const start of starts) {
+      let block = start.getNextBlock();
+      while (block && !runCancelled) {
+        if (block.type === "control_forever") break;
+        await executeStatement(block);
+        await yieldToBrowser();
+        block = block.getNextBlock();
+      }
+    }
+    if (starts.length) {
+      appendSerial("[AI 준비] 시작하면 블록 실행 완료");
+      appendSpeechChat("system", "보드 초기화 완료 · 음성 명령을 시작합니다");
+    }
+  }
+
   function handleSpeechResult(transcript) {
     lastSpeechText = String(transcript || "").trim();
     if (!lastSpeechText) return;
@@ -2075,6 +2108,7 @@
     try {
       await ensureRuntime();
       runCancelled = false;
+      await executeAiStartBlocks();
       if (!speechRecognition) {
         speechRecognition = new Recognition();
         speechRecognition.lang = "ko-KR";
@@ -2137,6 +2171,7 @@
       speechPausedForTts = true;
       try { speechRecognition?.stop(); } catch (_) {}
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     });
   }
@@ -2217,9 +2252,13 @@
       case "logic_compare": {
         const left = await evaluate(inputBlock(block, "A"), functionDepth);
         const right = await evaluate(inputBlock(block, "B"), functionDepth);
+        const comparesSpeech = [inputBlock(block, "A")?.type, inputBlock(block, "B")?.type].includes("speech_result");
+        const equal = comparesSpeech
+          ? normalizeSpeechText(left) === normalizeSpeechText(right)
+          : left == right;
         switch (block.getFieldValue("OP")) {
-          case "EQ": return left == right;
-          case "NEQ": return left != right;
+          case "EQ": return equal;
+          case "NEQ": return !equal;
           case "LT": return Number(left) < Number(right);
           case "LTE": return Number(left) <= Number(right);
           case "GT": return Number(left) > Number(right);
