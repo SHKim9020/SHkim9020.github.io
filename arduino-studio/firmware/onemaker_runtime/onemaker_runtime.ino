@@ -5,11 +5,11 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.8
-static const char *RUNTIME_VERSION = "1.1.8";
+// OneMaker Arduino UNO/Nano Runtime 1.1.9
+static const char *RUNTIME_VERSION = "1.1.9";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
-static const uint8_t MAX_TRACKED_MOTORS = 4;
+static const uint8_t MAX_TRACKED_MOTORS = 8;
 static const uint8_t PROGRAM_HEADER_SIZE = 9;
 static const uint8_t PROGRAM_MAGIC_0 = 0x4F;
 static const uint8_t PROGRAM_MAGIC_1 = 0x4D;
@@ -51,7 +51,9 @@ enum StatementOpcode : uint8_t {
   OP_OLED_BEGIN = 29,
   OP_OLED_PRINT = 30,
   OP_OLED_CLEAR = 31,
-  OP_HUSKY_ALGORITHM = 32
+  OP_HUSKY_ALGORITHM = 32,
+  OP_STEPPER_28BYJ = 33,
+  OP_STEPPER_28BYJ_RELEASE = 34
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -261,6 +263,32 @@ void setMotor(uint8_t pin1, uint8_t pin2, int speedValue) {
   } else {
     analogWrite(pin1, 0);
     analogWrite(pin2, 0);
+  }
+}
+
+void release28BYJ48(uint8_t pins[4]) {
+  for (uint8_t index = 0; index < 4; index++) {
+    rememberMotorPin(pins[index]);
+    pinMode(pins[index], OUTPUT);
+    digitalWrite(pins[index], LOW);
+  }
+}
+
+void rotate28BYJ48(uint8_t pins[4], int8_t direction, uint8_t rpm, uint16_t angle) {
+  static const uint8_t phases[4] = {0x09, 0x03, 0x06, 0x0C};
+  rpm = constrain(rpm, 1, 15);
+  unsigned long steps = (unsigned long)constrain(angle, 0, 3600) * 2048UL / 360UL;
+  unsigned int stepDelay = 29297U / rpm;
+  uint8_t phase = 0;
+  for (uint8_t index = 0; index < 4; index++) {
+    rememberMotorPin(pins[index]);
+    pinMode(pins[index], OUTPUT);
+  }
+  while (steps--) {
+    uint8_t pattern = phases[phase];
+    for (uint8_t index = 0; index < 4; index++) digitalWrite(pins[index], pattern & (1 << index));
+    phase = (phase + (direction < 0 ? 3 : 1)) & 3;
+    delayMicroseconds(stepDelay);
   }
 }
 
@@ -785,6 +813,17 @@ void executeStoredProgramStep() {
     uint8_t pin2 = programByte(vmProgramCounter++);
     long speed = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     setMotor(pin1, pin2, clampLong(speed, -255, 255));
+  } else if (opcode == OP_STEPPER_28BYJ) {
+    uint8_t pins[4];
+    for (uint8_t index = 0; index < 4; index++) pins[index] = programByte(vmProgramCounter++);
+    int8_t direction = programByte(vmProgramCounter++);
+    uint8_t rpm = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 1, 15);
+    uint16_t angle = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 3600);
+    rotate28BYJ48(pins, direction, rpm, angle);
+  } else if (opcode == OP_STEPPER_28BYJ_RELEASE) {
+    uint8_t pins[4];
+    for (uint8_t index = 0; index < 4; index++) pins[index] = programByte(vmProgramCounter++);
+    release28BYJ48(pins);
   } else if (opcode == OP_SERVO) {
     uint8_t pin = programByte(vmProgramCounter++);
     Servo *servo = servoForPin(pin);
@@ -1022,6 +1061,13 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     analogWrite(pin, constrain(tokenInt(args[1]), 0, 255));
   } else if (!strcmp(operation, "MOTOR") && count >= 3) {
     setMotor(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]));
+  } else if (!strcmp(operation, "STEP28") && count >= 7) {
+    uint8_t pins[4] = {tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]), tokenInt(args[3])};
+    rotate28BYJ48(pins, tokenInt(args[4]) < 0 ? -1 : 1,
+      constrain(tokenInt(args[5]), 1, 15), constrain(tokenInt(args[6]), 0, 3600));
+  } else if (!strcmp(operation, "STEP28OFF") && count >= 4) {
+    uint8_t pins[4] = {tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2]), tokenInt(args[3])};
+    release28BYJ48(pins);
   } else if (!strcmp(operation, "SERVO") && count >= 2) {
     Servo *servo = servoForPin(tokenInt(args[0]));
     int angle = tokenInt(args[1]);
