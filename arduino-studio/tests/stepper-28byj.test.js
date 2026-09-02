@@ -29,9 +29,9 @@ test("28BYJ-48 works in stored, USB live, and generated INO modes", () => {
 
 test("runtime drives ULN2003 phases and releases all four coils", () => {
   assert.match(runtime, /static const uint8_t phases\[4\] = \{0x09, 0x03, 0x06, 0x0C\}/);
-  assert.match(runtime, /2048UL \/ 360UL/);
+  assert.match(runtime, /\(angle << 2\) \+ angle \+ \(angle >> 1\)/);
+  assert.match(runtime, /static const uint16_t delays\[15\] PROGMEM/);
   assert.match(runtime, /if \(pin1 == 255\)/);
   assert.match(runtime, /PORTB = \(PORTB & 0xF0\) \| phases\[phase\]/);
-  assert.match(runtime, /void release28BYJ48\(\)/);
   assert.match(runtime, /PORTB &= 0xF0/);
 });
