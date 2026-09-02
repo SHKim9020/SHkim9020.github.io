@@ -21,6 +21,7 @@
   let serialReader;
   let serialWriter;
   let serialConnected = false;
+  let serialDisconnecting = false;
   let runtimeReady = false;
   let runtimeVersion = "";
   let serialBuffer = "";
@@ -1648,6 +1649,7 @@
   }
 
   async function toggleSerialConnection() {
+    if (serialDisconnecting) return;
     if (serialConnected) {
       await disconnectSerial();
       return;
@@ -1692,9 +1694,18 @@
   }
 
   async function disconnectSerial() {
+    if (serialDisconnecting) return;
+    serialDisconnecting = true;
     runCancelled = true;
     runtimeReady = false;
     runtimeVersion = "";
+    const reader = serialReader;
+    const writer = serialWriter;
+    const port = serialPort;
+    serialReader = null;
+    serialWriter = null;
+    serialPort = null;
+    closeSerialState();
     for (const waiter of valueWaiters.values()) waiter.reject(new Error("USB 연결이 끊어졌습니다."));
     valueWaiters.clear();
     while (lineWaiters.length) {
@@ -1702,19 +1713,22 @@
       clearTimeout(waiter.timer);
       waiter.reject(new Error("USB 연결이 끊어졌습니다."));
     }
-    if (serialReader) {
-      await serialReader.cancel().catch(() => {});
-      serialReader = null;
+    try {
+      const cancelPromise = reader?.cancel().catch(() => {});
+      try { writer?.releaseLock(); } catch (_) {}
+      if (window.OneMakerCH340?.active && port) {
+        await Promise.race([
+          Promise.allSettled([cancelPromise, port.close()]),
+          sleep(1500)
+        ]);
+      } else {
+        if (cancelPromise) await Promise.race([cancelPromise, sleep(1000)]);
+        try { reader?.releaseLock(); } catch (_) {}
+        if (port) await Promise.race([port.close().catch(() => {}), sleep(1500)]);
+      }
+    } finally {
+      serialDisconnecting = false;
     }
-    if (serialWriter) {
-      serialWriter.releaseLock();
-      serialWriter = null;
-    }
-    if (serialPort) {
-      await serialPort.close().catch(() => {});
-      serialPort = null;
-    }
-    closeSerialState();
   }
 
   function closeSerialState() {
@@ -1741,17 +1755,18 @@
     const decoder = new TextDecoder();
     try {
       while (serialPort?.readable && serialConnected) {
-        serialReader = serialPort.readable.getReader();
+        const reader = serialPort.readable.getReader();
+        serialReader = reader;
         try {
           while (true) {
-            const { value, done } = await serialReader.read();
+            const { value, done } = await reader.read();
             if (done) break;
             serialBuffer += decoder.decode(value, { stream: true });
             consumeSerialLines();
           }
         } finally {
-          serialReader.releaseLock();
-          serialReader = null;
+          try { reader.releaseLock(); } catch (_) {}
+          if (serialReader === reader) serialReader = null;
         }
       }
     } catch (error) {

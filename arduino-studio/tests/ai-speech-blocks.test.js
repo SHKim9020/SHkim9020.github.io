@@ -77,5 +77,5 @@ test("speech result, number extraction, TTS, and standalone warning are present"
   assert.match(app, /\(\?:첫째\|첫\|하나\|한\|일\|1\).*"1단"/);
   assert.match(app, /comparesSpeech/);
   assert.match(app, /AI 음성 프로젝트 실행 안내/);
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.3/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.4/);
 });

@@ -203,7 +203,9 @@
             if (this.opened && !this.closing) controller.error(error);
           }
         },
-        cancel: () => { this.closing = true; }
+        // A pending WebUSB transferIn does not finish just because `closing` changes.
+        // Close the USB device so reader.cancel() always settles.
+        cancel: () => this.close()
       });
       this.writable = new WritableStream({
         write: async chunk => {
