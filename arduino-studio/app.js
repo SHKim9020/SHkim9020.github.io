@@ -44,6 +44,7 @@
   let speechExecutionQueue = Promise.resolve();
   let speechCommandActiveUntil = 0;
   let speechCommandTimer = null;
+  let speechActiveWakeBlock = null;
   const valueWaiters = new Map();
   const lineWaiters = [];
   const runtimeReadyWaiters = [];
@@ -1881,6 +1882,7 @@
     speechPausedForTts = false;
     speechListening = false;
     speechCommandActiveUntil = 0;
+    speechActiveWakeBlock = null;
     clearTimeout(speechRestartTimer);
     clearTimeout(speechCommandTimer);
     speechRestartTimer = null;
@@ -1917,6 +1919,7 @@
 
   function closeSpeechCommandWindow(message) {
     speechCommandActiveUntil = 0;
+    speechActiveWakeBlock = null;
     clearTimeout(speechCommandTimer);
     speechCommandTimer = null;
     if (speechShouldRestart && !runCancelled) setSpeechUi(message || `명령 대기 시간이 끝났습니다. 다시 “${primaryWakeWord()}”라고 말하세요.`);
@@ -1925,6 +1928,7 @@
   function openSpeechCommandWindow(block) {
     const timeout = Math.max(3, Math.min(30, Number(block.getFieldValue("TIMEOUT")) || 8));
     speechCommandActiveUntil = Date.now() + timeout * 1000;
+    speechActiveWakeBlock = block;
     clearTimeout(speechCommandTimer);
     speechCommandTimer = setTimeout(() => closeSpeechCommandWindow(), timeout * 1000);
     setSpeechUi(`호출어 감지 · ${timeout}초 동안 명령을 기다립니다.`);
@@ -1958,9 +1962,14 @@
       openSpeechCommandWindow(wake.block);
       appendSerial(`[AI 호출어] ${wake.block.getFieldValue("WAKE")}`);
       appendSpeechChat("system", `호출어 감지 · ${wake.block.getFieldValue("TIMEOUT") || 8}초 동안 명령 대기`);
-      enqueueSpeechChain(wake.block);
       commandText = heard.replace(wake.word, "");
       if (!commandText) return;
+      const wakeText = String(wake.block.getFieldValue("WAKE") || "").trim();
+      const spokenCommand = lastSpeechText.replace(wakeText, "").trim();
+      if (spokenCommand) {
+        lastSpeechText = spokenCommand;
+        lastSpeechNumber = extractSpeechNumber(lastSpeechText);
+      }
     }
 
     if (!speechCommandIsActive()) {
@@ -1977,6 +1986,14 @@
       - normalizeSpeechText(left.getFieldValue("COMMAND")).length
     );
     if (!matches.length) {
+      const wakeBlock = speechActiveWakeBlock;
+      if (wakeBlock?.getNextBlock()) {
+        appendSerial(`[AI 명령 조건] ${lastSpeechText}`);
+        appendSpeechChat("system", `명령 조건 확인 · ${lastSpeechText}`);
+        closeSpeechCommandWindow("명령을 실행 중입니다.");
+        enqueueSpeechChain(wakeBlock, () => showWakeWordWaiting());
+        return;
+      }
       const seconds = Math.max(1, Math.ceil((speechCommandActiveUntil - Date.now()) / 1000));
       setSpeechUi(`명령을 이해하지 못했습니다. ${seconds}초 안에 다시 말하세요.`);
       appendSpeechChat("system", `명령을 이해하지 못했습니다. ${seconds}초 안에 다시 말하세요.`);
@@ -2000,8 +2017,10 @@
     if (!wakeWordBlocks().length) {
       return toast("인공지능 탭에서 ‘호출어 지니야 감지하면’ 블록을 추가하세요.");
     }
-    if (!workspace.getTopBlocks(true).some(block => block.type === "speech_when_heard")) {
-      return toast("인공지능 탭에서 ‘호출 후 음성에서 … 들리면’ 블록을 추가하세요.");
+    const hasCommandBlock = workspace.getTopBlocks(true).some(block => block.type === "speech_when_heard");
+    const hasWakeChain = wakeWordBlocks().some(block => block.getNextBlock());
+    if (!hasCommandBlock && !hasWakeChain) {
+      return toast("호출어 블록 아래에 명령 조건을 연결하거나 ‘호출 후 음성에서 … 들리면’ 블록을 추가하세요.");
     }
     try {
       await ensureRuntime();
@@ -2673,8 +2692,8 @@
       case "bt_read": return "readBluetoothLine()";
       case "bt_received_item": return `readBluetoothItem(${cppInput(block, "COUNT")}, ${cppInput(block, "INDEX")})`;
       case "bt_value_equals": return `(readBluetoothLine() == String(${cppInput(block, "VALUE", '""')}))`;
-      case "speech_result": return 'String("") /* 브라우저 AI 음성 결과 */';
-      case "speech_number": return "0 /* 브라우저 AI 음성 숫자 */";
+      case "speech_result": return "aiSpeechResult";
+      case "speech_number": return "aiSpeechNumber";
       case "my_function_call_value":
         return `${functionCppName(block.getFieldValue("NAME"), true)}()`;
       default: return "0";
@@ -2889,6 +2908,9 @@
     if (hardware.bluetooth.enabled) globals.push(`SoftwareSerial bluetooth(${hardware.bluetooth.rx}, ${hardware.bluetooth.tx}); // Arduino RX, TX`);
     if (hardware.mp3.enabled) globals.push(`SoftwareSerial mp3Serial(${hardware.mp3.rx}, ${hardware.mp3.tx}); // Arduino RX, TX`);
     if (hardware.husky.enabled) globals.push("HUSKYLENS huskylens;", "bool huskyReady = false;", "int8_t activeHuskyAlgorithm = -1;");
+    if ([...hardware.types].some(type => type.startsWith("speech_"))) {
+      globals.push('String aiSpeechResult = "";', "double aiSpeechNumber = 0;");
+    }
     workspace.getVariableMap().getAllVariables().forEach(variable => {
       globals.push(`double ${cppIdentifier(variable.name, "var")} = 0;`);
     });
@@ -3040,6 +3062,30 @@ void initializeMp3() {
       customFunctions.push(`double ${functionCppName(block.getFieldValue("NAME"), true)}() {\n${cppChain(block.getInputTargetBlock("DO"), "  ")}  return ${cppInput(block, "RETURN")};\n}\n`);
     });
 
+    const aiHandlers = [];
+    const wakeBlocks = workspace.getTopBlocks(true).filter(block => block.type === "speech_wake_word");
+    const commandBlocks = workspace.getTopBlocks(true).filter(block => block.type === "speech_when_heard");
+    if (wakeBlocks.length || commandBlocks.length) {
+      const wakeSummary = wakeBlocks.map(block =>
+        `// 호출어: ${cppString(block.getFieldValue("WAKE") || "지니야")} · 다음 명령 ${Number(block.getFieldValue("TIMEOUT")) || 8}초 대기`
+      ).join("\n");
+      let body = "  aiSpeechResult = recognizedText;\n  aiSpeechNumber = recognizedText.toFloat();\n";
+      wakeBlocks.filter(block => block.getNextBlock()).forEach(block => {
+        body += "  // 호출어 다음에 받은 음성 명령 조건\n";
+        body += cppChain(block.getNextBlock(), "  ");
+      });
+      commandBlocks.forEach(block => {
+        body += `  if (recognizedText.indexOf(${cppString(block.getFieldValue("COMMAND"))}) >= 0) {\n`;
+        body += cppChain(block.getNextBlock(), "    ");
+        body += "  }\n";
+      });
+      aiHandlers.push(`${wakeSummary}
+// 브라우저가 음성을 인식하면 웹앱이 같은 동작을 USB로 Arduino에 전달합니다.
+void handleAiSpeech(const String &recognizedText) {
+${body}}
+`);
+    }
+
     const setupLines = ["  Serial.begin(115200);"];
     hardware.dht.forEach(({ pin, type }) => setupLines.push(`  ${dhtName(pin, type)}.begin();`));
     hardware.servoPins.forEach(pin => setupLines.push(`  ${cppIdentifier(pin, "servo")}.attach(${pin});`));
@@ -3049,8 +3095,8 @@ void initializeMp3() {
     const loopBlocks = workspace.getTopBlocks(true).filter(block => block.type === "arduino_loop");
     const loopBody = loopBlocks.map(block => cppChain(block.getNextBlock(), "  ")).join("");
 
-    const speechNote = hardware.types.has("speech_when_heard")
-      ? "// 주의: AI 음성인식 이벤트는 브라우저 전용이며 INO/보드 단독 실행에는 포함되지 않습니다.\n"
+    const speechNote = [...hardware.types].some(type => type.startsWith("speech_"))
+      ? "// 주의: 마이크 음성인식과 음성합성은 웹앱에서 처리하며, 아래 AI 함수는 블록 동작을 C++로 보여줍니다.\n"
       : "";
 
     return `// OneMaker Arduino UNO·Nano Studio
@@ -3064,12 +3110,13 @@ ${globals.join("\n")}
 ${helpers.join("\n")}
 
 ${customFunctions.join("\n")}
+${aiHandlers.join("\n")}
 void setup() {
 ${setupLines.filter(Boolean).join("\n")}
 }
 
 void loop() {
-${loopBody || "  // ‘계속 실행’ 블록을 추가하세요.\n"}}
+${loopBody || (aiHandlers.length ? "  // AI 음성 명령은 웹앱에서 감지되어 handleAiSpeech()의 동작을 실행합니다.\n" : "  // ‘계속 실행’ 블록을 추가하세요.\n")}}
 `;
   }
 
