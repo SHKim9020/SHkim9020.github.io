@@ -45,6 +45,7 @@
   let lastSpeechText = "";
   let lastSpeechNumber = 0;
   let speechExecutionQueue = Promise.resolve();
+  let speechCommandExecuting = false;
   let speechCommandActiveUntil = 0;
   let speechCommandTimer = null;
   let speechActiveWakeBlock = null;
@@ -2015,8 +2016,19 @@
   }
 
   function enqueueSpeechChain(block, after) {
+    const commandText = lastSpeechText;
+    const commandNumber = lastSpeechNumber;
     speechExecutionQueue = speechExecutionQueue
-      .then(() => executeChain(block?.getNextBlock()))
+      .then(async () => {
+        lastSpeechText = commandText;
+        lastSpeechNumber = commandNumber;
+        speechCommandExecuting = true;
+        try {
+          await executeChain(block?.getNextBlock());
+        } finally {
+          speechCommandExecuting = false;
+        }
+      })
       .then(() => after?.())
       .catch(error => {
         console.error(error);
@@ -2386,6 +2398,10 @@
         await sleep(Math.max(0, Number(await evaluate(inputBlock(block, "SECONDS"), functionDepth))) * 1000);
         return;
       case "control_forever":
+        if (speechCommandExecuting) {
+          await executeChain(block.getInputTargetBlock("DO"), functionDepth);
+          return;
+        }
         while (!runCancelled) {
           await executeChain(block.getInputTargetBlock("DO"), functionDepth);
           await sleep(LIVE_LOOP_DELAY_MS);
