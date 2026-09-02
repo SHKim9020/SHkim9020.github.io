@@ -264,16 +264,15 @@ void setMotor(uint8_t pin1, uint8_t pin2, int speedValue) {
   }
 }
 
-void release28BYJ48() {
-  DDRB |= 0x0F;
-  PORTB &= 0xF0;
-}
-
 void rotate28BYJ48(uint8_t mode, uint16_t angle) {
   static const uint8_t phases[4] = {0x09, 0x03, 0x06, 0x0C};
-  uint8_t rpm = constrain(mode >> 1, 1, 15);
-  unsigned long steps = (unsigned long)constrain(angle, 0, 3600) * 2048UL / 360UL;
-  unsigned int stepDelay = 29297U / rpm;
+  static const uint16_t delays[15] PROGMEM = {
+    29297, 14648, 9766, 7324, 5859, 4883, 4185, 3662,
+    3255, 2930, 2663, 2441, 2254, 2093, 1953
+  };
+  uint8_t rpm = mode >> 1;
+  uint16_t steps = (angle << 2) + angle + (angle >> 1) + (angle >> 3) + (angle >> 4);
+  uint16_t stepDelay = pgm_read_word(delays + rpm - 1);
   uint8_t phase = 0;
   DDRB |= 0x0F;
   while (steps--) {
@@ -806,7 +805,7 @@ void executeStoredProgramStep() {
     long speed = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
     if (pin1 == 255) {
       if (pin2) rotate28BYJ48(pin2, clampLong(speed, 0, 3600));
-      else release28BYJ48();
+      else PORTB &= 0xF0;
     } else setMotor(pin1, pin2, clampLong(speed, -255, 255));
   } else if (opcode == OP_SERVO) {
     uint8_t pin = programByte(vmProgramCounter++);
@@ -1049,7 +1048,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     int value = tokenInt(args[2]);
     if (pin1 == 255) {
       if (pin2) rotate28BYJ48(pin2, constrain(value, 0, 3600));
-      else release28BYJ48();
+      else PORTB &= 0xF0;
     } else setMotor(pin1, pin2, value);
   } else if (!strcmp(operation, "SERVO") && count >= 2) {
     Servo *servo = servoForPin(tokenInt(args[0]));
