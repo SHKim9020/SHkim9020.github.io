@@ -39,6 +39,9 @@
   let speechShouldRestart = false;
   let speechPausedForTts = false;
   let speechRestartTimer = null;
+  let speechInterimTimer = null;
+  let lastHandledSpeechKey = "";
+  let lastHandledSpeechAt = 0;
   let lastSpeechText = "";
   let lastSpeechNumber = 0;
   let speechExecutionQueue = Promise.resolve();
@@ -1874,10 +1877,19 @@
     return String(value || "")
       .normalize("NFKC")
       .toLocaleLowerCase("ko-KR")
-      .replace(/(?:한|일|1)\s*(?:단계|단)/g, "1단")
-      .replace(/(?:두|이|2)\s*(?:단계|단)/g, "2단")
-      .replace(/(?:세|삼|3)\s*(?:단계|단)/g, "3단")
+      .replace(/(?:첫째|첫|하나|한|일|1)\s*(?:번째\s*)?(?:단계|단)/g, "1단")
+      .replace(/(?:둘째|둘|두|이|2)\s*(?:번째\s*)?(?:단계|단)/g, "2단")
+      .replace(/(?:셋째|셋|세|삼|3)\s*(?:번째\s*)?(?:단계|단)/g, "3단")
+      .replace(/켜\s*주세요|켜\s*줘요/g, "켜줘")
+      .replace(/꺼\s*주세요|꺼\s*줘요/g, "꺼줘")
       .replace(/[\s.,!?~·'\"“”‘’]/g, "");
+  }
+
+  function speechPronunciationText(value) {
+    return String(value || "")
+      .replace(/1\s*단/g, "일 단")
+      .replace(/2\s*단/g, "이 단")
+      .replace(/3\s*단/g, "삼 단");
   }
 
   function koreanNumberValue(value) {
@@ -1950,8 +1962,10 @@
     speechCommandActiveUntil = 0;
     speechActiveWakeBlock = null;
     clearTimeout(speechRestartTimer);
+    clearTimeout(speechInterimTimer);
     clearTimeout(speechCommandTimer);
     speechRestartTimer = null;
+    speechInterimTimer = null;
     speechCommandTimer = null;
     try { speechRecognition?.abort(); } catch (_) {}
     window.speechSynthesis?.cancel();
@@ -1963,7 +1977,7 @@
     clearTimeout(speechRestartTimer);
     speechRestartTimer = setTimeout(() => {
       try { speechRecognition?.start(); } catch (_) {}
-    }, 250);
+    }, 80);
   }
 
   function wakeWordBlocks() {
@@ -2028,7 +2042,13 @@
   }
 
   function handleSpeechResult(transcript) {
-    lastSpeechText = String(transcript || "").trim();
+    const receivedText = String(transcript || "").trim();
+    const receivedKey = normalizeSpeechText(receivedText);
+    if (!receivedKey) return;
+    if (receivedKey === lastHandledSpeechKey && Date.now() - lastHandledSpeechAt < 1200) return;
+    lastHandledSpeechKey = receivedKey;
+    lastHandledSpeechAt = Date.now();
+    lastSpeechText = receivedText;
     if (!lastSpeechText) return;
     lastSpeechNumber = extractSpeechNumber(lastSpeechText);
     appendSerial(`[AI 음성] ${lastSpeechText}`);
@@ -2113,8 +2133,8 @@
         speechRecognition = new Recognition();
         speechRecognition.lang = "ko-KR";
         speechRecognition.continuous = true;
-        speechRecognition.interimResults = false;
-        speechRecognition.maxAlternatives = 1;
+        speechRecognition.interimResults = true;
+        speechRecognition.maxAlternatives = 3;
         speechRecognition.onstart = () => {
           speechListening = true;
           if (speechCommandIsActive()) {
@@ -2126,7 +2146,32 @@
         };
         speechRecognition.onresult = event => {
           for (let index = event.resultIndex; index < event.results.length; index++) {
-            if (event.results[index].isFinal) handleSpeechResult(event.results[index][0].transcript);
+            const result = event.results[index];
+            const alternatives = Array.from(result).map(item => item.transcript).filter(Boolean);
+            const transcript = alternatives.sort((left, right) => {
+              const score = value => {
+                const normalized = normalizeSpeechText(value);
+                let points = /[123]단/.test(normalized) ? 50 : 0;
+                for (const block of workspace.getAllBlocks(false)) {
+                  if (block.type !== "text") continue;
+                  const expected = normalizeSpeechText(block.getFieldValue("TEXT"));
+                  if (expected && (normalized.includes(expected) || expected.includes(normalized))) points += expected.length;
+                }
+                return points;
+              };
+              return score(right) - score(left);
+            })[0] || "";
+            clearTimeout(speechInterimTimer);
+            if (result.isFinal) {
+              handleSpeechResult(transcript);
+            } else {
+              const normalized = normalizeSpeechText(transcript);
+              const hasWakeWord = wakeWordBlocks().some(block => normalized.includes(normalizeSpeechText(block.getFieldValue("WAKE"))));
+              const looksComplete = /[123]단/.test(normalized) && /(켜|꺼|동작|정지|속도)/.test(normalized);
+              if (hasWakeWord || (speechCommandIsActive() && looksComplete)) {
+                speechInterimTimer = setTimeout(() => handleSpeechResult(transcript), hasWakeWord ? 100 : 220);
+              }
+            }
           }
         };
         speechRecognition.onerror = event => {
@@ -2159,8 +2204,9 @@
     return new Promise(resolve => {
       const spokenText = String(value ?? "");
       appendSpeechChat("assistant", spokenText);
-      const utterance = new SpeechSynthesisUtterance(spokenText);
+      const utterance = new SpeechSynthesisUtterance(speechPronunciationText(spokenText));
       utterance.lang = "ko-KR";
+      utterance.rate = 1.18;
       const resume = () => {
         speechPausedForTts = false;
         if (speechShouldRestart && !runCancelled) scheduleSpeechRestart();
@@ -2253,8 +2299,10 @@
         const left = await evaluate(inputBlock(block, "A"), functionDepth);
         const right = await evaluate(inputBlock(block, "B"), functionDepth);
         const comparesSpeech = [inputBlock(block, "A")?.type, inputBlock(block, "B")?.type].includes("speech_result");
+        const leftSpeech = normalizeSpeechText(left);
+        const rightSpeech = normalizeSpeechText(right);
         const equal = comparesSpeech
-          ? normalizeSpeechText(left) === normalizeSpeechText(right)
+          ? leftSpeech === rightSpeech || leftSpeech.includes(rightSpeech) || rightSpeech.includes(leftSpeech)
           : left == right;
         switch (block.getFieldValue("OP")) {
           case "EQ": return equal;
