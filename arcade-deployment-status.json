@@ -1,7 +1,7 @@
 {
   "status": "success",
-  "checkedAt": "2026-09-01T15:40:09Z",
-  "sourceCommit": "6765ae4f5d86dac09f1ac6a372b3719213bdc1fe",
+  "checkedAt": "2026-09-02T00:48:16Z",
+  "sourceCommit": "e8098087d12b9e8d5560a6c46b77c646e6564dff",
   "publicUrl": "https://shkim9020.github.io/onemaker-arcade-studio/",
   "build": "success",
   "stage": "success",
@@ -19,5 +19,5 @@
   "buildInfoCommitMatches": "true",
   "editorFiles": "5707",
   "shellIndexBytes": "1809",
-  "targetBytes": "12322635"
+  "targetBytes": "12322977"
 }
