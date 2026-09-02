@@ -116,7 +116,7 @@ test("driver initializes CH340, discovers bulk endpoints, and pulses DTR/RTS", a
 
 test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.ok(html.indexOf("ch340-webserial.js") < html.indexOf("arduino-web-uploader"));
-  assert.match(sw, /ch340-webserial\.js\?v=1\.0\.1/);
+  assert.match(sw, /ch340-webserial\.js\?v=1\.0\.2/);
   assert.match(app, /OneMakerCH340\?\.active/);
   assert.match(html, /UNO CH340\(1A86:7523\)/);
 });
