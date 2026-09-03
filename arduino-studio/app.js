@@ -47,6 +47,7 @@
   let lastSpeechNumber = 0;
   let speechExecutionQueue = Promise.resolve();
   let speechCommandExecuting = false;
+  let aiSessionReady = false;
   let speechCommandActiveUntil = 0;
   let speechCommandTimer = null;
   let speechActiveWakeBlock = null;
@@ -273,13 +274,13 @@
       type: "speech_wake_word",
       message0: "🎤 호출어 %1 → %2초 대기",
       args0: [
-        { type: "field_input", name: "WAKE", text: "지니야" },
+        { type: "field_input", name: "WAKE", text: "친구야" },
         { type: "field_number", name: "TIMEOUT", value: 8, min: 3, max: 30, precision: 1 }
       ],
       nextStatement: null,
       inputsInline: true,
       colour: 315,
-      tooltip: "호출어를 들은 뒤에만 음성 명령 블록이 동작합니다."
+      tooltip: "호출어를 말하거나 AI 채팅에 입력한 뒤 명령 블록이 동작합니다."
     },
     {
       type: "speech_when_heard",
@@ -795,7 +796,7 @@
         { kind: "block", type: "husky_value", inputs: { ID: numberShadow(1) } }
       ] },
       { kind: "category", name: "인공지능", colour: "315", contents: [
-        { kind: "block", type: "speech_wake_word", fields: { WAKE: "지니야", TIMEOUT: 8 } },
+        { kind: "block", type: "speech_wake_word", fields: { WAKE: "친구야", TIMEOUT: 8 } },
         { kind: "block", type: "speech_when_heard", fields: { COMMAND: "선풍기 1단 켜" } },
         { kind: "block", type: "speech_result" },
         { kind: "block", type: "speech_number" },
@@ -950,6 +951,8 @@
     $("#downloadInoBtn").addEventListener("click", downloadIno);
     $("#clearSerialBtn").addEventListener("click", clearSerialOutput);
     $("#clearSpeechChatBtn").addEventListener("click", clearSpeechChat);
+    $("#speechChatSendBtn").addEventListener("click", sendSpeechChatCommand);
+    $("#speechChatInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSpeechChatCommand(); });
     $("#serialSendBtn").addEventListener("click", sendSerialText);
     $("#serialInput").addEventListener("keydown", event => { if (event.key === "Enter") sendSerialText(); });
     $("#testHighBtn").addEventListener("click", () => sendAction("DW", $("#testPin").value, 1));
@@ -1054,7 +1057,7 @@
     const androidCh340 = window.OneMakerCH340?.active;
     $("#connectBtn").disabled = !supported;
     $("#saveBoardBtn").disabled = !supported;
-    $("#aiRunBtn").disabled = !supported || !speechSupported;
+    $("#aiRunBtn").disabled = !supported;
     if (androidCh340) {
       $("#connectBtn").lastChild.textContent = "② CH340 USB 연결";
       $("#connectionStatus").textContent = `Android CH340 준비${window.OneMakerCH340.mode === "patched" ? " · 호환 모드" : ""}`;
@@ -1064,7 +1067,7 @@
     } else if (!supported) {
       $("#connectionStatus").textContent = "Chrome·Edge 필요";
     }
-    if (!speechSupported) $("#aiSpeechStatus").textContent = "이 브라우저는 음성인식을 지원하지 않습니다. Chrome 또는 Edge를 사용하세요.";
+    if (!speechSupported) $("#aiSpeechStatus").textContent = "음성인식은 지원되지 않지만 AI 채팅 탭에서 명령을 입력할 수 있습니다.";
   }
 
   function openFirmwareDialog() {
@@ -1507,7 +1510,7 @@
 
   function compileStoredProgram() {
     if (workspace.getAllBlocks(false).some(block => block.type.startsWith("speech_"))) {
-      throw new Error("AI 음성인식 블록은 브라우저의 마이크가 필요합니다. USB를 연결하고 ‘④ AI 음성 실행’을 사용하세요.");
+      throw new Error("AI 음성·채팅 블록은 브라우저에서 실행합니다. USB를 연결하고 ‘④ AI 음성 실행’ 또는 AI 채팅을 사용하세요.");
     }
     const context = {
       variables: new Map(),
@@ -1569,9 +1572,9 @@
       chip.textContent = "AI는 브라우저에서 실행";
       closeButton.disabled = false;
       $("#saveBoardProgress").value = 100;
-      $("#saveBoardTitle").textContent = "AI 음성 프로젝트 실행 안내";
-      $("#saveBoardMessage").textContent = "음성인식은 PC의 마이크를 사용하므로 Arduino에 저장하지 않습니다. 런타임 설치 후 USB를 연결한 상태에서 ④ AI 음성 실행을 누르세요.";
-      setSaveBoardResult("success", "① 런타임 설치(보드당 1회) → ② USB 연결 → ④ AI 음성 실행");
+      $("#saveBoardTitle").textContent = "AI 음성·채팅 프로젝트 실행 안내";
+      $("#saveBoardMessage").textContent = "AI 명령은 브라우저에서 처리하므로 Arduino에 저장하지 않습니다. 런타임 설치 후 USB를 연결하고 음성 실행 또는 AI 채팅 입력을 사용하세요.";
+      setSaveBoardResult("success", "① 런타임 설치(보드당 1회) → ② USB 연결 → ④ AI 음성 실행 또는 AI 채팅");
       return;
     }
     if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
@@ -1733,6 +1736,7 @@
 
   function closeSerialState() {
     if (speechShouldRestart || speechListening) stopSpeechRecognition("USB 연결이 끊어져 AI 음성인식을 중지했습니다.");
+    aiSessionReady = false;
     serialConnected = false;
     runtimeReady = false;
     runtimeVersion = "";
@@ -1960,7 +1964,7 @@
     if (!log) return;
     const empty = document.createElement("p");
     empty.className = "speech-chat-empty";
-    empty.textContent = "인식한 음성과 AI의 답변이 여기에 표시됩니다.";
+    empty.textContent = "음성 또는 채팅 명령과 AI의 답변이 여기에 표시됩니다.";
     log.replaceChildren(empty);
   }
 
@@ -2001,7 +2005,7 @@
   }
 
   function primaryWakeWord() {
-    return String(wakeWordBlocks()[0]?.getFieldValue("WAKE") || "지니야").trim() || "지니야";
+    return String(wakeWordBlocks()[0]?.getFieldValue("WAKE") || "친구야").trim() || "친구야";
   }
 
   function speechCommandIsActive() {
@@ -2064,21 +2068,69 @@
     }
     if (starts.length) {
       appendSerial("[AI 준비] 시작하면 블록 실행 완료");
-      appendSpeechChat("system", "보드 초기화 완료 · 음성 명령을 시작합니다");
+      appendSpeechChat("system", "보드 초기화 완료 · 음성 또는 채팅 명령을 시작합니다");
     }
   }
 
-  function handleSpeechResult(transcript) {
+  function aiProjectError() {
+    if (!wakeWordBlocks().length) return "인공지능 탭에서 ‘호출어 친구야 감지하면’ 블록을 추가하세요.";
+    const hasCommandBlock = workspace.getTopBlocks(true).some(block => block.type === "speech_when_heard");
+    const hasWakeChain = wakeWordBlocks().some(block => block.getNextBlock());
+    if (!hasCommandBlock && !hasWakeChain) return "호출어 블록 아래에 명령 조건을 연결하거나 ‘호출 후 음성에서 … 들리면’ 블록을 추가하세요.";
+    return "";
+  }
+
+  async function prepareAiSession() {
+    if (!serialConnected) throw new Error("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
+    const projectError = aiProjectError();
+    if (projectError) throw new Error(projectError);
+    await ensureRuntime();
+    if (!aiSessionReady) {
+      runCancelled = false;
+      await executeAiStartBlocks();
+      aiSessionReady = true;
+    }
+  }
+
+  function finishAiCommand(source) {
+    if (source === "chat" && !speechShouldRestart) {
+      setSpeechUi(`AI 채팅 명령 준비됨 · “${primaryWakeWord()}” 없이 바로 입력할 수 있습니다.`);
+      return;
+    }
+    showWakeWordWaiting();
+  }
+
+  async function sendSpeechChatCommand() {
+    const input = $("#speechChatInput");
+    const value = input.value.trim();
+    if (!value) return;
+    try {
+      await prepareAiSession();
+      const heard = normalizeSpeechText(value);
+      const includesWakeWord = wakeWordBlocks().some(block => heard.includes(normalizeSpeechText(block.getFieldValue("WAKE"))));
+      if (!includesWakeWord && !speechCommandIsActive()) {
+        openSpeechCommandWindow(wakeWordBlocks()[0]);
+        appendSpeechChat("system", `채팅 명령 · 호출어 “${primaryWakeWord()}” 자동 적용`);
+      }
+      input.value = "";
+      handleSpeechResult(value, "chat");
+    } catch (error) {
+      toast(error.message);
+      setSpeechUi(error.message);
+    }
+  }
+
+  function handleSpeechResult(transcript, source = "voice") {
     const receivedText = String(transcript || "").trim();
     const receivedKey = normalizeSpeechText(receivedText);
     if (!receivedKey) return;
-    if (receivedKey === lastHandledSpeechKey && Date.now() - lastHandledSpeechAt < 1200) return;
+    if (source === "voice" && receivedKey === lastHandledSpeechKey && Date.now() - lastHandledSpeechAt < 1200) return;
     lastHandledSpeechKey = receivedKey;
     lastHandledSpeechAt = Date.now();
     lastSpeechText = receivedText;
     if (!lastSpeechText) return;
     lastSpeechNumber = extractSpeechNumber(lastSpeechText);
-    appendSerial(`[AI 음성] ${lastSpeechText}`);
+    appendSerial(`[AI ${source === "chat" ? "채팅" : "음성"}] ${lastSpeechText}`);
     appendSpeechChat("user", lastSpeechText);
     const heard = normalizeSpeechText(lastSpeechText);
     const wakeMatches = wakeWordBlocks()
@@ -2121,7 +2173,7 @@
         appendSerial(`[AI 명령 조건] ${lastSpeechText}`);
         appendSpeechChat("system", `명령 조건 확인 · ${lastSpeechText}`);
         closeSpeechCommandWindow("명령을 실행 중입니다.");
-        enqueueSpeechChain(wakeBlock, () => showWakeWordWaiting());
+        enqueueSpeechChain(wakeBlock, () => finishAiCommand(source));
         return;
       }
       const seconds = Math.max(1, Math.ceil((speechCommandActiveUntil - Date.now()) / 1000));
@@ -2133,7 +2185,7 @@
     appendSerial(`[AI 명령] ${command.getFieldValue("COMMAND")}`);
     appendSpeechChat("system", `명령 실행 · ${command.getFieldValue("COMMAND")}`);
     closeSpeechCommandWindow("명령을 실행 중입니다.");
-    enqueueSpeechChain(command, () => showWakeWordWaiting());
+    enqueueSpeechChain(command, () => finishAiCommand(source));
   }
 
   async function toggleSpeechRecognition() {
@@ -2143,19 +2195,11 @@
     }
     if (!serialConnected) return toast("먼저 ② USB 연결을 눌러 보드와 연결하세요.");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) return toast("Chrome 또는 Edge에서 AI 음성인식을 사용할 수 있습니다.");
-    if (!wakeWordBlocks().length) {
-      return toast("인공지능 탭에서 ‘호출어 지니야 감지하면’ 블록을 추가하세요.");
-    }
-    const hasCommandBlock = workspace.getTopBlocks(true).some(block => block.type === "speech_when_heard");
-    const hasWakeChain = wakeWordBlocks().some(block => block.getNextBlock());
-    if (!hasCommandBlock && !hasWakeChain) {
-      return toast("호출어 블록 아래에 명령 조건을 연결하거나 ‘호출 후 음성에서 … 들리면’ 블록을 추가하세요.");
-    }
+    if (!Recognition) return toast("음성인식은 지원되지 않습니다. AI 채팅 탭에서 명령을 입력하세요.");
+    const projectError = aiProjectError();
+    if (projectError) return toast(projectError);
     try {
-      await ensureRuntime();
-      runCancelled = false;
-      await executeAiStartBlocks();
+      await prepareAiSession();
       if (!speechRecognition) {
         speechRecognition = new Recognition();
         speechRecognition.lang = "ko-KR";
@@ -2615,6 +2659,7 @@
 
   async function stopWorkspace() {
     runCancelled = true;
+    aiSessionReady = false;
     stopSpeechRecognition("블록과 AI 음성인식을 정지했습니다.");
     try {
       if (runtimeReady) await sendAction("STOP");
@@ -2651,12 +2696,22 @@
 
   function loadProjectData(data) {
     if (!data?.workspace) throw new Error("OneMaker Arduino 프로젝트 파일이 아닙니다.");
+    aiSessionReady = false;
     workspace.clear();
     Blockly.serialization.workspaces.load(data.workspace, workspace);
+    migrateLegacyWakeWord();
     $("#projectName").value = data.name || "나의 아두이노 프로젝트";
     if (["uno", "nano", "nanoOldBootloader"].includes(data.board)) $("#boardType").value = data.board;
     updateBoardTitle();
     refreshCode();
+  }
+
+  function migrateLegacyWakeWord() {
+    for (const block of workspace.getAllBlocks(false)) {
+      if (block.type === "speech_wake_word" && String(block.getFieldValue("WAKE") || "").trim() === "지니야") {
+        block.setFieldValue("친구야", "WAKE");
+      }
+    }
   }
 
   function saveProject() {
@@ -2728,12 +2783,14 @@
 
   function clearWorkspace() {
     if (!confirm("모든 블록을 지울까요?")) return;
+    aiSessionReady = false;
     workspace.clear();
     refreshCode();
     scheduleAutosave();
   }
 
   function loadExample(showMessage) {
+    aiSessionReady = false;
     workspace.clear();
     const state = {
       blocks: {
@@ -3281,7 +3338,7 @@ void initializeMp3() {
     const commandBlocks = workspace.getTopBlocks(true).filter(block => block.type === "speech_when_heard");
     if (wakeBlocks.length || commandBlocks.length) {
       const wakeSummary = wakeBlocks.map(block =>
-        `// 호출어: ${cppString(block.getFieldValue("WAKE") || "지니야")} · 다음 명령 ${Number(block.getFieldValue("TIMEOUT")) || 8}초 대기`
+        `// 호출어: ${cppString(block.getFieldValue("WAKE") || "친구야")} · 다음 명령 ${Number(block.getFieldValue("TIMEOUT")) || 8}초 대기`
       ).join("\n");
       let body = "  aiSpeechResult = recognizedText;\n  aiSpeechNumber = recognizedText.toFloat();\n";
       wakeBlocks.filter(block => block.getNextBlock()).forEach(block => {
