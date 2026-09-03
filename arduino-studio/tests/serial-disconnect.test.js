@@ -27,8 +27,8 @@ test("CH340 stream cancellation closes the USB device", () => {
 });
 
 test("disconnect fix cache version is consistent", () => {
-  assert.match(index, /app\.js\?v=1\.5\.5/);
+  assert.match(index, /app\.js\?v=1\.5\.6/);
   assert.match(index, /ch340-webserial\.js\?v=1\.0\.2/);
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.5/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.6/);
   assert.match(sw, /ch340-webserial\.js\?v=1\.0\.2/);
 });
