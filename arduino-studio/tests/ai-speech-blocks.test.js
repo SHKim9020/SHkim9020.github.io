@@ -13,7 +13,7 @@ test("AI toolbox exposes classroom speech blocks", () => {
   for (const type of ["speech_wake_word", "speech_when_heard", "speech_result", "speech_number", "speech_speak", "speech_stop"]) {
     assert.match(app, new RegExp(`type: "${type}"`));
   }
-  assert.match(app, /text: "지니야"/);
+  assert.match(app, /text: "친구야"/);
   assert.match(app, /text: "선풍기 1단 켜"/);
   assert.match(app, /🎤 호출어 %1 → %2초 대기/);
   assert.match(app, /inputsInline: true/);
@@ -28,7 +28,7 @@ test("AI speech runs browser events and existing USB motor blocks", () => {
   assert.match(app, /handleSpeechResult\(transcript\)/);
   assert.match(app, /executeChain\(block\?\.getNextBlock\(\)\)/);
   assert.match(app, /await executeAiStartBlocks\(\)/);
-  assert.match(app, /보드 초기화 완료 · 음성 명령을 시작합니다/);
+  assert.match(app, /보드 초기화 완료 · 음성 또는 채팅 명령을 시작합니다/);
   assert.match(app, /case "dc_motor_pwm":[\s\S]*sendAction\("PW"/);
 });
 
@@ -62,9 +62,16 @@ test("AI chat tab shows recognized speech, command status, and spoken replies", 
   assert.match(html, /data-tab="chat"[^>]*>AI 채팅/);
   assert.match(html, /id="speechChatLog"/);
   assert.match(html, /id="clearSpeechChatBtn"/);
+  assert.match(html, /id="speechChatInput"/);
+  assert.match(html, /id="speechChatSendBtn"/);
   assert.match(app, /appendSpeechChat\("user", lastSpeechText\)/);
   assert.match(app, /appendSpeechChat\("system", `명령 실행/);
   assert.match(app, /appendSpeechChat\("assistant", spokenText\)/);
+  assert.match(app, /function sendSpeechChatCommand\(\)/);
+  assert.match(app, /handleSpeechResult\(value, "chat"\)/);
+  assert.match(app, /호출어 “\$\{primaryWakeWord\(\)\}” 자동 적용/);
+  assert.match(app, /source === "voice" && receivedKey === lastHandledSpeechKey/);
+  assert.match(app, /block\.setFieldValue\("친구야", "WAKE"\)/);
 });
 
 test("speech result, number extraction, TTS, and standalone warning are present", () => {
@@ -76,6 +83,6 @@ test("speech result, number extraction, TTS, and standalone warning are present"
   assert.match(app, /utterance\.rate = 1\.18/);
   assert.match(app, /\(\?:첫째\|첫\|하나\|한\|일\|1\).*"1단"/);
   assert.match(app, /comparesSpeech/);
-  assert.match(app, /AI 음성 프로젝트 실행 안내/);
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.4/);
+  assert.match(app, /AI 음성·채팅 프로젝트 실행 안내/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.5/);
 });
