@@ -15,6 +15,8 @@
   const EXECUTION_SLICE_STEPS = 40;
   const SERIAL_FLUSH_DELAY_MS = 100;
   const MAX_SERIAL_LINES = 400;
+  const SERIAL_WRITE_TIMEOUT_MS = 1800;
+  const MAX_SPEECH_COMMAND_QUEUE = 2;
 
   let workspace;
   let serialPort;
@@ -22,12 +24,15 @@
   let serialWriter;
   let serialConnected = false;
   let serialDisconnecting = false;
+  let serialSession = 0;
+  let serialWriteQueue = Promise.resolve();
   let runtimeReady = false;
   let runtimeVersion = "";
   let serialBuffer = "";
   let selectedBlockId = null;
   let copiedBlockState = null;
   let toastTimer;
+  let codeRefreshTimer = null;
   let deferredInstallPrompt = null;
   let requestSequence = 1;
   let runCancelled = false;
@@ -46,6 +51,7 @@
   let lastSpeechText = "";
   let lastSpeechNumber = 0;
   let speechExecutionQueue = Promise.resolve();
+  let speechPendingCommands = 0;
   let speechCommandExecuting = false;
   let aiSessionReady = false;
   let speechCommandActiveUntil = 0;
@@ -918,7 +924,7 @@
     workspace.addChangeListener(event => {
       if (event.type === Blockly.Events.SELECTED) selectedBlockId = event.newElementId || null;
       if (event.isUiEvent) return;
-      refreshCode();
+      scheduleCodeRefresh();
       scheduleAutosave();
     });
     $$(".side-tabs [data-tab]").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
@@ -1641,6 +1647,25 @@
   const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, Number(value) || 0));
 
+  function withTimeout(promise, milliseconds, message) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(message);
+        error.code = "TIMEOUT";
+        reject(error);
+      }, milliseconds);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  async function executionSleep(milliseconds) {
+    const deadline = Date.now() + Math.max(0, milliseconds);
+    while (!runCancelled && Date.now() < deadline) {
+      await sleep(Math.min(100, deadline - Date.now()));
+    }
+  }
+
   async function yieldToBrowser(force = false) {
     executionSliceSteps++;
     const now = performance.now();
@@ -1663,6 +1688,8 @@
       await serialPort.open({ baudRate: 115200, bufferSize: 1024 });
       serialWriter = serialPort.writable.getWriter();
       serialConnected = true;
+      serialSession++;
+      serialWriteQueue = Promise.resolve();
       runtimeReady = false;
       runtimeVersion = "";
       setConnected(true);
@@ -1700,6 +1727,8 @@
     if (serialDisconnecting) return;
     serialDisconnecting = true;
     runCancelled = true;
+    serialSession++;
+    serialWriteQueue = Promise.resolve();
     runtimeReady = false;
     runtimeVersion = "";
     const reader = serialReader;
@@ -1737,6 +1766,8 @@
   function closeSerialState() {
     if (speechShouldRestart || speechListening) stopSpeechRecognition("USB 연결이 끊어져 AI 음성인식을 중지했습니다.");
     aiSessionReady = false;
+    speechPendingCommands = 0;
+    speechExecutionQueue = Promise.resolve();
     serialConnected = false;
     runtimeReady = false;
     runtimeVersion = "";
@@ -1824,7 +1855,23 @@
 
   async function sendLine(line) {
     if (!serialWriter || !serialConnected) throw new Error("먼저 USB를 연결하세요.");
-    await serialWriter.write(new TextEncoder().encode(`${line}\n`));
+    const writer = serialWriter;
+    const session = serialSession;
+    const bytes = new TextEncoder().encode(`${line}\n`);
+    const task = serialWriteQueue.catch(() => {}).then(async () => {
+      if (!serialConnected || serialWriter !== writer || serialSession !== session) throw new Error("USB 연결이 끊어졌습니다.");
+      await withTimeout(writer.write(bytes), SERIAL_WRITE_TIMEOUT_MS, "USB 쓰기 응답 시간이 초과되었습니다.");
+    });
+    serialWriteQueue = task.catch(() => {});
+    try {
+      await task;
+    } catch (error) {
+      if (error.code === "TIMEOUT" && serialConnected && serialSession === session) {
+        disconnectSerial().catch(() => {});
+        throw new Error("USB 응답이 지연되어 연결을 안전하게 해제했습니다. 다시 연결하세요.");
+      }
+      throw error;
+    }
   }
 
   async function ensureRuntime() {
@@ -2035,8 +2082,13 @@
   }
 
   function enqueueSpeechChain(block, after) {
+    if (speechPendingCommands >= MAX_SPEECH_COMMAND_QUEUE) {
+      appendSpeechChat("system", "이전 명령을 처리 중입니다. 잠시 후 다시 시도하세요.");
+      return;
+    }
     const commandText = lastSpeechText;
     const commandNumber = lastSpeechNumber;
+    speechPendingCommands++;
     speechExecutionQueue = speechExecutionQueue
       .then(async () => {
         lastSpeechText = commandText;
@@ -2052,7 +2104,8 @@
       .catch(error => {
         console.error(error);
         toast(error.message);
-      });
+      })
+      .finally(() => { speechPendingCommands = Math.max(0, speechPendingCommands - 1); });
   }
 
   async function executeAiStartBlocks() {
@@ -2278,11 +2331,19 @@
       const utterance = new SpeechSynthesisUtterance(speechPronunciationText(spokenText));
       utterance.lang = "ko-KR";
       utterance.rate = 1.18;
+      let completed = false;
       const resume = () => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(speechTimeout);
         speechPausedForTts = false;
         if (speechShouldRestart && !runCancelled) scheduleSpeechRestart();
         resolve();
       };
+      const speechTimeout = setTimeout(() => {
+        window.speechSynthesis.cancel();
+        resume();
+      }, Math.min(12000, Math.max(3000, spokenText.length * 180)));
       utterance.onend = resume;
       utterance.onerror = resume;
       speechPausedForTts = true;
@@ -2454,7 +2515,7 @@
   async function executeStatement(block, functionDepth = 0) {
     switch (block.type) {
       case "control_wait":
-        await sleep(Math.max(0, Number(await evaluate(inputBlock(block, "SECONDS"), functionDepth))) * 1000);
+        await executionSleep(Math.max(0, Number(await evaluate(inputBlock(block, "SECONDS"), functionDepth))) * 1000);
         return;
       case "control_forever":
         if (speechCommandExecuting) {
@@ -2524,7 +2585,7 @@
             }
           }
           previous = phase;
-          await sleep(stepDelay);
+          await executionSleep(stepDelay);
         }
         return;
       }
@@ -2541,7 +2602,7 @@
         const steps = Math.max(1, Math.min(90, Math.ceil(Math.abs(to - from))));
         await sendAction("SERVO", pin, Math.round(from));
         for (let step = 1; step <= steps && !runCancelled; step++) {
-          await sleep(duration / steps);
+          await executionSleep(duration / steps);
           await sendAction("SERVO", pin, Math.round(from + (to - from) * step / steps));
         }
         return;
@@ -2614,7 +2675,7 @@
         return sendAction("MP3PLAY", clamp(await evaluate(inputBlock(block, "TRACK"), functionDepth), 1, 2999));
       case "mp3_play_for":
         await sendAction("MP3PLAY", clamp(await evaluate(inputBlock(block, "TRACK"), functionDepth), 1, 2999));
-        await sleep(clamp(await evaluate(inputBlock(block, "SECONDS"), functionDepth), 0, 3600) * 1000);
+        await executionSleep(clamp(await evaluate(inputBlock(block, "SECONDS"), functionDepth), 0, 3600) * 1000);
         if (!runCancelled) await sendAction("MP3STOP");
         return;
       case "mp3_volume":
@@ -2660,6 +2721,8 @@
   async function stopWorkspace() {
     runCancelled = true;
     aiSessionReady = false;
+    speechPendingCommands = 0;
+    speechExecutionQueue = Promise.resolve();
     stopSpeechRecognition("블록과 AI 음성인식을 정지했습니다.");
     try {
       if (runtimeReady) await sendAction("STOP");
@@ -2855,6 +2918,14 @@
     } catch (error) {
       $("#codeView").value = `// 코드 생성 오류: ${error.message}`;
     }
+  }
+
+  function scheduleCodeRefresh() {
+    clearTimeout(codeRefreshTimer);
+    codeRefreshTimer = setTimeout(() => {
+      codeRefreshTimer = null;
+      refreshCode();
+    }, 90);
   }
 
   function cppIdentifier(value, prefix = "value") {
