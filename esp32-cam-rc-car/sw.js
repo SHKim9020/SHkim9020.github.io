@@ -1,4 +1,4 @@
-const CACHE = "om-esp32cam-rc-v0.1.19-ai";
+const CACHE = "om-esp32cam-rc-v0.1.20-ai";
 const ASSETS = ["./", "index.html", "style.css", "responsive-fix.css", "app.js", "manifest.webmanifest", "icons/rc-studio.svg"];
 
 self.addEventListener("install", event => {
