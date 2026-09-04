@@ -4,11 +4,15 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "mbedtls/base64.h"
 
-// OneMaker ESP32-CAM RC Runtime 0.1.13 — Blockly face detection event
+// OneMaker ESP32-CAM RC Runtime 0.1.14 — face detection and BLE program transfer
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
 static const int FLASH_LED = 4;
@@ -16,6 +20,9 @@ static const unsigned long REMOTE_WATCHDOG_MS = 900;
 static const int MOTOR_PWM_FREQ = 18000;
 static const int MOTOR_PWM_BITS = 8;
 static const int MOTOR_CHANNELS[4] = {4, 5, 6, 7};
+static const char *BLE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+static const char *BLE_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+static const char *BLE_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
 // AI Thinker ESP32-CAM camera pins
 #define PWDN_GPIO_NUM 32
@@ -70,12 +77,14 @@ int variableCount=0;
 int attachedMotorPins[4]={-1,-1,-1,-1};
 bool cameraReady=false;
 String cameraError;
+BLECharacteristic *bleTxCharacteristic=nullptr;
+volatile bool bleConnected=false;
 
 #if 0
 static const char REMOTE_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#07121f"><title>OneMaker 영상탐사 RC카</title><style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;min-height:100%;background:#07121f;color:#e9f6ff;font-family:system-ui,sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}main{max-width:680px;margin:auto;padding:12px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.top h1{font-size:18px;margin:0}.top span{font-size:10px;color:#75dce8}.video{position:relative;background:#02070d;border:1px solid #28475b;border-radius:17px;overflow:hidden;aspect-ratio:4/3;display:grid;place-items:center}.video img{width:100%;height:100%;object-fit:contain}.hud{position:absolute;inset:10px 12px auto;display:flex;justify-content:space-between;font:700 10px monospace;text-shadow:0 1px 4px #000}.hud i{color:#ff6370}.controls{margin-top:10px;background:#101f2d;border:1px solid #284052;border-radius:17px;padding:12px}.speed{display:grid;grid-template-columns:42px 1fr 35px;gap:8px;align-items:center;font-size:11px}.speed input{width:100%;accent-color:#22c5dc}.speed output{font-weight:900;color:#5fe5f2}.pad{display:grid;grid-template:64px 64px 64px/repeat(3,78px);gap:7px;justify-content:center;margin:9px auto}button{border:0;border-radius:15px;background:#21384a;color:#e9f6ff;font-size:25px;font-weight:900;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;box-shadow:inset 0 -3px #152938}.up{grid-column:2}.left{grid-row:2;grid-column:1}.stop{grid-row:2;grid-column:2;background:#5b2630;color:#ffced2}.right{grid-row:2;grid-column:3}.down{grid-row:3;grid-column:2}button small{display:block;font-size:9px}.on{outline:3px solid #4fe5ef;background:#205568}.resolution{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}.resolution button{font-size:10px;padding:9px 3px;background:#18384b}.resolution button.on{outline:2px solid #4fe5ef;background:#087fc5}.tools{display:flex;justify-content:center;gap:8px}.tools button{font-size:11px;padding:9px 12px;background:#1a3041}.status{text-align:center;font-size:10px;color:#8ba5b4;margin:7px}.landscape{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px}@media(max-width:620px){.landscape{display:block}}@media(orientation:landscape) and (max-height:560px){main{max-width:100%;padding:6px}.landscape{display:grid;grid-template-columns:minmax(0,1fr) 290px}.video{max-height:calc(100vh - 48px)}.top{margin-bottom:4px}.controls{margin-top:0}.pad{grid-template:55px 55px 55px/repeat(3,74px)}}
-</style></head><body><main><div class="top"><h1>📹 OneMaker 영상탐사 RC카</h1><span id="net">● Wi‑Fi 연결됨</span></div><div class="landscape"><div class="video"><img id="stream" alt="ESP32-CAM 실시간 영상"><div class="hud"><i>● LIVE</i><b id="motion">정지</b></div></div><section class="controls"><label class="speed">왼쪽<input id="leftSpeed" type="range" min="0" max="255" value="150"><output id="lv">150</output></label><label class="speed">오른쪽<input id="rightSpeed" type="range" min="0" max="255" value="150"><output id="rv">150</output></label><div class="pad"><button class="up" data-dir="forward">▲<small>전진</small></button><button class="left" data-dir="left">◀<small>좌회전</small></button><button class="stop" data-dir="stop">■<small>정지</small></button><button class="right" data-dir="right">▶<small>우회전</small></button><button class="down" data-dir="backward">▼<small>후진</small></button></div><div class="resolution"><button data-frame="QQVGA">빠름<br>160×120</button><button data-frame="QVGA" class="on">권장<br>320×240</button><button data-frame="VGA">고화질<br>640×480</button></div><div class="tools"><button id="flash">💡 조명</button><button id="flip">🔄 화면회전</button><button id="blockMode">🧩 블록 연동: 끔</button></div><p class="status"><b>펌웨어 v0.1.13</b> · 기본은 슬라이더가 우선인 수동 조종 모드입니다.</p></section></div></main><script>
+</style></head><body><main><div class="top"><h1>📹 OneMaker 영상탐사 RC카</h1><span id="net">● Wi‑Fi 연결됨</span></div><div class="landscape"><div class="video"><img id="stream" alt="ESP32-CAM 실시간 영상"><div class="hud"><i>● LIVE</i><b id="motion">정지</b></div></div><section class="controls"><label class="speed">왼쪽<input id="leftSpeed" type="range" min="0" max="255" value="150"><output id="lv">150</output></label><label class="speed">오른쪽<input id="rightSpeed" type="range" min="0" max="255" value="150"><output id="rv">150</output></label><div class="pad"><button class="up" data-dir="forward">▲<small>전진</small></button><button class="left" data-dir="left">◀<small>좌회전</small></button><button class="stop" data-dir="stop">■<small>정지</small></button><button class="right" data-dir="right">▶<small>우회전</small></button><button class="down" data-dir="backward">▼<small>후진</small></button></div><div class="resolution"><button data-frame="QQVGA">빠름<br>160×120</button><button data-frame="QVGA" class="on">권장<br>320×240</button><button data-frame="VGA">고화질<br>640×480</button></div><div class="tools"><button id="flash">💡 조명</button><button id="flip">🔄 화면회전</button><button id="blockMode">🧩 블록 연동: 끔</button></div><p class="status"><b>펌웨어 v0.1.14</b> · 기본은 슬라이더가 우선인 수동 조종 모드입니다.</p></section></div></main><script>
 const $=s=>document.querySelector(s),L=$('#leftSpeed'),R=$('#rightSpeed');$('#stream').src='http://'+location.hostname+':81/stream';let held='stop',timer=null,speedTimer=null,light=false,flipped=false,blocks=false,size='QVGA';const labels={forward:'전진 중',backward:'후진 중',left:'좌회전 중',right:'우회전 중',stop:'정지'};function speedInput(output,value){$(output).value=value;clearTimeout(speedTimer);speedTimer=setTimeout(()=>{if(held!=='stop'){show(held);send(held)}},70)}L.oninput=()=>speedInput('#lv',L.value);R.oninput=()=>speedInput('#rv',R.value);
 fetch('/api/status',{cache:'no-store'}).then(r=>r.json()).then(s=>{$('#net').textContent=s.camera?'● 카메라 정상':'● 카메라 오류 '+s.cameraError;if(!s.camera){$('#stream').alt='카메라 초기화 실패: '+s.cameraError}}).catch(()=>$('#net').textContent='● 상태 확인 실패');
 function call(path){return fetch(path,{cache:'no-store'}).catch(()=>$('#net').textContent='● 연결 확인')}
@@ -181,6 +190,35 @@ void applyConfig(JsonObjectConst c){JsonObjectConst p=c["pins"];config.in1=p["in
 bool loadProgram(){if(!LittleFS.exists(PROGRAM_PATH))return false;File f=LittleFS.open(PROGRAM_PATH,"r");DeserializationError e=deserializeJson(activeDocument,f);f.close();if(e)return false;applyConfig(activeDocument["config"]);return true;}
 bool saveUploadedProgram(){JsonDocument test;DeserializationError e=deserializeJson(test,uploadBuffer);if(e){emit("error",String("JSON: ")+e.c_str());return false;}File f=LittleFS.open(PROGRAM_PATH,"w");if(!f){emit("error","file open");return false;}f.print(uploadBuffer);f.close();activeDocument.clear();deserializeJson(activeDocument,uploadBuffer);applyConfig(activeDocument["config"]);return true;}
 
+void notifyBle(uint8_t type,uint16_t sequence=0,bool withSequence=false){if(!bleConnected||!bleTxCharacteristic)return;uint8_t reply[3]={type,(uint8_t)(sequence&255),(uint8_t)(sequence>>8)};bleTxCharacteristic->setValue(reply,withSequence?3:1);bleTxCharacteristic->notify();}
+class RcBleServerCallbacks:public BLEServerCallbacks{
+  void onConnect(BLEServer*)override{bleConnected=true;}
+  void onDisconnect(BLEServer *server)override{bleConnected=false;server->startAdvertising();}
+};
+class RcBleUploadCallbacks:public BLECharacteristicCallbacks{
+  void onWrite(BLECharacteristic *characteristic)override{
+    std::string value=characteristic->getValue();if(value.empty())return;const uint8_t *data=(const uint8_t*)value.data();size_t length=value.length();uint8_t op=data[0];
+    if(op=='B'){
+      if(length!=5){notifyBle('X');return;}size_t expected=(size_t)data[1]|((size_t)data[2]<<8)|((size_t)data[3]<<16)|((size_t)data[4]<<24);
+      if(expected==0||expected>60000){notifyBle('X');return;}stopProgram();stopRemoteHandler();uploadExpected=expected;uploadBuffer="";uploadBuffer.reserve(expected+16);uploadNextIndex=0;notifyBle('B');return;
+    }
+    if(op=='D'){
+      if(length<3){notifyBle('X');return;}uint16_t sequence=(uint16_t)data[1]|((uint16_t)data[2]<<8);size_t chunkLength=length-3;
+      if(sequence!=uploadNextIndex||uploadBuffer.length()+chunkLength>uploadExpected){notifyBle('X');return;}uploadBuffer.concat((const char*)data+3,chunkLength);uploadNextIndex++;notifyBle('D',sequence,true);return;
+    }
+    if(op=='E'){
+      if(uploadExpected==0||uploadBuffer.length()!=uploadExpected||!saveUploadedProgram()){notifyBle('X');return;}notifyBle('E');delay(20);startProgram();return;
+    }
+    if(op=='S'){stopProgram();stopRemoteHandler();stopCar();notifyBle('S');return;}
+    notifyBle('X');
+  }
+};
+void setupBluetooth(){
+  BLEDevice::init((String("OneMaker-RC-BLE-")+twoDigits()).c_str());BLEDevice::setMTU(185);BLEServer *server=BLEDevice::createServer();server->setCallbacks(new RcBleServerCallbacks());BLEService *service=server->createService(BLE_SERVICE_UUID);
+  bleTxCharacteristic=service->createCharacteristic(BLE_TX_UUID,BLECharacteristic::PROPERTY_NOTIFY);bleTxCharacteristic->addDescriptor(new BLE2902());BLECharacteristic *rx=service->createCharacteristic(BLE_RX_UUID,BLECharacteristic::PROPERTY_WRITE);rx->setCallbacks(new RcBleUploadCallbacks());service->start();
+  BLEAdvertising *advertising=BLEDevice::getAdvertising();advertising->addServiceUUID(BLE_SERVICE_UUID);advertising->setScanResponse(true);advertising->setMinPreferred(0x06);advertising->setMinPreferred(0x12);BLEDevice::startAdvertising();emit("ble",String("OneMaker-RC-BLE-")+twoDigits());
+}
+
 void remoteHandlerTask(void*){String name=pendingHandlerName;remoteUiSpeedActive=pendingHandlerUseUiSpeed;JsonArrayConst h=activeDocument["program"]["handlers"][name].as<JsonArrayConst>();executeSteps(h);remoteUiSpeedActive=false;handlerTaskHandle=nullptr;vTaskDelete(nullptr);}
 void runProgramHandler(const String &name,bool useUiSpeed){JsonArrayConst h=activeDocument["program"]["handlers"][name].as<JsonArrayConst>();if(h.isNull()||!h.size())return;stopRemoteHandler();programTaskStop=false;pendingHandlerName=name;pendingHandlerUseUiSpeed=useUiSpeed;xTaskCreatePinnedToCore(remoteHandlerTask,"rc-handler",6144,nullptr,2,&handlerTaskHandle,0);}
 void runRemoteHandler(const String &dir){pendingHandlerDirection=dir;runProgramHandler(dir,true);}
@@ -200,7 +238,7 @@ void startWifi(){WiFi.mode(WIFI_AP);WiFi.setSleep(false);WiFi.setTxPower(WIFI_PO
 
 void handleSerialLine(const String &line){
   JsonDocument d;DeserializationError e=deserializeJson(d,line);if(e){emit("error","JSON command");return;}String cmd=d["cmd"]|"";
-  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.13";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
+  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.14";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
   if(cmd=="stop"){stopProgram();ack("stopped");return;}
   if(cmd=="drive"){drive(d["dir"]|"stop",d["speed"]|150,d["speed"]|150);ack();return;}
   if(cmd=="setNumber"){int n=d["number"]|1;if(n<1||n>16){emit("error","number 1-16");return;}Preferences p;p.begin("onemaker-rc",false);p.putUChar("number",n);p.end();ack("number saved");delay(200);ESP.restart();return;}
@@ -212,7 +250,7 @@ void handleSerialLine(const String &line){
 
 void setup(){
   setupMotorOutputs();stopCar();Serial.begin(115200);delay(100);pinMode(FLASH_LED,OUTPUT);digitalWrite(FLASH_LED,LOW);Preferences p;p.begin("onemaker-rc",true);carNumber=p.getUChar("number",1);p.end();if(carNumber<1||carNumber>16)carNumber=1;
-  LittleFS.begin(true);setupCamera();loadProgram();startWifi();bool usbCommandWaiting=false;unsigned long safetyStart=millis();while(millis()-safetyStart<5000){if(Serial.available()){usbCommandWaiting=true;break;}delay(10);}if(activeDocument.size()&&!usbCommandWaiting)startProgram();else stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.13 / camera ")+(cameraReady?"OK":cameraError));
+  LittleFS.begin(true);setupCamera();loadProgram();setupBluetooth();startWifi();bool usbCommandWaiting=false;unsigned long safetyStart=millis();while(millis()-safetyStart<5000){if(Serial.available()){usbCommandWaiting=true;break;}delay(10);}if(activeDocument.size()&&!usbCommandWaiting)startProgram();else stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.14 / camera ")+(cameraReady?"OK":cameraError));
 }
 void loop(){
   webServer.handleClient();if(remoteMoving&&millis()-lastRemoteAt>REMOTE_WATCHDOG_MS){stopRemoteHandler();stopCar();}static String input;while(Serial.available()){char c=Serial.read();if(c=='\n'){input.trim();if(input.length())handleSerialLine(input);input="";}else if(c!='\r'&&input.length()<2048)input+=c;}delay(2);
