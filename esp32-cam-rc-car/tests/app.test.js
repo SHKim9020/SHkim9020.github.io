@@ -1,11 +1,13 @@
 const fs=require('fs'),assert=require('assert');const html=fs.readFileSync(__dirname+'/../index.html','utf8'),js=fs.readFileSync(__dirname+'/../app.js','utf8'),ino=fs.readFileSync(__dirname+'/../firmware/rc_cam_runtime/rc_cam_runtime.ino','utf8');
-for(const id of ['blocklyDiv','firmwareBtn','connectBtn','uploadBtn','carNumber','openRemoteBtn','copyBtn','pasteBtn','deleteBtn','centerBtn','sideCollapseBtn','pwaInstallBtn','testFlashOnBtn'])assert(html.includes(`id="${id}"`),`missing ${id}`);
+for(const id of ['blocklyDiv','firmwareBtn','connectBtn','bleConnectBtn','uploadBtn','carNumber','openRemoteBtn','copyBtn','pasteBtn','deleteBtn','centerBtn','sideCollapseBtn','pwaInstallBtn','testFlashOnBtn'])assert(html.includes(`id="${id}"`),`missing ${id}`);
 for(const block of ['event_start','event_forever','remote_when','face_when','face_avoid','car_drive','motor_pair','camera_flash'])assert(js.includes(`type:"${block}"`),`missing block ${block}`);
 for(const feature of ['AI 얼굴인식','handlers.face','op:"faceAvoid"','얼굴인식 회피 예제'])assert(js.includes(feature),`missing Blockly face feature ${feature}`);
+for(const feature of ['BLE_SERVICE_UUID','navigator.bluetooth.requestDevice','OneMaker-RC-BLE-','uploadBleProgram','offset+=16','먼저 USB 또는 Bluetooth를 연결하세요'])assert(js.includes(feature),`missing Bluetooth web feature ${feature}`);
 for(const safety of ['REMOTE_WATCHDOG_MS','pagehide','visibilitychange'])assert(js.includes(safety)||ino.includes(safety),`missing safety ${safety}`);
 assert(ino.includes('OneMaker-RC-'));assert(ino.includes('streamHandler'));assert(ino.includes('GPIO_NUM 32'));assert(ino.includes('op=="cameraFrame"'));
-for(const feature of ['remote_page_v012.h','0.1.13','op=="faceAvoid"','/api/face','runProgramHandler("face",false)','lastFaceSide'])assert(ino.includes(feature),`missing AI firmware feature ${feature}`);
+for(const feature of ['remote_page_v012.h','0.1.14','op=="faceAvoid"','/api/face','runProgramHandler("face",false)','lastFaceSide'])assert(ino.includes(feature),`missing AI firmware feature ${feature}`);
+for(const feature of ['BLEDevice::init','RcBleUploadCallbacks','setupBluetooth','BLE_SERVICE_UUID','OneMaker-RC-BLE-','uploadBuffer.concat','notifyBle'])assert(ino.includes(feature),`missing Bluetooth firmware feature ${feature}`);
 const remote=fs.readFileSync(__dirname+'/../firmware/rc_cam_runtime/remote_page_v012.h','utf8');
 for(const feature of ['FACE_MODEL_B64','AI 얼굴 회피 시작','얼굴인식 블록 실행','pico.run_cascade','scanFace','avoid(face)','triggerFaceBlock(face)','/api/face?side=','얼굴 등록은 필요 없습니다'])assert(remote.includes(feature),`missing face avoidance feature ${feature}`);
-for(const file of ['bootloader.bin','partitions.bin','boot_app0.bin','rc_cam_runtime-0.1.0.part1.bin','rc_cam_runtime-0.1.0.part2.bin'])assert(fs.existsSync(__dirname+'/../firmware/'+file),`missing firmware ${file}`);
+for(const file of ['bootloader.bin','partitions.bin','boot_app0.bin','rc_cam_runtime-0.1.0.part1.bin','rc_cam_runtime-0.1.0.part2.bin','rc-runtime-0.1.14-part-0.bin','rc-runtime-0.1.14-part-1.bin'])assert(fs.existsSync(__dirname+'/../firmware/'+file),`missing firmware ${file}`);
 console.log('ESP32-CAM RC Studio static tests passed');
