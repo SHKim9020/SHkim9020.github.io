@@ -47,23 +47,26 @@ jobs:
           split = 512 * 1024
           assert len(image) > split, f'unexpectedly small application image: {len(image)}'
           output = Path('esp32-cam-rc-car/firmware')
-          (output / 'rc-runtime-0.1.12-part-0.bin').write_bytes(image[:split])
-          (output / 'rc-runtime-0.1.12-part-1.bin').write_bytes(image[split:])
+          (output / 'rc-runtime-0.1.13-part-0.bin').write_bytes(image[:split])
+          (output / 'rc-runtime-0.1.13-part-1.bin').write_bytes(image[split:])
           assert b'OneMaker-RC-' in image
           assert b'data-frame="QVGA"' in image
           assert b'id="blockMode"' in image
-          assert b'Runtime 0.1.12' in image
+          assert b'Runtime 0.1.13' in image
           assert b'FACE_MODEL_B64' in image
           assert b'AI 얼굴 회피' in image
+          assert b'/api/face' in image
+          assert b'faceAvoid' in image
+          assert b'얼굴인식 블록 실행' in image
           print(f'application bytes={len(image)}, part0={split}, part1={len(image)-split}')
           PY
 
       - name: Commit verified RC firmware
         run: |
           git add \
-            esp32-cam-rc-car/firmware/rc-runtime-0.1.12-part-0.bin \
-            esp32-cam-rc-car/firmware/rc-runtime-0.1.12-part-1.bin
+            esp32-cam-rc-car/firmware/rc-runtime-0.1.13-part-0.bin \
+            esp32-cam-rc-car/firmware/rc-runtime-0.1.13-part-1.bin
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Build ESP32-CAM RC runtime 0.1.12 [skip rc firmware]"
+          git commit -m "Build ESP32-CAM RC runtime 0.1.13 [skip rc firmware]"
           git push
