@@ -6,7 +6,11 @@
   const COLORS = { event: 38, motor: 210, camera: 285, ai: 330, output: 65 };
   const SIDE_PANEL_KEY = "onemaker-esp32cam-rc-side-collapsed";
   const REMOTE_URL = "http://192.168.4.1/";
+  const BLE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const BLE_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+  const BLE_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
   let workspace, port, reader, writer, readLoopActive = false, uploadWaiter = null, serialByteCount = 0, serialBootCount = 0;
+  let connectionMode = null, bleDevice = null, bleRx = null, bleTx = null, bleWaiter = null;
   let selectedBlockId = null, copiedBlockState = null, deferredInstallPrompt = null;
 
   function toast(message) {
@@ -147,6 +151,7 @@
   async function connectSerial(){
     if(!("serial" in navigator)){toast("PC Chrome/Edge에서 Web Serial을 사용할 수 있습니다.");return}
     try{
+      disconnectBle(true);
       if(port)await closeSerial();
       port=await navigator.serial.requestPort();await port.open({baudRate:115200,bufferSize:1024});writer=port.writable.getWriter();readLoopActive=true;readSerial();
       const trafficStart=serialByteCount,bootStart=serialBootCount;
@@ -157,21 +162,28 @@
       if(!connected){
         if(serialBootCount-bootStart>=2)throw new Error("보드가 반복 재부팅 중 — 모터 전원을 분리하고 USB 전원을 확인하세요.");
         if(serialByteCount===trafficStart)throw new Error("보드 시리얼 출력 없음 — USB 재연결 후 RST를 한 번만 누르세요.");
-        throw new Error("부팅 로그만 확인됨 — RC카 전체 펌웨어 0.1.13을 다시 설치하세요.");
+        throw new Error("부팅 로그만 확인됨 — RC카 전체 펌웨어 0.1.14를 다시 설치하세요.");
       }
-      setConnected(true);toast("ESP32‑CAM이 안전 정지 상태로 연결되었습니다.");
-    }catch(e){setConnected(false);await closeSerial();toast("USB 연결 실패: "+e.message)}
+      setConnected("usb");toast("ESP32‑CAM이 USB로 연결되었습니다.");
+    }catch(e){setConnected(null);await closeSerial();toast("USB 연결 실패: "+e.message)}
   }
-  function setConnected(on){$("#connectionStatus").textContent=on?"USB 연결됨":"USB 연결 안 됨";$("#connectionStatus").classList.toggle("connected",on);$("#connectionStatus").classList.toggle("disconnected",!on);$("#connectBtn .dot").style.background=on?"#41e0a4":"#98a5ba"}
-  async function readSerial(){const decoder=new TextDecoder();let buffer="";try{reader=port.readable.getReader();while(readLoopActive){const {value,done}=await reader.read();if(done)break;serialByteCount+=value?.byteLength||0;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,n).trim();buffer=buffer.slice(n+1);if(line){if(line.includes("rst:0x1 (POWERON_RESET)"))serialBootCount++;$("#serialOutput").textContent+=line+"\n";$("#serialOutput").scrollTop=$("#serialOutput").scrollHeight;try{const j=JSON.parse(line);if(uploadWaiter&&(j.type==="ack"||j.type==="uploadDone"||j.type==="error")){const w=uploadWaiter;uploadWaiter=null;j.type==="error"?w.reject(new Error(j.message)):w.resolve(j)}}catch{}}}}}catch(e){if(readLoopActive)toast("USB 연결이 끊어졌습니다.")}finally{reader?.releaseLock();setConnected(false)}}
+  function setConnected(mode){connectionMode=mode;const on=!!mode,label=mode==="usb"?"USB 연결됨":mode==="ble"?"Bluetooth 연결됨":"USB/Bluetooth 연결 안 됨";$("#connectionStatus").textContent=label;$("#connectionStatus").classList.toggle("connected",on);$("#connectionStatus").classList.toggle("disconnected",!on);$("#connectBtn .dot").style.background=mode==="usb"?"#41e0a4":"#98a5ba";$("#bleConnectBtn .dot").style.background=mode==="ble"?"#41e0a4":"#98a5ba"}
+  async function readSerial(){const decoder=new TextDecoder();let buffer="";try{reader=port.readable.getReader();while(readLoopActive){const {value,done}=await reader.read();if(done)break;serialByteCount+=value?.byteLength||0;buffer+=decoder.decode(value,{stream:true});let n;while((n=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,n).trim();buffer=buffer.slice(n+1);if(line){if(line.includes("rst:0x1 (POWERON_RESET)"))serialBootCount++;$("#serialOutput").textContent+=line+"\n";$("#serialOutput").scrollTop=$("#serialOutput").scrollHeight;try{const j=JSON.parse(line);if(uploadWaiter&&(j.type==="ack"||j.type==="uploadDone"||j.type==="error")){const w=uploadWaiter;uploadWaiter=null;j.type==="error"?w.reject(new Error(j.message)):w.resolve(j)}}catch{}}}}}catch(e){if(readLoopActive)toast("USB 연결이 끊어졌습니다.")}finally{reader?.releaseLock();if(connectionMode==="usb")setConnected(null)}}
   async function sendLine(obj){if(!writer)throw new Error("먼저 USB를 연결하세요.");await writer.write(new TextEncoder().encode(JSON.stringify(obj)+"\n"))}
   function waitAck(timeout=3000){return new Promise((resolve,reject)=>{const waiter={timer:null,resolve:value=>{clearTimeout(waiter.timer);resolve(value)},reject:error=>{clearTimeout(waiter.timer);reject(error)}};waiter.timer=setTimeout(()=>{if(uploadWaiter===waiter){uploadWaiter=null;reject(new Error("보드 응답 시간 초과"))}},timeout);uploadWaiter=waiter})}
   async function command(obj,timeout=3000){const response=waitAck(timeout);try{await sendLine(obj);return await response}catch(e){if(uploadWaiter)uploadWaiter=null;throw e}}
   function bytesToBase64(bytes){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s)}
+  function disconnectBle(silent=false){const device=bleDevice;bleDevice=null;bleRx=null;bleTx=null;if(bleWaiter){bleWaiter.reject(new Error("Bluetooth 연결이 끊어졌습니다."));bleWaiter=null}if(device?.gatt?.connected)device.gatt.disconnect();if(connectionMode==="ble")setConnected(null);if(!silent)toast("Bluetooth 연결을 해제했습니다.")}
+  function onBleNotification(event){const view=event.target.value,bytes=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);if(!bleWaiter||!bytes.length)return;const waiter=bleWaiter;if(bytes[0]===88){bleWaiter=null;clearTimeout(waiter.timer);waiter.reject(new Error("ESP32가 Bluetooth 데이터를 거부했습니다."));return}if(bytes[0]!==waiter.type)return;if(waiter.seq>=0&&(bytes.length<3||(bytes[1]|bytes[2]<<8)!==waiter.seq))return;bleWaiter=null;clearTimeout(waiter.timer);waiter.resolve(bytes)}
+  function waitBleAck(type,seq=-1,timeout=7000){return new Promise((resolve,reject)=>{const waiter={type,seq,resolve,reject,timer:null};waiter.timer=setTimeout(()=>{if(bleWaiter===waiter){bleWaiter=null;reject(new Error("Bluetooth 응답 시간 초과"))}},timeout);bleWaiter=waiter})}
+  async function writeBlePacket(packet,type,seq=-1,timeout=7000){if(!bleRx||!bleDevice?.gatt?.connected)throw new Error("먼저 Bluetooth를 연결하세요.");const response=waitBleAck(type,seq,timeout);try{if(bleRx.writeValueWithResponse)await bleRx.writeValueWithResponse(packet);else await bleRx.writeValue(packet);return await response}catch(e){if(bleWaiter){clearTimeout(bleWaiter.timer);bleWaiter=null}throw e}}
+  async function connectBle(){if(!("bluetooth" in navigator)){toast("Android 또는 PC Chrome에서 Bluetooth를 사용할 수 있습니다.");return}try{if(port){await closeSerial();setConnected(null)}disconnectBle(true);bleDevice=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"OneMaker-RC-BLE-"}],optionalServices:[BLE_SERVICE_UUID]});bleDevice.addEventListener("gattserverdisconnected",()=>{bleRx=null;bleTx=null;if(connectionMode==="ble"){setConnected(null);toast("Bluetooth 연결이 끊어졌습니다.")}});const server=await bleDevice.gatt.connect(),service=await server.getPrimaryService(BLE_SERVICE_UUID);bleRx=await service.getCharacteristic(BLE_RX_UUID);bleTx=await service.getCharacteristic(BLE_TX_UUID);await bleTx.startNotifications();bleTx.addEventListener("characteristicvaluechanged",onBleNotification);setConnected("ble");toast(bleDevice.name+" 연결 완료")}catch(e){disconnectBle(true);setConnected(null);if(e.name!=="NotFoundError")toast("Bluetooth 연결 실패: "+e.message)}}
+  async function uploadBleProgram(bytes){const begin=new Uint8Array(5),beginView=new DataView(begin.buffer);begin[0]=66;beginView.setUint32(1,bytes.length,true);await writeBlePacket(begin,66,-1,12000);for(let offset=0,seq=0;offset<bytes.length;offset+=16,seq++){const chunk=bytes.slice(offset,offset+16),packet=new Uint8Array(chunk.length+3);packet[0]=68;packet[1]=seq&255;packet[2]=seq>>8;packet.set(chunk,3);await writeBlePacket(packet,68,seq,8000);if(seq%12===0)$("#connectionStatus").textContent=`Bluetooth 전송 ${Math.min(100,Math.round((offset+chunk.length)*100/bytes.length))}%`}await writeBlePacket(new Uint8Array([69]),69,-1,15000);setConnected("ble")}
   async function uploadProgram(){
     const button=$("#uploadBtn");button.disabled=true;
-    try{await command({cmd:"stop"},12000);const payload={config:settings(),program:compileProgram()};const bytes=new TextEncoder().encode(JSON.stringify(payload));await command({cmd:"uploadBegin",size:bytes.length},12000);for(let i=0,index=0;i<bytes.length;i+=384,index++){await command({cmd:"uploadChunk",index,data:bytesToBase64(bytes.slice(i,i+384))},8000)}await command({cmd:"uploadEnd"},15000);toast("RC카에 저장하고 실행했습니다.")}catch(e){toast("전송 실패: "+e.message)}finally{button.disabled=false}
+    try{if(!connectionMode)throw new Error("먼저 USB 또는 Bluetooth를 연결하세요.");const payload={config:settings(),program:compileProgram()},bytes=new TextEncoder().encode(JSON.stringify(payload));if(connectionMode==="ble"){await uploadBleProgram(bytes);toast("Bluetooth로 저장·실행했습니다. 영상 조종을 위해 연결을 해제합니다.");setTimeout(()=>disconnectBle(true),700)}else{await command({cmd:"stop"},12000);await command({cmd:"uploadBegin",size:bytes.length},12000);for(let i=0,index=0;i<bytes.length;i+=384,index++){await command({cmd:"uploadChunk",index,data:bytesToBase64(bytes.slice(i,i+384))},8000)}await command({cmd:"uploadEnd"},15000);toast("USB로 저장하고 실행했습니다.")}}catch(e){toast("전송 실패: "+e.message)}finally{button.disabled=false}
   }
+  async function emergencyStop(){try{if(connectionMode==="ble")await writeBlePacket(new Uint8Array([83]),83);else await command({cmd:"stop"})}catch(e){toast(e.message)}}
   async function quickTest(dir){try{await command({cmd:"drive",dir,speed:Number($("#testSpeed").value)});}catch(e){toast(e.message)}}
 
   function copySelectedBlock(){const block=selectedBlockId&&workspace.getBlockById(selectedBlockId);if(!block)return toast("복사할 블록을 먼저 선택하세요.");copiedBlockState=Blockly.serialization.blocks.save(block,{addCoordinates:false,addInputBlocks:true,addNextBlocks:true});toast("선택한 블록을 복사했습니다.")}
@@ -188,7 +200,7 @@
     $("#sideCollapseBtn").onclick=()=>setSidePanelCollapsed(!$(".app-shell").classList.contains("side-collapsed"));
     $("#pwaInstallBtn").onclick=installPwa;
     $("#openRemoteBtn").onclick=openRemote;
-    $("#firmwareBtn").onclick=()=>$("#firmwareDialog").showModal();$("#connectBtn").onclick=connectSerial;$("#uploadBtn").onclick=uploadProgram;$("#stopBtn").onclick=()=>command({cmd:"stop"}).catch(e=>toast(e.message));
+    $("#firmwareBtn").onclick=()=>$("#firmwareDialog").showModal();$("#connectBtn").onclick=connectSerial;$("#bleConnectBtn").onclick=()=>connectionMode==="ble"?disconnectBle():connectBle();$("#uploadBtn").onclick=uploadProgram;$("#stopBtn").onclick=emergencyStop;
     $("#saveNumberBtn").onclick=()=>command({cmd:"setNumber",number:Number($("#carNumber").value)}).then(()=>toast("RC카 번호를 저장했습니다. 보드가 재시작됩니다.")).catch(e=>toast(e.message));
     $("#resetPinsBtn").onclick=()=>{applyDefaultPins();updateCode();saveLocal()};
     $$("[data-test]").forEach(b=>{b.onpointerdown=e=>{e.preventDefault();quickTest(b.dataset.test)};if(b.dataset.test!=="stop"){b.onpointerup=()=>quickTest("stop");b.onpointercancel=()=>quickTest("stop");b.onpointerleave=e=>{if(e.buttons)quickTest("stop")}}});
