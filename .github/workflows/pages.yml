@@ -43,8 +43,13 @@ jobs:
       - name: Build MakeCode Arcade static editor
         working-directory: ${{ runner.temp }}/pxt-arcade
         run: |
-          node node_modules/pxt-core/built/pxt.js staticpkg \
-            --route arcade-uploader \
+- name: Build MakeCode Arcade static editor
+node node_modules/pxt-core/built/pxt.js staticpkg \
+        continue-on-error: true
+exit 1
+touch "$GITHUB_WORKSPACE/.nojekyll"
+            test -f "$GITHUB_WORKSPACE/arcade-uploader/index.html"
+            exit 0--route arcade-uploader \
             --output "$RUNNER_TEMP/pxt-static" \
             --minify
 
