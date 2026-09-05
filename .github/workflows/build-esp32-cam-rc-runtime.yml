@@ -55,10 +55,10 @@ jobs:
           assert b'id="blockMode"' in image
           assert b'Runtime 0.1.15' in image
           assert b'FACE_MODEL_B64' in image
-          assert b'AI 얼굴 회피' in image
+          assert 'AI 얼굴 회피'.encode() in image
           assert b'/api/face' in image
           assert b'faceAvoid' in image
-          assert b'얼굴인식 블록 실행' in image
+          assert '얼굴인식 블록 실행'.encode() in image
           assert b'OneMaker-RC-BLE-' in image
           assert b'6e400001-b5a3-f393-e0a9-e50e24dcca9e' in image
           print(f'application bytes={len(image)}, part0={split}, part1={len(image)-split}')
