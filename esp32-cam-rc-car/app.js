@@ -162,7 +162,7 @@
       if(!connected){
         if(serialBootCount-bootStart>=2)throw new Error("보드가 반복 재부팅 중 — 모터 전원을 분리하고 USB 전원을 확인하세요.");
         if(serialByteCount===trafficStart)throw new Error("보드 시리얼 출력 없음 — USB 재연결 후 RST를 한 번만 누르세요.");
-        throw new Error("부팅 로그만 확인됨 — RC카 전체 펌웨어 0.1.15를 다시 설치하세요.");
+        throw new Error("부팅 로그만 확인됨 — RC카 전체 펌웨어 0.1.16를 다시 설치하세요.");
       }
       setConnected("usb");toast("ESP32‑CAM이 USB로 연결되었습니다.");
     }catch(e){setConnected(null);await closeSerial();toast("USB 연결 실패: "+e.message)}
