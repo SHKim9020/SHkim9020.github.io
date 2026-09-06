@@ -1,4 +1,4 @@
-const CACHE = "om-esp32cam-rc-v0.1.24-ble-reconnect";
+const CACHE = "om-esp32cam-rc-v0.1.25-face-box";
 const ASSETS = ["./", "index.html", "style.css", "responsive-fix.css", "app.js", "manifest.webmanifest", "icons/rc-studio.svg"];
 
 self.addEventListener("install", event => {
