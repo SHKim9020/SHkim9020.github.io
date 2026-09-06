@@ -9,9 +9,9 @@
 #include "esp_http_server.h"
 #include "mbedtls/base64.h"
 
-// OneMaker ESP32-CAM RC Runtime 0.1.16 — face detection and BLE program transfer
+// OneMaker ESP32-CAM RC Runtime 0.1.17 — open Wi-Fi AP and reliable face detection
 static const char *PROGRAM_PATH = "/rc-program.json";
-static const char *WIFI_PASSWORD = "onemaker1";
+static const char *WIFI_PASSWORD = nullptr;
 static const int FLASH_LED = 4;
 static const unsigned long REMOTE_WATCHDOG_MS = 900;
 static const int MOTOR_PWM_FREQ = 18000;
@@ -235,7 +235,7 @@ void startWifi(){WiFi.mode(WIFI_AP);WiFi.setSleep(false);WiFi.setTxPower(WIFI_PO
 
 void handleSerialLine(const String &line){
   JsonDocument d;DeserializationError e=deserializeJson(d,line);if(e){emit("error","JSON command");return;}String cmd=d["cmd"]|"";
-  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.16";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
+  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.17";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
   if(cmd=="stop"){stopProgram();ack("stopped");return;}
   if(cmd=="drive"){drive(d["dir"]|"stop",d["speed"]|150,d["speed"]|150);ack();return;}
   if(cmd=="setNumber"){int n=d["number"]|1;if(n<1||n>16){emit("error","number 1-16");return;}Preferences p;p.begin("onemaker-rc",false);p.putUChar("number",n);p.end();ack("number saved");delay(200);ESP.restart();return;}
@@ -247,7 +247,7 @@ void handleSerialLine(const String &line){
 
 void setup(){
   setupMotorOutputs();stopCar();Serial.begin(115200);delay(100);pinMode(FLASH_LED,OUTPUT);digitalWrite(FLASH_LED,LOW);Preferences p;if(p.begin("onemaker-rc",false)){carNumber=p.getUChar("number",1);p.end();}else carNumber=1;if(carNumber<1||carNumber>16)carNumber=1;
-  LittleFS.begin(true);setupCamera();loadProgram();setupBluetooth();startWifi();stopProgram();stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.16 / camera ")+(cameraReady?"OK":cameraError));
+  LittleFS.begin(true);setupCamera();loadProgram();setupBluetooth();startWifi();stopProgram();stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.17 / camera ")+(cameraReady?"OK":cameraError));
 }
 void loop(){
   webServer.handleClient();if(remoteMoving&&millis()-lastRemoteAt>REMOTE_WATCHDOG_MS){stopRemoteHandler();stopCar();}static String input;while(Serial.available()){char c=Serial.read();if(c=='\n'){input.trim();if(input.length())handleSerialLine(input);input="";}else if(c!='\r'&&input.length()<2048)input+=c;}delay(2);
