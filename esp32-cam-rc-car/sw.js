@@ -1,4 +1,4 @@
-const CACHE = "om-esp32cam-rc-v0.1.25-face-box";
+const CACHE = "om-esp32cam-rc-v0.1.26-functions";
 const ASSETS = ["./", "index.html", "style.css", "responsive-fix.css", "app.js", "manifest.webmanifest", "icons/rc-studio.svg"];
 
 self.addEventListener("install", event => {
@@ -19,3 +19,4 @@ self.addEventListener("fetch", event => {
     }).catch(() => caches.match(request).then(cached => cached || caches.match("./")))
   );
 });
+

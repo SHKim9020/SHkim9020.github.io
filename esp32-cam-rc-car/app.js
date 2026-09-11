@@ -19,6 +19,41 @@
   }
 
   function defineBlocks() {
+    class FunctionDropdown extends Blockly.FieldDropdown {
+      getText_() {
+        const block = this.getSourceBlock();
+        const ws = block?.workspace?.isFlyout ? workspace : block?.workspace;
+        const definition = ws?.getBlockById(this.getValue());
+        return definition?.type === "rc_function_def" ? definition.getFieldValue("NAME") : super.getText_();
+      }
+    }
+    Blockly.Blocks.rc_function_def = {
+      init() {
+        this.appendDummyInput().appendField("내 블록").appendField(new Blockly.FieldTextInput("새 함수", value => value.trim() || null), "NAME").appendField("정의하기");
+        this.appendStatementInput("DO");
+        this.setColour(290);
+        this.setTooltip("동작을 묶어 이름을 붙입니다. 실행 블록으로 불러올 때만 동작합니다.");
+      }
+    };
+    Blockly.Blocks.rc_function_call = {
+      init() {
+        this.appendDummyInput().appendField("내 블록").appendField(new FunctionDropdown(function() {
+          const source = this.getSourceBlock();
+          const ws = source?.workspace?.isFlyout ? workspace : (source?.workspace || workspace);
+          const options = (ws?.getTopBlocks(false) || []).filter(b => b.type === "rc_function_def")
+            .map(b => [b.getFieldValue("NAME") || "새 함수", b.id]);
+          const current = this.getValue() || source?.savedFunctionId;
+          if (current && !options.some(option => option[1] === current)) options.push(["정의가 없는 함수", current]);
+          return options.length ? options : [["함수를 먼저 만드세요", ""]];
+        }), "FUNCTION").appendField("실행하기");
+        this.setPreviousStatement(true);
+        this.setNextStatement(true);
+        this.setColour(290);
+        this.setTooltip("선택한 함수의 동작을 순서대로 실행한 뒤 다음 블록으로 돌아옵니다.");
+      },
+      saveExtraState() { return {functionId:this.getFieldValue("FUNCTION")}; },
+      loadExtraState(state) { this.savedFunctionId = state.functionId; this.getField("FUNCTION").getOptions(false); }
+    };
     Blockly.defineBlocksWithJsonArray([
       { type:"event_start", message0:"🚗 RC카가 시작하면 %1 %2", args0:[{type:"input_dummy"},{type:"input_statement",name:"DO"}], colour:COLORS.event, tooltip:"전원을 켜거나 프로그램을 실행할 때 한 번 실행합니다." },
       { type:"event_forever", message0:"🔁 계속 반복하기 %1 %2", args0:[{type:"input_dummy"},{type:"input_statement",name:"DO"}], colour:COLORS.event },
@@ -51,6 +86,7 @@
       {kind:"category",name:"논리",categorystyle:"logic_category",contents:[{kind:"block",type:"logic_compare"},{kind:"block",type:"logic_operation"},{kind:"block",type:"logic_boolean"}]},
       {kind:"category",name:"계산",categorystyle:"math_category",contents:[{kind:"block",type:"math_number"},{kind:"block",type:"math_arithmetic"},{kind:"block",type:"math_random_int",inputs:{FROM:{shadow:{type:"math_number",fields:{NUM:80}}},TO:{shadow:{type:"math_number",fields:{NUM:180}}}}}]},
       {kind:"category",name:"변수",categorystyle:"variable_category",custom:"VARIABLE"},
+      {kind:"category",name:"내 블록(함수)",colour:"290",custom:"RC_FUNCTIONS"},
       {kind:"category",name:"출력",colour:String(COLORS.output),contents:[{kind:"block",type:"serial_print",inputs:{VALUE:{shadow:{type:"text",fields:{TEXT:"RC카 출발!"}}}}},{kind:"block",type:"text"}]}
     ]
   };
@@ -58,9 +94,43 @@
   function initBlockly() {
     defineBlocks();
     workspace = Blockly.inject("blocklyDiv", { toolbox, trashcan:true, renderer:"zelos", theme:Blockly.Themes.Zelos, grid:{spacing:20,length:3,colour:"#c9d4e5",snap:true}, zoom:{controls:false,wheel:true,startScale:.9,maxScale:1.5,minScale:.45,scaleSpeed:1.12} });
+    workspace.registerToolboxCategoryCallback("RC_FUNCTIONS", () => [
+      {kind:"button",text:"함수 만들기",callbackKey:"CREATE_RC_FUNCTION"},
+      {kind:"label",text:"정의 안에 동작을 넣고 실행 블록으로 불러오세요."},
+      ...workspace.getTopBlocks(false).filter(b => b.type === "rc_function_def")
+        .map(b => ({kind:"block",type:"rc_function_call",fields:{FUNCTION:b.id}}))
+    ]);
+    workspace.registerButtonCallback("CREATE_RC_FUNCTION", () => {
+      Blockly.dialog.prompt("함수 이름을 입력하세요. 예: 장애물 피하기", "새 함수", name => {
+        if (name === null || !name.trim()) return;
+        name = name.trim();
+        if (workspace.getTopBlocks(false).some(b => b.type === "rc_function_def" && b.getFieldValue("NAME") === name))
+          return toast("같은 이름의 함수가 있습니다. 다른 이름을 입력하세요.");
+        Blockly.Events.setGroup(true);
+        try {
+          const block = workspace.newBlock("rc_function_def");
+          block.setFieldValue(name, "NAME");
+          block.initSvg(); block.render();
+          const metrics = workspace.getMetrics();
+          block.moveBy((metrics.viewLeft + 50) / workspace.scale, (metrics.viewTop + 50) / workspace.scale);
+          block.select();
+        } finally { Blockly.Events.setGroup(false); }
+        workspace.getToolbox().refreshSelection();
+        toast("정의 블록 안에 동작을 넣고, 내 블록에서 실행 블록을 꺼내세요.");
+      });
+    });
     workspace.addChangeListener(e => {
       if (e.type === Blockly.Events.SELECTED) selectedBlockId = e.newElementId || null;
-      if (!e.isUiEvent) { saveLocal(); updateCode(); }
+      if (!e.isUiEvent) {
+        if (e.type === Blockly.Events.CHANGE && e.name === "NAME") {
+          workspace.getAllBlocks(false).filter(b => b.type === "rc_function_call").forEach(b => {
+            const field = b.getField("FUNCTION");
+            field.getOptions(false); field.forceRerender();
+          });
+          workspace.getToolbox().refreshSelection();
+        }
+        saveLocal(); updateCode();
+      }
     });
     window.addEventListener("resize", () => Blockly.svgResize(workspace));
     loadLocal() || loadExample(false);
@@ -93,7 +163,20 @@
       default:return {type:"number",value:0};
     }
   }
-  function steps(first){const out=[];for(let b=first;b;b=b.getNextBlock()){const s=step(b);if(s)out.push(s)}return out}
+  let functionStack = [], compiledStepCount = 0;
+  function steps(first){const out=[];for(let b=first;b;b=b.getNextBlock()){
+    if (b.isEnabled && !b.isEnabled()) continue;
+    if (++compiledStepCount > 2000) throw new Error("함수 실행이 너무 많습니다. 반복 블록으로 줄여 주세요.");
+    if (b.type === "rc_function_call") {
+      const definition = workspace.getBlockById(b.getFieldValue("FUNCTION"));
+      if (!definition || definition.type !== "rc_function_def") throw new Error("실행 블록에 연결된 함수 정의가 없습니다.");
+      if (definition.isEnabled && !definition.isEnabled()) throw new Error("비활성화된 함수는 실행할 수 없습니다.");
+      if (functionStack.includes(definition.id)) throw new Error("함수가 자기 자신을 다시 부를 수 없습니다: " + definition.getFieldValue("NAME"));
+      if (functionStack.length >= 16) throw new Error("함수 안에서 함수를 부르는 깊이는 16단계까지 가능합니다.");
+      functionStack.push(definition.id);
+      try { out.push(...steps(definition.getInputTargetBlock("DO"))); } finally { functionStack.pop(); }
+    } else { const s=step(b);if(s)out.push(s); }
+  }return out}
   function step(b){
     switch(b.type){
       case "car_drive":return {op:"drive",dir:b.getFieldValue("DIR"),speed:expr(b.getInputTargetBlock("SPEED"))};
@@ -113,6 +196,7 @@
     }
   }
   function compileProgram(){
+    functionStack = []; compiledStepCount = 0;
     const top=workspace.getTopBlocks(true), start=top.find(b=>b.type==="event_start"), forever=top.find(b=>b.type==="event_forever");
     const handlers={};top.filter(b=>b.type==="remote_when").forEach(b=>handlers[b.getFieldValue("BUTTON")]=steps(b.getInputTargetBlock("DO")));
     const face=top.find(b=>b.type==="face_when");if(face)handlers.face=steps(face.getInputTargetBlock("DO"));
@@ -121,7 +205,7 @@
   function cppExpr(e){if(!e)return"0";if(e.type==="number")return String(e.value);if(e.type==="text")return JSON.stringify(e.value);if(e.type==="variable")return e.name;if(e.type==="boolean")return e.value?"true":"false";if(e.type==="random")return`random(${cppExpr(e.from)}, ${cppExpr(e.to)} + 1)`;if(e.type==="math")return`(${cppExpr(e.a)} ${{ADD:"+",MINUS:"-",MULTIPLY:"*",DIVIDE:"/",POWER:"^"}[e.op]||"+"} ${cppExpr(e.b)})`;if(e.type==="compare")return`(${cppExpr(e.a)} ${{EQ:"==",NEQ:"!=",LT:"<",LTE:"<=",GT:">",GTE:">="}[e.op]} ${cppExpr(e.b)})`;if(e.type==="logic")return`(${cppExpr(e.a)} ${e.op==="AND"?"&&":"||"} ${cppExpr(e.b)})`;return"0"}
   function cppSteps(list,depth=1){const p="  ".repeat(depth);return list.map(s=>{switch(s.op){case"drive":return`${p}rcDrive("${s.dir}", ${cppExpr(s.speed)});`;case"motors":return`${p}setMotors(${cppExpr(s.left)}, ${cppExpr(s.right)});`;case"stop":return`${p}stopCar();`;case"flash":return`${p}setCameraLight(${s.on});`;case"cameraFrame":return`${p}setCameraFrame("${s.size}");`;case"cameraFlip":return`${p}setCameraFlip(${s.on});`;case"faceAvoid":return`${p}avoidDetectedFace(${cppExpr(s.speed)});`;case"wait":return`${p}delay(${cppExpr(s.ms)});`;case"print":return`${p}Serial.println(${cppExpr(s.value)});`;case"setVar":return`${p}${s.name} = ${cppExpr(s.value)};`;case"changeVar":return`${p}${s.name} += ${cppExpr(s.value)};`;case"repeat":return`${p}for (int i=0; i<${cppExpr(s.times)}; i++) {\n${cppSteps(s.steps,depth+1)}\n${p}}`;case"if":return`${p}if (${cppExpr(s.condition)}) {\n${cppSteps(s.then,depth+1)}\n${p}}${s.else?.length?` else {\n${cppSteps(s.else,depth+1)}\n${p}}`:""}`;default:return""}}).join("\n")}
   function generateCode(){const cfg=settings(),p=compileProgram(),vars=workspace.getAllVariables().map(v=>`double ${v.name}=0;`).join("\n"),face=p.handlers.face;return `// OneMaker ESP32-CAM RC Studio 교육용 코드\n#include <WiFi.h>\n#include <esp_camera.h>\n\nconst int IN1=${cfg.pins.in1}, IN2=${cfg.pins.in2}, IN3=${cfg.pins.in3}, IN4=${cfg.pins.in4};\n${vars||"// 사용한 변수 없음"}\n\nvoid onFaceDetected() {\n${face?.length?cppSteps(face,1):"  // 얼굴 감지 이벤트 블록을 연결하세요."}\n}\n\nvoid setup() {\n  Serial.begin(115200);\n  setupCamera();\n  setupMotorDriver();\n  startRcWifi("OneMaker-RC-${String(cfg.carNumber).padStart(2,"0")}", "onemaker1");\n${cppSteps(p.start,1)||"  // 시작 블록을 연결하세요."}\n}\n\nvoid loop() {\n  serviceCameraRemote();\n${cppSteps(p.forever,1)||"  delay(10);"}\n}\n`;}
-  function updateCode(){$("#codePreview code").textContent=generateCode()}
+  function updateCode(){try{$("#codePreview code").textContent=generateCode()}catch(e){$("#codePreview code").textContent="// " + e.message}}
 
   function snapshot(){return {version:1,name:$("#projectName").value,settings:settings(),workspace:Blockly.serialization.workspaces.save(workspace)}}
   function applySnapshot(data){if(!data?.workspace)throw new Error("프로젝트 형식이 아닙니다.");$("#projectName").value=data.name||"나의 영상탐사 RC카";const c=data.settings||{};$("#carNumber").value=c.carNumber||1;Object.entries(c.pins||DEFAULT_PINS).forEach(([k,v])=>$("#pin"+k[0].toUpperCase()+k.slice(1)).value=v);$("#invertLeft").checked=c.invertLeft!==false;$("#invertRight").checked=c.invertRight!==false;$("#frameSize").value=c.camera?.frameSize||"QVGA";$("#jpegQuality").value=c.camera?.quality||12;$("#flipCamera").checked=!!c.camera?.flip;Blockly.serialization.workspaces.load(data.workspace,workspace);updateWifiName();updateCode()}
@@ -183,7 +267,7 @@
   async function uploadBleProgram(bytes){const begin=new Uint8Array(5),beginView=new DataView(begin.buffer);begin[0]=66;beginView.setUint32(1,bytes.length,true);await writeBlePacket(begin,66,-1,12000);for(let offset=0,seq=0;offset<bytes.length;offset+=16,seq++){const chunk=bytes.slice(offset,offset+16),packet=new Uint8Array(chunk.length+3);packet[0]=68;packet[1]=seq&255;packet[2]=seq>>8;packet.set(chunk,3);await writeBlePacket(packet,68,seq,8000);if(seq%12===0)$("#connectionStatus").textContent=`Bluetooth 전송 ${Math.min(100,Math.round((offset+chunk.length)*100/bytes.length))}%`}await writeBlePacket(new Uint8Array([69]),69,-1,15000);setConnected("ble")}
   async function uploadProgram(){
     const button=$("#uploadBtn");button.disabled=true;
-    try{if(!connectionMode)throw new Error("먼저 USB 또는 Bluetooth를 연결하세요.");const payload={config:settings(),program:compileProgram()},bytes=new TextEncoder().encode(JSON.stringify(payload));if(connectionMode==="ble"){await uploadBleProgram(bytes);toast("Bluetooth로 저장·실행했습니다. 영상 조종을 위해 연결을 해제합니다.");setTimeout(()=>disconnectBle(true),700)}else{await command({cmd:"stop"},12000);await command({cmd:"uploadBegin",size:bytes.length},12000);for(let i=0,index=0;i<bytes.length;i+=384,index++){await command({cmd:"uploadChunk",index,data:bytesToBase64(bytes.slice(i,i+384))},8000)}await command({cmd:"uploadEnd"},15000);toast("USB로 저장하고 실행했습니다.")}}catch(e){toast("전송 실패: "+e.message)}finally{button.disabled=false}
+    try{if(!connectionMode)throw new Error("먼저 USB 또는 Bluetooth를 연결하세요.");const payload={config:settings(),program:compileProgram()},bytes=new TextEncoder().encode(JSON.stringify(payload));if(bytes.length>60000)throw new Error("프로그램이 너무 큽니다. 함수 호출이나 블록 수를 줄여 주세요.");if(connectionMode==="ble"){await uploadBleProgram(bytes);toast("Bluetooth로 저장·실행했습니다. 영상 조종을 위해 연결을 해제합니다.");setTimeout(()=>disconnectBle(true),700)}else{await command({cmd:"stop"},12000);await command({cmd:"uploadBegin",size:bytes.length},12000);for(let i=0,index=0;i<bytes.length;i+=384,index++){await command({cmd:"uploadChunk",index,data:bytesToBase64(bytes.slice(i,i+384))},8000)}await command({cmd:"uploadEnd"},15000);toast("USB로 저장하고 실행했습니다.")}}catch(e){toast("전송 실패: "+e.message)}finally{button.disabled=false}
   }
   async function emergencyStop(){try{if(connectionMode==="ble")await writeBlePacket(new Uint8Array([83]),83);else await command({cmd:"stop"})}catch(e){toast(e.message)}}
   async function quickTest(dir){try{await command({cmd:"drive",dir,speed:Number($("#testSpeed").value)});}catch(e){toast(e.message)}}
