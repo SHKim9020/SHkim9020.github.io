@@ -195,6 +195,30 @@
       default:return null;
     }
   }
+  function constantNumber(e){
+    if(!e)return null;
+    if(e.type==="number")return Number(e.value);
+    if(e.type==="math"){
+      const a=constantNumber(e.a),b=constantNumber(e.b);if(a===null||b===null)return null;
+      if(e.op==="ADD")return a+b;if(e.op==="MINUS")return a-b;if(e.op==="MULTIPLY")return a*b;if(e.op==="DIVIDE")return b===0?null:a/b;
+    }
+    return null;
+  }
+  function validateRemoteSafety(list,button,moving=false){
+    const label={forward:"전진",backward:"후진",left:"좌회전",right:"우회전",stop:"정지"}[button]||button;
+    for(const s of list){
+      if(s.op==="drive"||s.op==="motors")moving=true;
+      else if(s.op==="stop")moving=false;
+      else if(s.op==="wait"&&moving){
+        const ms=constantNumber(s.ms);
+        if(ms!==null&&ms>=800)throw new Error("Wi-Fi '"+label+"' 이벤트의 모터 동작 뒤 기다리기는 0.7초 이하로 설정해 주세요. 기존 펌웨어의 0.9초 안전 정지가 실행을 끝냅니다.");
+      }else if(s.op==="repeat")moving=validateRemoteSafety(s.steps,button,moving);
+      else if(s.op==="if"){
+        validateRemoteSafety(s.then,button,moving);validateRemoteSafety(s.else||[],button,moving);
+      }
+    }
+    return moving;
+  }
   function compileProgram(){
     functionStack = []; compiledStepCount = 0;
     const top=workspace.getTopBlocks(true), start=top.find(b=>b.type==="event_start"), forever=top.find(b=>b.type==="event_forever");
@@ -204,6 +228,7 @@
       if(Object.prototype.hasOwnProperty.call(handlers,button))
         throw new Error("Wi-Fi 리모컨 '"+(handlerLabels[button]||button)+"' 버튼 이벤트가 2개입니다. 하나만 남겨 주세요.");
       handlers[button]=steps(b.getInputTargetBlock("DO"));
+      validateRemoteSafety(handlers[button],button);
     });
     const face=top.find(b=>b.type==="face_when");if(face)handlers.face=steps(face.getInputTargetBlock("DO"));
     return {start:start?steps(start.getInputTargetBlock("DO")):[],forever:forever?steps(forever.getInputTargetBlock("DO")):[],handlers};
