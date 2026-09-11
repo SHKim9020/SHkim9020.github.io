@@ -198,7 +198,13 @@
   function compileProgram(){
     functionStack = []; compiledStepCount = 0;
     const top=workspace.getTopBlocks(true), start=top.find(b=>b.type==="event_start"), forever=top.find(b=>b.type==="event_forever");
-    const handlers={};top.filter(b=>b.type==="remote_when").forEach(b=>handlers[b.getFieldValue("BUTTON")]=steps(b.getInputTargetBlock("DO")));
+    const handlers={}, handlerLabels={forward:"전진",backward:"후진",left:"좌회전",right:"우회전",stop:"정지"};
+    top.filter(b=>b.type==="remote_when").forEach(b=>{
+      const button=b.getFieldValue("BUTTON");
+      if(Object.prototype.hasOwnProperty.call(handlers,button))
+        throw new Error("Wi-Fi 리모컨 '"+(handlerLabels[button]||button)+"' 버튼 이벤트가 2개입니다. 하나만 남겨 주세요.");
+      handlers[button]=steps(b.getInputTargetBlock("DO"));
+    });
     const face=top.find(b=>b.type==="face_when");if(face)handlers.face=steps(face.getInputTargetBlock("DO"));
     return {start:start?steps(start.getInputTargetBlock("DO")):[],forever:forever?steps(forever.getInputTargetBlock("DO")):[],handlers};
   }
