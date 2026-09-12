@@ -20,6 +20,7 @@
   const HUSKYLENS_FIRMWARE_MIN = [1, 4, 7];
   const DEEP_PROGRAM_FIRMWARE_MIN = [1, 4, 8];
   const MOTOR_TRIM_FIRMWARE_MIN = [1, 4, 9];
+  const WIFI_BLOCKS_FIRMWARE_MIN = [1, 5, 0];
 
   let workspace;
   let serialPort;
@@ -217,6 +218,39 @@
       colour: 25
     },
     {
+      type: "wifi_connect",
+      message0: "📶 Wi-Fi 연결 SSID %1 비밀번호 %2 최대 %3 초",
+      args0: [
+        { type: "input_value", name: "SSID", check: "String" },
+        { type: "input_value", name: "PASSWORD", check: "String" },
+        { type: "input_value", name: "TIMEOUT", check: "Number" }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: false,
+      colour: 205,
+      tooltip: "ESP32-C3를 2.4GHz Wi-Fi에 연결합니다. 수업용 핫스팟 사용을 권장합니다."
+    },
+    {
+      type: "wifi_disconnect",
+      message0: "Wi-Fi 연결 끊기",
+      previousStatement: null,
+      nextStatement: null,
+      colour: 205
+    },
+    {
+      type: "wifi_connected",
+      message0: "Wi-Fi 연결됨?",
+      output: "Boolean",
+      colour: 205
+    },
+    {
+      type: "wifi_ip",
+      message0: "Wi-Fi IP 주소",
+      output: "String",
+      colour: 205
+    },
+    {
       type: "serial_print",
       message0: "시리얼에 %1 출력",
       args0: [{ type: "input_value", name: "VALUE" }],
@@ -350,6 +384,20 @@
           { kind: "block", type: "my_function_call" },
           { kind: "block", type: "my_function_def_value", inputs: { RETURN: { shadow: { type: "math_number", fields: { NUM: 0 } } } } },
           { kind: "block", type: "my_function_call_value" }
+        ]
+      },
+      {
+        kind: "category", name: "Wi-Fi", colour: "205", contents: [
+          {
+            kind: "block", type: "wifi_connect", inputs: {
+              SSID: { shadow: { type: "text", fields: { TEXT: "WiFi이름" } } },
+              PASSWORD: { shadow: { type: "text", fields: { TEXT: "비밀번호" } } },
+              TIMEOUT: { shadow: { type: "math_number", fields: { NUM: 20 } } }
+            }
+          },
+          { kind: "block", type: "wifi_connected" },
+          { kind: "block", type: "wifi_ip" },
+          { kind: "block", type: "wifi_disconnect" }
         ]
       },
       {
@@ -593,6 +641,10 @@
 
   function workspaceUsesHusky() {
     return Boolean(workspace) && workspace.getAllBlocks(false).some(block => block.type.startsWith("husky_"));
+  }
+
+  function workspaceUsesWiFi() {
+    return Boolean(workspace) && workspace.getAllBlocks(false).some(block => block.type.startsWith("wifi_"));
   }
 
   function runtimeVersion(runtime = boardRuntime) {
@@ -850,6 +902,14 @@
         return { op: "analogWrite", pin: Number(block.getFieldValue("PIN")), value: expressionAst(block.getInputTargetBlock("VALUE")) };
       case "control_wait": return { op: "wait", seconds: expressionAst(block.getInputTargetBlock("SECONDS")) };
       case "husky_algorithm": return { op: "huskyAlgorithm", algorithm: block.getFieldValue("ALGORITHM") };
+      case "wifi_connect":
+        return {
+          op: "wifiConnect",
+          ssid: expressionAst(block.getInputTargetBlock("SSID")),
+          password: expressionAst(block.getInputTargetBlock("PASSWORD")),
+          timeout: expressionAst(block.getInputTargetBlock("TIMEOUT"))
+        };
+      case "wifi_disconnect": return { op: "wifiDisconnect" };
       case "controls_repeat_ext":
         return { op: "repeat", count: expressionAst(block.getInputTargetBlock("TIMES")), steps: compileStatementChain(block.getInputTargetBlock("DO")) };
       case "control_forever":
@@ -895,6 +955,8 @@
       case "sensor_analog": return { type: "analogRead", pin: Number(block.getFieldValue("PIN")) };
       case "sensor_sonar": return { type: "sonar", trig: Number(block.getFieldValue("TRIG")), echo: Number(block.getFieldValue("ECHO")) };
       case "remote_speed": return { type: "remoteSpeed" };
+      case "wifi_connected": return { type: "wifiConnected" };
+      case "wifi_ip": return { type: "wifiIp" };
       case "husky_seen": return { type: "huskySeen", id: expressionAst(block.getInputTargetBlock("ID")) };
       case "husky_value":
         return { type: "huskyValue", id: expressionAst(block.getInputTargetBlock("ID")), field: block.getFieldValue("FIELD") };
@@ -922,6 +984,8 @@
       case "sensor_analog": return `analogRead(${block.getFieldValue("PIN")})`;
       case "sensor_sonar": return `readSonarCm(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
       case "remote_speed": return "remoteSpeed";
+      case "wifi_connected": return "WiFi.status() == WL_CONNECTED";
+      case "wifi_ip": return "WiFi.localIP().toString()";
       case "husky_seen": return `huskySeen(${cppExpression(block.getInputTargetBlock("ID"))})`;
       case "husky_value": return `huskyValue(${cppExpression(block.getInputTargetBlock("ID"))}, "${block.getFieldValue("FIELD")}")`;
       case "my_function_call_value":
@@ -971,6 +1035,12 @@
           break;
         case "husky_algorithm":
           code += `${indent}setHuskyAlgorithm("${block.getFieldValue("ALGORITHM")}");\n`;
+          break;
+        case "wifi_connect":
+          code += `${indent}connectWiFi(${cppExpression(block.getInputTargetBlock("SSID"))}, ${cppExpression(block.getInputTargetBlock("PASSWORD"))}, ${cppExpression(block.getInputTargetBlock("TIMEOUT"))});\n`;
+          break;
+        case "wifi_disconnect":
+          code += `${indent}WiFi.disconnect();\n`;
           break;
         case "controls_repeat_ext":
           code += `${indent}for (int i = 0; i < ${cppExpression(block.getInputTargetBlock("TIMES"))}; i++) {\n`;
@@ -1056,7 +1126,23 @@
       return `${returnType} ${cppFunction(functionName(block))}() {\n${statements}${returnLine}}\n`;
     }).join("\n");
     const usesHusky = workspace.getAllBlocks(false).some(block => block.type.startsWith("husky_"));
+    const usesWifi = workspaceUsesWiFi();
     const huskyInclude = usesHusky ? "\n#include <Wire.h>\n#include <HUSKYLENS.h>" : "";
+    const wifiInclude = usesWifi ? "\n#include <WiFi.h>" : "";
+    const wifiHelpers = usesWifi ? `
+bool connectWiFi(const String &ssid, const String &password, int timeoutSeconds) {
+  if (!ssid.length()) return false;
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  unsigned long startedAt = millis();
+  unsigned long timeoutMs = constrain(timeoutSeconds, 1, 60) * 1000UL;
+  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < timeoutMs) {
+    delay(100);
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+` : "";
     const huskyGlobals = usesHusky ? `
 const int HUSKY_SDA = ${cfg.husky.sda};
 const int HUSKY_SCL = ${cfg.husky.scl};
@@ -1131,7 +1217,7 @@ void setHuskyAlgorithm(const String &algorithm) {
 // 보드: ESP32C3 Dev Module / USB CDC On Boot: Enabled
 
 #include <Arduino.h>
-#include <math.h>${huskyInclude}
+#include <math.h>${huskyInclude}${wifiInclude}
 
 const int IN1 = ${cfg.pins.in1};
 const int IN2 = ${cfg.pins.in2};
@@ -1146,7 +1232,7 @@ const bool MOTOR_TRIM_LOCKED = ${motorTrimLocked ? "true" : "false"};
 const int MOTOR_TRIM_LEFT = ${trimLeft};
 const int MOTOR_TRIM_RIGHT = ${trimRight};
 
-${variables || "// 사용자가 만든 변수 없음"}${huskyGlobals}
+${variables || "// 사용자가 만든 변수 없음"}${huskyGlobals}${wifiHelpers}
 ${procedureDeclarations || "// 사용자가 만든 내 블록 없음"}
 
 void setChannel(int pinA, int pinB, int speed) {
@@ -1620,6 +1706,10 @@ ${loopCode}}
       if (workspaceUsesHusky() && !supportsFirmware(HUSKYLENS_FIRMWARE_MIN)) {
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
         throw new Error(`HuskyLens 얼굴 인식 기능은 펌웨어 1.4.7이 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
+      }
+      if (workspaceUsesWiFi() && !supportsFirmware(WIFI_BLOCKS_FIRMWARE_MIN)) {
+        if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
+        throw new Error(`Wi-Fi 연결 블록은 펌웨어 1.5.0이 필요합니다. 현재 ${runtimeVersionText()}입니다.`);
       }
       const program = compileRuntimeProgram();
       const handlers = compileRuntimeHandlers();

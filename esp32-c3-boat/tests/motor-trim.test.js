@@ -39,7 +39,7 @@ test("stored programs are trimmed while explicit remote speeds are not doubled",
 });
 
 test("installer targets the trim-capable runtime", () => {
-  assert.equal(manifest.version, "1.4.9");
-  assert.match(manifest.builds[0].parts[0].path, /boat_runtime-1\.4\.9\.merged\.bin$/);
-  assert.match(runtime, /OneMaker Boat 1\.4\.9/);
+  assert.equal(manifest.version, "1.5.0");
+  assert.match(manifest.builds[0].parts[0].path, /boat_runtime-1\.5\.0\.merged\.bin$/);
+  assert.match(runtime, /OneMaker Boat 1\.5\.0/);
 });

@@ -14,7 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// OneMaker Boat Runtime 1.4.9: store a per-boat left/right motor speed calibration.
+// OneMaker Boat Runtime 1.5.0: execute external Wi-Fi connection blocks without Arduino IDE compilation.
 const uint8_t PROGRAM_JSON_NESTING_LIMIT = 32;
 static const char *PROGRAM_PATH = "/boat-program.json";
 static const char *WIFI_PASSWORD = "onemaker1";
@@ -136,6 +136,8 @@ void handleRemote(const String &button, int speed, int leftSpeed, int rightSpeed
 void startWebRemote();
 void serviceBluetoothState();
 void serviceMotorSafety();
+bool connectStationWiFi(const String &ssid, const String &password, unsigned long timeoutMs);
+void disconnectStationWiFi();
 
 String twoDigitBoatNumber() {
   char value[3];
@@ -265,9 +267,38 @@ void stopWebRemoteForBluetooth() {
   if (!webRemoteActive) return;
   webServer.stop();
   WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_OFF);
+  WiFi.mode(WiFi.status() == WL_CONNECTED ? WIFI_STA : WIFI_OFF);
   webRemoteActive = false;
   Serial.println("{\"type\":\"radio\",\"message\":\"Bluetooth 전용 모드: Wi-Fi 일시 중지\"}");
+}
+
+bool connectStationWiFi(const String &ssid, const String &password, unsigned long timeoutMs) {
+  if (!ssid.length()) {
+    emit("wifi", "SSID가 비어 있습니다.");
+    return false;
+  }
+  WiFi.mode(webRemoteActive ? WIFI_AP_STA : WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  unsigned long startedAt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < timeoutMs && !stopRequested) {
+    pollIncomingCommands();
+    delay(20);
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    emit("wifi", String("연결 성공 · IP ") + WiFi.localIP().toString());
+    return true;
+  }
+  WiFi.disconnect(false, false);
+  if (webRemoteActive) WiFi.mode(WIFI_AP);
+  emit("wifi", stopRequested ? "연결 시도가 중지되었습니다." : "연결 실패 · SSID, 비밀번호, 2.4GHz를 확인하세요.");
+  return false;
+}
+
+void disconnectStationWiFi() {
+  WiFi.disconnect(false, false);
+  WiFi.mode(webRemoteActive ? WIFI_AP : WIFI_OFF);
+  emit("wifi", "외부 Wi-Fi 연결을 끊었습니다.");
 }
 
 void serviceBluetoothState() {
@@ -532,6 +563,9 @@ double evaluateNumber(JsonVariantConst expression);
 String evaluateText(JsonVariantConst expression) {
   const char *type = expression["type"] | "number";
   if (strcmp(type, "text") == 0) return expression["value"].as<String>();
+  if (strcmp(type, "wifiIp") == 0) {
+    return WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("");
+  }
   return String(evaluateNumber(expression), 2);
 }
 
@@ -543,6 +577,7 @@ double evaluateNumber(JsonVariantConst expression) {
   if (strcmp(type, "text") == 0) return expression["value"].as<String>().toDouble();
   if (strcmp(type, "variable") == 0) return getVariable(expression["name"].as<String>());
   if (strcmp(type, "remoteSpeed") == 0) return remoteSpeed;
+  if (strcmp(type, "wifiConnected") == 0) return WiFi.status() == WL_CONNECTED;
   if (strcmp(type, "digitalRead") == 0) {
     int pin = expression["pin"] | 0;
     pinMode(pin, INPUT);
@@ -664,6 +699,11 @@ bool executeStep(JsonObjectConst step) {
     if (!waitInterruptible(duration)) return false;
   } else if (strcmp(op, "huskyAlgorithm") == 0) {
     setHuskyAlgorithm(step["algorithm"].as<String>());
+  } else if (strcmp(op, "wifiConnect") == 0) {
+    unsigned long timeoutMs = constrain((long)evaluateNumber(step["timeout"]), 1L, 60L) * 1000UL;
+    connectStationWiFi(evaluateText(step["ssid"]), evaluateText(step["password"]), timeoutMs);
+  } else if (strcmp(op, "wifiDisconnect") == 0) {
+    disconnectStationWiFi();
   } else if (strcmp(op, "setVar") == 0) {
     setVariable(step["name"].as<String>(), evaluateNumber(step["value"]));
   } else if (strcmp(op, "changeVar") == 0) {
@@ -893,7 +933,7 @@ bool parseIncomingLine(const String &line, bool allowCommands) {
     JsonDocument response;
     response["type"] = "hello";
     response["board"] = "ESP32-C3 Super Mini";
-    response["runtime"] = "OneMaker Boat 1.4.9";
+    response["runtime"] = "OneMaker Boat 1.5.0";
     response["uploadProtocol"] = "chunked-v1";
     response["boatNumber"] = boatNumber;
     response["bluetoothName"] = bluetoothName();
@@ -1069,7 +1109,7 @@ void registerWebRemoteRoutes() {
   webServer.on("/api/status", HTTP_GET, []() {
     JsonDocument status;
     status["board"] = "ESP32-C3 Super Mini";
-    status["runtime"] = "1.4.9";
+    status["runtime"] = "1.5.0";
     status["boatNumber"] = boatNumber;
     status["bluetoothName"] = bluetoothName();
     status["wifi"] = wifiName();
@@ -1088,7 +1128,7 @@ void registerWebRemoteRoutes() {
 void startWebRemote() {
   if (webRemoteActive || bleConnected) return;
   registerWebRemoteRoutes();
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WiFi.status() == WL_CONNECTED ? WIFI_AP_STA : WIFI_AP);
   String ssid = wifiName();
   WiFi.softAP(ssid.c_str(), WIFI_PASSWORD);
   webServer.begin();
@@ -1118,7 +1158,7 @@ void setup() {
   applyConfig(defaults);
   startWebRemote();
   startBluetooth();
-  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.4.9 · ") + bluetoothName());
+  emit("ready", String("OneMaker ESP32-C3 Boat Runtime 1.5.0 · ") + bluetoothName());
   delay(500);
   if (LittleFS.exists(PROGRAM_PATH) && loadActiveProgram()) {
     bool waitForBluetoothStart = activeProgram["config"]["waitForBluetoothStart"] | false;
