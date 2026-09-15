@@ -60,13 +60,15 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
 decode:
   if (!entry->valid) return -999;
   uint8_t *data = entry->data + (humidity ? 0 : 2);
-  float value;
+  int16_t raw;
+  bool negative;
   if (type == 22) {
-    value = (((uint16_t)(data[0] & 0x7F) << 8) | data[1]) * 0.1f;
-    if (!humidity && (data[0] & 0x80)) value = -value;
+    raw = ((uint16_t)(data[0] & 0x7F) << 8) | data[1];
+    negative = data[0] & 0x80;
   } else {
-    value = data[0] + (data[1] & 0x7F) * 0.1f;
-    if (!humidity && (data[1] & 0x80)) value = -value;
+    raw = data[0] * 10 + (data[1] & 0x7F);
+    negative = data[1] & 0x80;
   }
-  return value;
+  if (!humidity && negative) raw = -raw;
+  return raw * 0.1f;
 }
