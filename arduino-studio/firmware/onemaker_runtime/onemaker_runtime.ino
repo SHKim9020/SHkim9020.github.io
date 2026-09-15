@@ -600,9 +600,12 @@ VmValue evaluateStoredExpression(uint16_t &address) {
 
   while (address < expressionEnd) {
     uint8_t opcode = programByte(address++);
+    float numeric = 0;
+    bool numericResult = true;
     if (opcode == EX_NUMBER) {
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(programFloat(address));
+      numeric = programFloat(address);
     } else if (opcode == EX_TEXT) {
+      numericResult = false;
       uint8_t length = programByte(address++);
       String value;
       value.reserve(length);
@@ -610,37 +613,40 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(value);
     } else if (opcode == EX_VARIABLE) {
       uint8_t index = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(index < VM_MAX_VARIABLES ? vmVariables[index] : 0);
+      numeric = index < VM_MAX_VARIABLES ? vmVariables[index] : 0;
     } else if (opcode == EX_ANALOG) {
       uint8_t analogPin = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(analogRead(A0 + clampLong(analogPin, 0, 5)));
+      numeric = analogRead(A0 + clampLong(analogPin, 0, 5));
     } else if (opcode == EX_DIGITAL) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin));
+      numeric = digitalRead(pin);
     } else if (opcode == EX_BUTTON) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin) == HIGH ? 1 : 0);
+      numeric = digitalRead(pin) == HIGH ? 1 : 0;
     } else if (opcode == EX_ULTRASONIC) {
       uint8_t trig = programByte(address++);
       uint8_t echo = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(readUltrasonic(trig, echo));
+      numeric = readUltrasonic(trig, echo);
     } else if (opcode == EX_DHT) {
       uint8_t pin = programByte(address++);
       uint8_t type = programByte(address++);
       bool humidity = programByte(address++) != 0;
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(readDhtValue(pin, type, humidity));
+      numeric = readDhtValue(pin, type, humidity);
     } else if (opcode == EX_DUST) {
       uint8_t ledPin = programByte(address++);
       uint8_t analogPin = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(readDust(ledPin, analogPin));
+      numeric = readDust(ledPin, analogPin);
     } else if (opcode == EX_BT_AVAILABLE) {
       if (bluetooth) bluetooth->listen();
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(bluetooth && bluetooth->available() ? 1 : 0);
+      numeric = bluetooth && bluetooth->available() ? 1 : 0;
     } else if (opcode == EX_BT_READ) {
+      numericResult = false;
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
-    } else if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
+    } else {
+      numericResult = false;
+      if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
       int16_t id = constrain((int)valueNumber(stack[stackSize - 1]), 0, 32767);
       int16_t value = 0;
       uint8_t field = opcode == EX_HUSKY_SEEN ? 0 : opcode - EX_HUSKY_SEEN;
@@ -691,6 +697,8 @@ VmValue evaluateStoredExpression(uint16_t &address) {
         left = numberValue(result);
       }
     }
+    }
+    if (numericResult && stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(numeric);
   }
   address = expressionEnd;
   return stackSize ? stack[stackSize - 1] : numberValue(0);
