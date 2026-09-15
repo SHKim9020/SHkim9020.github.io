@@ -10,9 +10,8 @@ static uint16_t dhtPulse(uint8_t pin, uint8_t level) {
 float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
   struct Cache {
     uint32_t sampled;
-    float temperature, humidity;
-    uint8_t pin, type;
-    bool used;
+    uint8_t data[5], pin, type;
+    bool used, valid;
   };
   static Cache cache[4] = {};
   static uint8_t next = 0;
@@ -26,19 +25,18 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
     next = (next + 1) % 4;
     entry->used = true;
     entry->pin = pin;
-    entry->type = type;
-    entry->temperature = entry->humidity = -999;
-    // Allow sensor power-up, also safe when revisiting an evicted pin.
+    // Sensor power-up; also protects a recently evicted pin.
     pinMode(pin, INPUT_PULLUP);
     delay(2000);
   } else if ((uint32_t)(millis() - entry->sampled) < 2000UL) {
     if (entry->type != type) return -999;
-    return humidity ? entry->humidity : entry->temperature;
+    goto decode;
   }
   entry->type = type;
   entry->sampled = millis();
-  entry->temperature = entry->humidity = -999;
-  uint8_t data[5] = {};
+  entry->valid = false;
+  {
+  uint8_t *data = entry->data;
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
   delay(type == 22 ? 2 : 20);
@@ -57,15 +55,18 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
     data[bit >> 3] = (data[bit >> 3] << 1) | (high > low);
   }
   SREG = savedSreg;
-  if (!ok || (uint8_t)(data[0] + data[1] + data[2] + data[3]) != data[4]) return -999;
-  if (type == 22) {
-    entry->humidity = (((uint16_t)data[0] << 8) | data[1]) * 0.1f;
-    entry->temperature = (((uint16_t)(data[2] & 0x7F) << 8) | data[3]) * 0.1f;
-    if (data[2] & 0x80) entry->temperature = -entry->temperature;
-  } else {
-    entry->humidity = data[0] + data[1] * 0.1f;
-    entry->temperature = data[2] + (data[3] & 0x7F) * 0.1f;
-    if (data[3] & 0x80) entry->temperature = -entry->temperature;
+  entry->valid = ok && (uint8_t)(data[0] + data[1] + data[2] + data[3]) == data[4];
   }
-  return humidity ? entry->humidity : entry->temperature;
+decode:
+  if (!entry->valid) return -999;
+  uint8_t *data = entry->data + (humidity ? 0 : 2);
+  float value;
+  if (type == 22) {
+    value = (((uint16_t)(data[0] & 0x7F) << 8) | data[1]) * 0.1f;
+    if (!humidity && (data[0] & 0x80)) value = -value;
+  } else {
+    value = data[0] + (data[1] & 0x7F) * 0.1f;
+    if (!humidity && (data[1] & 0x80)) value = -value;
+  }
+  return value;
 }
