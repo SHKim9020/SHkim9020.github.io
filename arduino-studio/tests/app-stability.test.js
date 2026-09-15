@@ -8,7 +8,19 @@ const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 
 test("block edits debounce full Arduino code generation", () => {
   assert.match(app, /if \(event\.isUiEvent\) return;[\s\S]*scheduleCodeRefresh\(\)/);
-  assert.match(app, /function scheduleCodeRefresh\(\)[\s\S]*setTimeout\([\s\S]*refreshCode\(\)[\s\S]*90/);
+  assert.match(app, /function scheduleCodeRefresh\(\)[\s\S]*activeSideTab !== "code"[\s\S]*setTimeout\([\s\S]*refreshCode\(\)[\s\S]*180/);
+  assert.match(app, /function activateTab\(name\)[\s\S]*name === "code" && codeDirty/);
+});
+
+test("autosave waits for idle time instead of blocking block edits", () => {
+  assert.match(app, /function scheduleAutosave\(\)[\s\S]*requestIdleCallback/);
+  assert.match(app, /requestIdleCallback\(save, \{ timeout: 1500 \}\)/);
+});
+
+test("hidden serial monitor does not repeatedly rebuild hundreds of DOM lines", () => {
+  assert.match(app, /activeSideTab !== "serial" \|\| document\.hidden/);
+  assert.match(app, /if \(lines\.length > 300\)/);
+  assert.match(app, /serialBuffer\.length > 16384/);
 });
 
 test("USB writes are serialized and time out safely", () => {
