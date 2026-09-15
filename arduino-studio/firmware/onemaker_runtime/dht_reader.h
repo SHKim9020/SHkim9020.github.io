@@ -1,8 +1,8 @@
 // Read the CURRENT pulse; pulseIn skips a pulse already in progress.
-static uint16_t dhtPulse(uint8_t pin, uint8_t level) {
-  uint16_t cycles = 0;
+static uint8_t dhtPulse(uint8_t pin, uint8_t level) {
+  uint8_t cycles = 0;
   while (digitalRead(pin) == level) {
-    if (++cycles == 1000) return 0;
+    if (++cycles == 255) return 0;
   }
   return cycles;
 }
@@ -14,15 +14,12 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
     bool used, valid;
   };
   static Cache cache[4] = {};
-  static uint8_t next = 0;
-  if (pin >= NUM_DIGITAL_PINS || (type != 11 && type != 22)) return -999;
-  Cache *entry = 0;
-  for (uint8_t i = 0; i < 4; ++i) {
-    if (cache[i].used && cache[i].pin == pin) { entry = &cache[i]; break; }
-  }
-  if (!entry) {
-    entry = &cache[next];
-    next = (next + 1) % 4;
+  // UNO/Nano share digital pins 0..19; Nano A6/A7 are analog-only.
+  if (pin >= 20 || (type != 11 && type != 22)) return -999;
+  // Direct-mapped slots keep the full runtime within Nano's flash limit.
+  // A collision reinitializes safely with a two-second wait.
+  Cache *entry = &cache[pin & 3];
+  if (!entry->used || entry->pin != pin) {
     entry->used = true;
     entry->pin = pin;
     // Sensor power-up; also protects a recently evicted pin.
@@ -49,8 +46,8 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
   dhtPulse(pin, HIGH);
   bool ok = dhtPulse(pin, LOW) && dhtPulse(pin, HIGH);
   for (uint8_t bit = 0; ok && bit < 40; ++bit) {
-    uint16_t low = dhtPulse(pin, LOW);
-    uint16_t high = dhtPulse(pin, HIGH);
+    uint8_t low = dhtPulse(pin, LOW);
+    uint8_t high = dhtPulse(pin, HIGH);
     ok = low && high;
     data[bit >> 3] = (data[bit >> 3] << 1) | (high > low);
   }
