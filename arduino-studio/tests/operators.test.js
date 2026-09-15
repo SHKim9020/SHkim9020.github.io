@@ -47,7 +47,15 @@ test('compiled expressions execute in the real firmware VM and generated C++',()
  const enumText=runtime.slice(runtime.indexOf('enum ExpressionOpcode'),runtime.indexOf('struct VmValue'));
  const evaluator=runtime.slice(runtime.indexOf('VmValue evaluateStoredExpression'),runtime.indexOf('\nuint16_t storedProgramChecksum'));
  const body=fs.readFileSync(path.join(__dirname,'operator-vm-harness.cpp'),'utf8');
- const fixtures=cases.map(([b,want])=>{
+ const sensorCases = [
+  [block('sensor_light',{}, {PIN:0}),512],
+  [block('sensor_dht_simple',{}, {PIN:4,FIELD:'temperature'}),23.8],
+  [block('sensor_ultrasonic',{}, {TRIG:2,ECHO:3}),10],
+  [block('sensor_dust',{}, {LED_PIN:2,ANALOG_PIN:0}),5],
+  [block('bt_available'),0], [block('bt_read'),'ABC'],
+  [block('pin_digital_read',{}, {PIN:2}),1]
+ ];
+ const fixtures=cases.concat(sensorCases).map(([b,want])=>{
   const bytes=api.compileExpression(b,{});
   const expected=typeof want==='string'?`valueText(actual) == String(${JSON.stringify(want)})`:`fabs(valueNumber(actual) - (${want})) < 0.001f`;
   return `{ program = {${bytes.join(',')}}; uint16_t address=0; auto actual=evaluateStoredExpression(address); assert(${expected}); assert(address==program.size()); }`;

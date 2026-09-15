@@ -1125,7 +1125,6 @@ void processLine(char *line) {
 }
 
 void setup() {
-  randomSeed(micros());
   Serial.begin(115200);
   delay(350);
   sendReady();

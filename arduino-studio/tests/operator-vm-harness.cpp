@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <set>
 using std::min; using std::max; using std::isfinite;
 struct String : std::string {
  using std::string::string;
@@ -46,6 +47,8 @@ bool fetchHuskyValue(int,int,int16_t &){return false;}
 float vmPower(float a,float b){return pow(a,b);}
 // EVALUATOR
 int main(){
- randomCalls = 0; operatorRandom(1,10); assert(randomCalls == 1);
+ std::set<int> draws;
+ for(int i=0;i<1000;i++){float v=operatorRandom(10,1);assert(v>=1 && v<=10 && v==truncf(v));draws.insert(v);}
+ assert(draws.size()==10);
  // FIXTURES
 }
