@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.9
-static const char *RUNTIME_VERSION = "1.1.9";
+// OneMaker Arduino UNO/Nano Runtime 1.1.10
+static const char *RUNTIME_VERSION = "1.1.10";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -554,30 +554,7 @@ String valueText(const VmValue &value) {
   return result;
 }
 
-float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
-  uint8_t data[5] = {0, 0, 0, 0, 0};
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, LOW);
-  delay(type == 22 ? 2 : 20);
-  digitalWrite(pin, HIGH);
-  delayMicroseconds(30);
-  pinMode(pin, INPUT_PULLUP);
-  if (!pulseIn(pin, LOW, 1000UL) || !pulseIn(pin, HIGH, 1000UL)) return -999;
-  for (uint8_t bit = 0; bit < 40; bit++) {
-    if (!pulseIn(pin, LOW, 1000UL)) return -999;
-    unsigned long highTime = pulseIn(pin, HIGH, 1000UL);
-    if (!highTime) return -999;
-    data[bit >> 3] <<= 1;
-    if (highTime > 40) data[bit >> 3] |= 1;
-  }
-  if ((uint8_t)(data[0] + data[1] + data[2] + data[3]) != data[4]) return -999;
-  if (type == 22) {
-    uint16_t raw = ((uint16_t)data[humidity ? 0 : 2] << 8) | data[humidity ? 1 : 3];
-    float value = (raw & 0x7FFF) * 0.1f;
-    return (!humidity && (raw & 0x8000)) ? -value : value;
-  }
-  return humidity ? data[0] + data[1] * 0.1f : data[2] + data[3] * 0.1f;
-}
+#include "dht_reader.h"
 
 String readBluetoothText() {
   String value;
