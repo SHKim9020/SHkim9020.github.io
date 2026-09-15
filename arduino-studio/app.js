@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.10";
+  const RUNTIME_VERSION = "1.1.11";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -67,6 +67,30 @@
   const analogOptions = ANALOG_PINS.map((pin, index) => [pin, String(index)]);
 
   const blocks = [
+    {
+      type: "operator_integer", message0: "%1 정수로 변환",
+      args0: [{ type: "input_value", name: "VALUE", check: "Number" }],
+      output: "Number", inputsInline: true, colour: 120,
+      tooltip: "소수점 아래를 버립니다. 예: 23.8 → 23, -3.8 → -3"
+    },
+    {
+      type: "operator_random", message0: "%1 부터 %2 사이의 난수",
+      args0: [{ type: "input_value", name: "FROM", check: "Number" }, { type: "input_value", name: "TO", check: "Number" }],
+      output: "Number", inputsInline: true, colour: 120,
+      tooltip: "양 끝을 포함하는 임의의 정수입니다. 소수는 버리고, 두 수의 순서가 바뀌어도 동작합니다."
+    },
+    {
+      type: "operator_join", message0: "%1 와(과) %2 결합하기",
+      args0: [{ type: "input_value", name: "A" }, { type: "input_value", name: "B" }],
+      output: "String", inputsInline: true, colour: 120,
+      tooltip: "글자나 숫자를 이어 붙입니다. 예: 온도: 와 23 → 온도:23"
+    },
+    {
+      type: "operator_map", message0: "%1 값을 %2 ~ %3 범위에서 %4 ~ %5 범위로 변환한 값",
+      args0: ["VALUE", "IN_MIN", "IN_MAX", "OUT_MIN", "OUT_MAX"].map(name => ({ type: "input_value", name, check: "Number" })),
+      output: "Number", inputsInline: true, colour: 120,
+      tooltip: "비율에 맞춰 범위를 변환합니다. 소수도 유지하며 범위 밖 값도 계산합니다. 원래 범위의 양 끝이 같으면 새 범위의 시작값을 반환합니다."
+    },
     {
       type: "arduino_start",
       message0: "🚩 시작하면",
@@ -868,6 +892,10 @@
       { kind: "category", name: "연산", colour: "230", contents: [
         { kind: "block", type: "math_number", fields: { NUM: 0 } },
         { kind: "block", type: "math_arithmetic" },
+        { kind: "block", type: "operator_integer", inputs: { VALUE: numberShadow(23.8) } },
+        { kind: "block", type: "operator_random", inputs: { FROM: numberShadow(1), TO: numberShadow(10) } },
+        { kind: "block", type: "operator_join", inputs: { A: textShadow("가위"), B: textShadow("나무") } },
+        { kind: "block", type: "operator_map", inputs: { VALUE: numberShadow(0), IN_MIN: numberShadow(0), IN_MAX: numberShadow(1023), OUT_MIN: numberShadow(0), OUT_MAX: numberShadow(100) } },
         { kind: "block", type: "logic_compare" },
         { kind: "block", type: "logic_operation" },
         { kind: "block", type: "logic_negate" },
@@ -1098,7 +1126,7 @@
     HUSKY_SEEN: 12, HUSKY_X: 13, HUSKY_Y: 14, HUSKY_WIDTH: 15, HUSKY_HEIGHT: 16,
     ADD: 20, SUBTRACT: 21, MULTIPLY: 22, DIVIDE: 23, POWER: 24,
     EQUAL: 30, NOT_EQUAL: 31, LESS: 32, LESS_EQUAL: 33, GREATER: 34,
-    GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43, BT_ITEM: 44
+    GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43, BT_ITEM: 44, INTEGER: 45, RANDOM: 46, MAP: 47
   });
 
   class ByteWriter {
@@ -1139,6 +1167,21 @@
     const writer = new ByteWriter();
     writeExpressionValue(writer, block, context);
     if (writer.position > 255) throw new Error("수식이나 한 개의 출력 문장이 너무 깁니다.");
+    // The board evaluates postfix expressions with eight temporary values.
+    // Reject over-deep nested maps instead of silently dropping operands.
+    let depth = 0;
+    for (let index = 0; index < writer.bytes.length; index++) {
+      const opcode = writer.bytes[index];
+      if (opcode === EX.NUMBER) { index += 4; depth++; }
+      else if (opcode === EX.TEXT) { index += 1 + writer.bytes[index + 1]; depth++; }
+      else if ([EX.VARIABLE, EX.ANALOG, EX.DIGITAL, EX.BUTTON].includes(opcode)) { index++; depth++; }
+      else if ([EX.ULTRASONIC, EX.DUST].includes(opcode)) { index += 2; depth++; }
+      else if (opcode === EX.DHT) { index += 3; depth++; }
+      else if ([EX.BT_AVAILABLE, EX.BT_READ].includes(opcode)) depth++;
+      else if (opcode === EX.MAP) depth -= 4;
+      else if (![EX.NOT, EX.INTEGER, EX.HUSKY_SEEN, EX.HUSKY_X, EX.HUSKY_Y, EX.HUSKY_WIDTH, EX.HUSKY_HEIGHT].includes(opcode)) depth--;
+      if (depth > 8) throw new Error("보드 저장 수식이 너무 깊습니다. 일부 계산을 변수에 먼저 저장해주세요.");
+    }
     return [writer.position, ...writer.bytes];
   }
 
@@ -1176,6 +1219,16 @@
       case "variables_get":
         writer.u8(EX.VARIABLE);
         writer.u8(variableIndex(block, context));
+        return;
+      case "operator_integer":
+        writeExpressionValue(writer, inputBlock(block, "VALUE"), context);
+        writer.u8(EX.INTEGER);
+        return;
+      case "operator_random": binary("FROM", "TO", EX.RANDOM); return;
+      case "operator_join": binary("A", "B", EX.CONCAT); return;
+      case "operator_map":
+        for (const name of ["VALUE", "IN_MIN", "IN_MAX", "OUT_MIN", "OUT_MAX"]) writeExpressionValue(writer, inputBlock(block, name), context);
+        writer.u8(EX.MAP);
         return;
       case "math_arithmetic":
         binary("A", "B", {
@@ -2415,6 +2468,24 @@
       case "text": return String(block.getFieldValue("TEXT") || "");
       case "logic_boolean": return block.getFieldValue("BOOL") === "TRUE";
       case "variables_get": return liveVariables.get(variableKey(block)) ?? 0;
+      case "operator_integer": {
+        const value = Number(await evaluate(inputBlock(block, "VALUE"), functionDepth));
+        return Number.isFinite(value) ? Math.trunc(value) : 0;
+      }
+      case "operator_random": {
+        const from = Math.trunc(Number(await evaluate(inputBlock(block, "FROM"), functionDepth))) || 0;
+        const to = Math.trunc(Number(await evaluate(inputBlock(block, "TO"), functionDepth))) || 0;
+        const low = Math.min(from, to), high = Math.max(from, to);
+        return Math.min(high, low + Math.floor(Math.random() * (high - low + 1)));
+      }
+      case "operator_join":
+        return String(await evaluate(inputBlock(block, "A"), functionDepth)) + String(await evaluate(inputBlock(block, "B"), functionDepth));
+      case "operator_map": {
+        const values = [];
+        for (const name of ["VALUE", "IN_MIN", "IN_MAX", "OUT_MIN", "OUT_MAX"]) values.push(Number(await evaluate(inputBlock(block, name), functionDepth)));
+        const [value, inMin, inMax, outMin, outMax] = values;
+        return inMin === inMax ? outMin : (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+      }
       case "math_arithmetic": {
         const left = Number(await evaluate(inputBlock(block, "A"), functionDepth));
         const right = Number(await evaluate(inputBlock(block, "B"), functionDepth));
@@ -2966,6 +3037,10 @@
       case "text": return cppString(block.getFieldValue("TEXT"));
       case "logic_boolean": return block.getFieldValue("BOOL") === "TRUE" ? "true" : "false";
       case "variables_get": return cppVariable(block);
+      case "operator_integer": return `operatorInteger(${cppInput(block, "VALUE")})`;
+      case "operator_random": return `operatorRandom(${cppInput(block, "FROM")}, ${cppInput(block, "TO")})`;
+      case "operator_join": return `(operatorText(${cppInput(block, "A", '\"\"')}) + operatorText(${cppInput(block, "B", '\"\"')}))`;
+      case "operator_map": return `operatorMap(${["VALUE", "IN_MIN", "IN_MAX", "OUT_MIN", "OUT_MAX"].map(name => cppInput(block, name)).join(", ")})`;
       case "math_arithmetic": {
         const left = cppInput(block, "A");
         const right = cppInput(block, "B");
@@ -3239,6 +3314,29 @@
     });
 
     const helpers = [];
+    if (["operator_integer", "operator_random", "operator_map"].some(type => hardware.types.has(type))) helpers.push(`
+float operatorInteger(float value) {
+  return isfinite(value) ? truncf(value) : 0;
+}
+float operatorRandom(float from, float to) {
+  from = operatorInteger(from);
+  to = operatorInteger(to);
+  float low = min(from, to), high = max(from, to);
+  return min(high, low + floorf((high - low + 1) * (random(0x7fffffffL) / 2147483648.0f)));
+}
+float operatorMap(float value, float inMin, float inMax, float outMin, float outMax) {
+  return inMin == inMax ? outMin : (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+}
+`);
+    if (hardware.types.has("operator_join")) helpers.push(`
+String operatorText(const String &value) { return value; }
+String operatorText(const char *value) { return String(value); }
+String operatorText(double value) {
+  String text(value, 2);
+  while (text.endsWith("0") && text.indexOf('.') >= 0) text.remove(text.length() - 1);
+  if (text.endsWith(".")) text.remove(text.length() - 1);
+  return text;
+}`);
     if (["pin_digital_read", "sensor_button", "sensor_push_button", "sensor_tact_button"].some(type => hardware.types.has(type))) helpers.push(`
 int readDigitalPin(uint8_t pin) {
   pinMode(pin, INPUT);
@@ -3429,6 +3527,7 @@ ${body}}
     }
 
     const setupLines = ["  Serial.begin(115200);"];
+    if (hardware.types.has("operator_random")) setupLines.push("  randomSeed(micros());");
     hardware.dht.forEach(({ pin, type }) => setupLines.push(`  ${dhtName(pin, type)}.begin();`));
     hardware.servoPins.forEach(pin => setupLines.push(`  ${cppIdentifier(pin, "servo")}.attach(${pin});`));
     const startBlocks = workspace.getTopBlocks(true).filter(block => block.type === "arduino_start");

@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.10
-static const char *RUNTIME_VERSION = "1.1.10";
+// OneMaker Arduino UNO/Nano Runtime 1.1.11
+static const char *RUNTIME_VERSION = "1.1.11";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -86,7 +86,10 @@ enum ExpressionOpcode : uint8_t {
   EX_OR = 41,
   EX_NOT = 42,
   EX_CONCAT = 43,
-  EX_BT_ITEM = 44
+  EX_BT_ITEM = 44,
+  EX_INTEGER = 45,
+  EX_RANDOM = 46,
+  EX_MAP = 47
 };
 
 struct VmValue {
@@ -555,6 +558,7 @@ String valueText(const VmValue &value) {
 }
 
 #include "dht_reader.h"
+#include "operator_math.h"
 
 String readBluetoothText() {
   String value;
@@ -642,6 +646,13 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       uint8_t field = opcode == EX_HUSKY_SEEN ? 0 : opcode - EX_HUSKY_SEEN;
       bool seen = fetchHuskyValue(id, field, value);
       stack[stackSize - 1] = numberValue(seen ? value : 0);
+    } else if (opcode == EX_INTEGER && stackSize >= 1) {
+      stack[stackSize - 1] = numberValue(operatorInteger(valueNumber(stack[stackSize - 1])));
+    } else if (opcode == EX_MAP && stackSize >= 5) {
+      uint8_t base = stackSize - 5;
+      float mapped = operatorMap(valueNumber(stack[base]), valueNumber(stack[base + 1]), valueNumber(stack[base + 2]), valueNumber(stack[base + 3]), valueNumber(stack[base + 4]));
+      stackSize = base;
+      stack[stackSize++] = numberValue(mapped);
     } else if (opcode == EX_NOT && stackSize >= 1) {
       stack[stackSize - 1] = numberValue(!valueBoolean(stack[stackSize - 1]));
     } else if (stackSize >= 2) {
@@ -651,23 +662,24 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       float a = valueNumber(left);
       float b = valueNumber(right);
       switch (opcode) {
-        case EX_ADD: result = numberValue(a + b); break;
-        case EX_SUBTRACT: result = numberValue(a - b); break;
-        case EX_MULTIPLY: result = numberValue(a * b); break;
-        case EX_DIVIDE: result = numberValue(fabs(b) < 0.00001f ? 0 : a / b); break;
-        case EX_POWER: result = numberValue(vmPower(a, b)); break;
+        case EX_RANDOM: result.number = operatorRandom(a, b); break;
+        case EX_ADD: result.number = a + b; break;
+        case EX_SUBTRACT: result.number = a - b; break;
+        case EX_MULTIPLY: result.number = a * b; break;
+        case EX_DIVIDE: result.number = fabs(b) < 0.00001f ? 0 : a / b; break;
+        case EX_POWER: result.number = vmPower(a, b); break;
         case EX_EQUAL:
-          result = numberValue(left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f);
+          result.number = left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f;
           break;
         case EX_NOT_EQUAL:
-          result = numberValue(left.isText || right.isText ? valueText(left) != valueText(right) : fabs(a - b) >= 0.00001f);
+          result.number = left.isText || right.isText ? valueText(left) != valueText(right) : fabs(a - b) >= 0.00001f;
           break;
-        case EX_LESS: result = numberValue(a < b); break;
-        case EX_LESS_EQUAL: result = numberValue(a <= b); break;
-        case EX_GREATER: result = numberValue(a > b); break;
-        case EX_GREATER_EQUAL: result = numberValue(a >= b); break;
-        case EX_AND: result = numberValue(valueBoolean(left) && valueBoolean(right)); break;
-        case EX_OR: result = numberValue(valueBoolean(left) || valueBoolean(right)); break;
+        case EX_LESS: result.number = a < b; break;
+        case EX_LESS_EQUAL: result.number = a <= b; break;
+        case EX_GREATER: result.number = a > b; break;
+        case EX_GREATER_EQUAL: result.number = a >= b; break;
+        case EX_AND: result.number = valueBoolean(left) && valueBoolean(right); break;
+        case EX_OR: result.number = valueBoolean(left) || valueBoolean(right); break;
         case EX_CONCAT: result = textValue(valueText(left) + valueText(right)); break;
         case EX_BT_ITEM: {
           int count = constrain((int)a, 1, 64);
@@ -1107,6 +1119,7 @@ void processLine(char *line) {
 }
 
 void setup() {
+  randomSeed(micros());
   Serial.begin(115200);
   delay(350);
   sendReady();
