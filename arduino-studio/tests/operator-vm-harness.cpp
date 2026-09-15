@@ -17,7 +17,10 @@ struct String : std::string {
  int indexOf(char c)const{auto p=find(c);return p==npos?-1:(int)p;}
  void remove(size_t p){erase(p);}
 };
-long random(long n){return n/2;}
+int randomCalls = 0;
+long random(long n){++randomCalls; return n/2;}
+#define min(a,b) ((a)<(b)?(a):(b))
+#define max(a,b) ((a)>(b)?(a):(b))
 long micros(){return 123;}
 void randomSeed(long){}
 // HELPERS
@@ -43,5 +46,6 @@ bool fetchHuskyValue(int,int,int16_t &){return false;}
 float vmPower(float a,float b){return pow(a,b);}
 // EVALUATOR
 int main(){
+ randomCalls = 0; operatorRandom(1,10); assert(randomCalls == 1);
  // FIXTURES
 }
