@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.10
-static const char *RUNTIME_VERSION = "1.1.10";
+// OneMaker Arduino UNO/Nano Runtime 1.1.11
+static const char *RUNTIME_VERSION = "1.1.11";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -86,7 +86,10 @@ enum ExpressionOpcode : uint8_t {
   EX_OR = 41,
   EX_NOT = 42,
   EX_CONCAT = 43,
-  EX_BT_ITEM = 44
+  EX_BT_ITEM = 44,
+  EX_INTEGER = 45,
+  EX_RANDOM = 46,
+  EX_MAP = 47
 };
 
 struct VmValue {
@@ -137,14 +140,23 @@ int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
 }
 
+uint8_t hexDigit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  c |= 0x20;
+  return c >= 'a' && c <= 'f' ? c - 'a' + 10 : 0;
+}
+
+uint8_t readHexByte(const char *hex) {
+  return (hexDigit(hex[0]) << 4) | hexDigit(hex[1]);
+}
+
 String decodeHex(const char *hex) {
   String value;
   if (!hex) return value;
   size_t length = strlen(hex);
   value.reserve(length / 2);
   for (size_t index = 0; index + 1 < length; index += 2) {
-    char byteText[3] = {hex[index], hex[index + 1], 0};
-    value += (char)strtoul(byteText, nullptr, 16);
+    value += (char)readHexByte(hex + index);
   }
   return value;
 }
@@ -167,7 +179,7 @@ void sendNumber(const char *id, double value) {
   Serial.print(F("V,"));
   Serial.print(id);
   Serial.print(',');
-  Serial.println(value, 2);
+  Serial.println(String(value, 2));
 }
 
 void sendText(const char *id, const String &value) {
@@ -488,6 +500,12 @@ VmValue numberValue(float value) {
   return result;
 }
 
+void __attribute__((noinline)) setNumber(VmValue &value, float number) {
+  value.number = number;
+  value.isText = false;
+  value.text = "";
+}
+
 float parseNumber(const String &text) {
   uint8_t index = 0;
   bool negative = false;
@@ -555,6 +573,7 @@ String valueText(const VmValue &value) {
 }
 
 #include "dht_reader.h"
+#include "operator_math.h"
 
 String readBluetoothText() {
   String value;
@@ -596,9 +615,12 @@ VmValue evaluateStoredExpression(uint16_t &address) {
 
   while (address < expressionEnd) {
     uint8_t opcode = programByte(address++);
+    float numeric = 0;
+    bool numericResult = true;
     if (opcode == EX_NUMBER) {
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(programFloat(address));
+      numeric = programFloat(address);
     } else if (opcode == EX_TEXT) {
+      numericResult = false;
       uint8_t length = programByte(address++);
       String value;
       value.reserve(length);
@@ -606,81 +628,94 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(value);
     } else if (opcode == EX_VARIABLE) {
       uint8_t index = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(index < VM_MAX_VARIABLES ? vmVariables[index] : 0);
+      numeric = index < VM_MAX_VARIABLES ? vmVariables[index] : 0;
     } else if (opcode == EX_ANALOG) {
       uint8_t analogPin = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(analogRead(A0 + clampLong(analogPin, 0, 5)));
+      numeric = analogRead(A0 + clampLong(analogPin, 0, 5));
     } else if (opcode == EX_DIGITAL) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin));
+      numeric = digitalRead(pin);
     } else if (opcode == EX_BUTTON) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(digitalRead(pin) == HIGH ? 1 : 0);
+      numeric = digitalRead(pin) == HIGH ? 1 : 0;
     } else if (opcode == EX_ULTRASONIC) {
       uint8_t trig = programByte(address++);
       uint8_t echo = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(readUltrasonic(trig, echo));
+      numeric = readUltrasonic(trig, echo);
     } else if (opcode == EX_DHT) {
       uint8_t pin = programByte(address++);
       uint8_t type = programByte(address++);
       bool humidity = programByte(address++) != 0;
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(readDhtValue(pin, type, humidity));
+      numeric = readDhtValue(pin, type, humidity);
     } else if (opcode == EX_DUST) {
       uint8_t ledPin = programByte(address++);
       uint8_t analogPin = programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(readDust(ledPin, analogPin));
+      numeric = readDust(ledPin, analogPin);
     } else if (opcode == EX_BT_AVAILABLE) {
       if (bluetooth) bluetooth->listen();
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(bluetooth && bluetooth->available() ? 1 : 0);
+      numeric = bluetooth && bluetooth->available() ? 1 : 0;
     } else if (opcode == EX_BT_READ) {
+      numericResult = false;
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
-    } else if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
+    } else {
+      numericResult = false;
+      if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
       int16_t id = constrain((int)valueNumber(stack[stackSize - 1]), 0, 32767);
       int16_t value = 0;
       uint8_t field = opcode == EX_HUSKY_SEEN ? 0 : opcode - EX_HUSKY_SEEN;
       bool seen = fetchHuskyValue(id, field, value);
-      stack[stackSize - 1] = numberValue(seen ? value : 0);
+      setNumber(stack[stackSize - 1], seen ? value : 0);
+    } else if (opcode == EX_INTEGER && stackSize >= 1) {
+      setNumber(stack[stackSize - 1], operatorInteger(valueNumber(stack[stackSize - 1])));
+    } else if (opcode == EX_MAP && stackSize >= 5) {
+      uint8_t base = stackSize - 5;
+      float args[5];
+      for (uint8_t i = 0; i < 5; i++) args[i] = valueNumber(stack[base + i]);
+      float mapped = operatorMap(args[0], args[1], args[2], args[3], args[4]);
+      stackSize = base;
+      setNumber(stack[stackSize++], mapped);
     } else if (opcode == EX_NOT && stackSize >= 1) {
-      stack[stackSize - 1] = numberValue(!valueBoolean(stack[stackSize - 1]));
+      setNumber(stack[stackSize - 1], !valueBoolean(stack[stackSize - 1]));
     } else if (stackSize >= 2) {
-      VmValue right = stack[--stackSize];
-      VmValue left = stack[--stackSize];
-      VmValue result = numberValue(0);
+      // Reuse the left stack slot instead of copying three temporary Strings.
+      VmValue &right = stack[--stackSize];
+      VmValue &left = stack[stackSize - 1];
       float a = valueNumber(left);
       float b = valueNumber(right);
-      switch (opcode) {
-        case EX_ADD: result = numberValue(a + b); break;
-        case EX_SUBTRACT: result = numberValue(a - b); break;
-        case EX_MULTIPLY: result = numberValue(a * b); break;
-        case EX_DIVIDE: result = numberValue(fabs(b) < 0.00001f ? 0 : a / b); break;
-        case EX_POWER: result = numberValue(vmPower(a, b)); break;
-        case EX_EQUAL:
-          result = numberValue(left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f);
-          break;
-        case EX_NOT_EQUAL:
-          result = numberValue(left.isText || right.isText ? valueText(left) != valueText(right) : fabs(a - b) >= 0.00001f);
-          break;
-        case EX_LESS: result = numberValue(a < b); break;
-        case EX_LESS_EQUAL: result = numberValue(a <= b); break;
-        case EX_GREATER: result = numberValue(a > b); break;
-        case EX_GREATER_EQUAL: result = numberValue(a >= b); break;
-        case EX_AND: result = numberValue(valueBoolean(left) && valueBoolean(right)); break;
-        case EX_OR: result = numberValue(valueBoolean(left) || valueBoolean(right)); break;
-        case EX_CONCAT: result = textValue(valueText(left) + valueText(right)); break;
-        case EX_BT_ITEM: {
-          int count = constrain((int)a, 1, 64);
-          int index = constrain((int)b, 1, count);
-          String value = readBluetoothText();
-          value = value.substring(0, min(count, (int)value.length()));
-          result = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
-          break;
+      if (opcode == EX_CONCAT) {
+        left = textValue(valueText(left) + valueText(right));
+      } else if (opcode == EX_BT_ITEM) {
+        int count = constrain((int)a, 1, 64);
+        int index = constrain((int)b, 1, count);
+        String value = readBluetoothText();
+        value = value.substring(0, min(count, (int)value.length()));
+        left = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
+      } else {
+        float result = 0;
+        switch (opcode) {
+          case EX_RANDOM: result = operatorRandom(a, b); break;
+          case EX_ADD: result = a + b; break;
+          case EX_SUBTRACT: result = a - b; break;
+          case EX_MULTIPLY: result = a * b; break;
+          case EX_DIVIDE: result = fabs(b) < 0.00001f ? 0 : a / b; break;
+          case EX_POWER: result = vmPower(a, b); break;
+          case EX_EQUAL: result = left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f; break;
+          case EX_NOT_EQUAL: result = left.isText || right.isText ? valueText(left) != valueText(right) : fabs(a - b) >= 0.00001f; break;
+          case EX_LESS: result = a < b; break;
+          case EX_LESS_EQUAL: result = a <= b; break;
+          case EX_GREATER: result = a > b; break;
+          case EX_GREATER_EQUAL: result = a >= b; break;
+          case EX_AND: result = valueBoolean(left) && valueBoolean(right); break;
+          case EX_OR: result = valueBoolean(left) || valueBoolean(right); break;
+          default: break;
         }
-        default: break;
+        setNumber(left, result);
       }
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = result;
     }
+    }
+    if (numericResult && stackSize < VM_MAX_STACK) setNumber(stack[stackSize++], numeric);
   }
   address = expressionEnd;
   return stackSize ? stack[stackSize - 1] : numberValue(0);
@@ -919,8 +954,7 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
       return;
     }
     for (uint16_t index = 0; index < byteCount; index++) {
-      char byteText[3] = {hex[index * 2], hex[index * 2 + 1], 0};
-      EEPROM.update(PROGRAM_HEADER_SIZE + offset + index, strtoul(byteText, nullptr, 16));
+      EEPROM.update(PROGRAM_HEADER_SIZE + offset + index, readHexByte(hex + index * 2));
     }
     Serial.print(F("PROGRAM_DATA,"));
     Serial.println(offset + byteCount);
