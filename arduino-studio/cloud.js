@@ -30,6 +30,14 @@
     return message;
   }
 
+  function withTimeout(promise, milliseconds = 12000) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("서버 응답이 늦습니다. 잠시 후 다시 시도해주세요.")), milliseconds);
+    });
+    return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
+  }
+
   function setBusy(form, busy) {
     form.querySelectorAll("button,input").forEach(element => { element.disabled = busy; });
   }
@@ -205,10 +213,18 @@
     const list = document.querySelector("#cloudProjectList");
     list.replaceChildren();
     list.dataset.loading = "true";
-    const { data, error } = await client.from("projects")
-      .select("id,name,updated_at")
-      .order("updated_at", { ascending: false });
-    delete list.dataset.loading;
+    let result;
+    try {
+      result = await withTimeout(client.from("projects")
+        .select("id,name,updated_at")
+        .order("updated_at", { ascending: false }));
+    } catch (error) {
+      toast(messageFor(error));
+      return;
+    } finally {
+      delete list.dataset.loading;
+    }
+    const { data, error } = result;
     if (error) return toast(messageFor(error));
     if (!data.length) {
       const empty = document.createElement("p");

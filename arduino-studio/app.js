@@ -33,6 +33,10 @@
   let copiedBlockState = null;
   let toastTimer;
   let codeRefreshTimer = null;
+  let codeDirty = true;
+  let serialDirty = false;
+  let activeSideTab = "board";
+  let autosaveIdleHandle = null;
   let deferredInstallPrompt = null;
   let requestSequence = 1;
   let runCancelled = false;
@@ -952,6 +956,7 @@
     workspace.addChangeListener(event => {
       if (event.type === Blockly.Events.SELECTED) selectedBlockId = event.newElementId || null;
       if (event.isUiEvent) return;
+      codeDirty = true;
       scheduleCodeRefresh();
       scheduleAutosave();
     });
@@ -1002,6 +1007,12 @@
       runCancelled = true;
       if (serialReader) serialReader.cancel().catch(() => {});
     });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      if (activeSideTab === "code" && codeDirty) scheduleCodeRefresh();
+      if (activeSideTab === "serial" && serialDirty) flushSerialOutput();
+      Blockly.svgResize(workspace);
+    });
     if ("serial" in navigator) {
       navigator.serial.addEventListener("disconnect", () => closeSerialState());
     }
@@ -1048,8 +1059,11 @@
   }
 
   function activateTab(name) {
+    activeSideTab = name;
     $$(".side-tabs [data-tab]").forEach(button => button.classList.toggle("active", button.dataset.tab === name));
     $$(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === name));
+    if (name === "code" && codeDirty) refreshCode();
+    if (name === "serial" && serialDirty) flushSerialOutput();
   }
 
   function restoreSidePanel() {
@@ -1865,8 +1879,14 @@
   }
 
   function consumeSerialLines() {
-    const lines = serialBuffer.split(/\r?\n/);
+    // A disconnected/noisy board must not grow one unbounded string forever.
+    if (serialBuffer.length > 16384) serialBuffer = serialBuffer.slice(-8192);
+    let lines = serialBuffer.split(/\r?\n/);
     serialBuffer = lines.pop() || "";
+    if (lines.length > 300) {
+      const protocol = lines.filter(line => /^(READY|V,|T,|PROGRAM_|SAVED,|OK$|ERR$)/.test(line));
+      lines = [...protocol, ...lines.slice(-200)];
+    }
     for (const line of lines) {
       if (!line) continue;
       appendSerial(line);
@@ -2413,15 +2433,20 @@
     if (serialLogLines.length > MAX_SERIAL_LINES) {
       serialLogLines.splice(0, serialLogLines.length - MAX_SERIAL_LINES);
     }
-    if (serialFlushTimer) return;
+    serialDirty = true;
+    // Rendering hundreds of lines while another tab is visible wastes the main thread.
+    if (activeSideTab !== "serial" || document.hidden || serialFlushTimer) return;
     serialFlushTimer = setTimeout(flushSerialOutput, SERIAL_FLUSH_DELAY_MS);
   }
 
   function flushSerialOutput() {
+    if (serialFlushTimer) clearTimeout(serialFlushTimer);
     serialFlushTimer = null;
+    if (activeSideTab !== "serial" || document.hidden) return;
     const output = $("#serialOutput");
     output.textContent = serialLogLines.length ? `${serialLogLines.join("\n")}\n` : "";
     output.scrollTop = output.scrollHeight;
+    serialDirty = false;
   }
 
   function clearSerialOutput() {
@@ -2814,10 +2839,19 @@
   function scheduleAutosave() {
     clearTimeout(scheduleAutosave.timer);
     scheduleAutosave.timer = setTimeout(() => {
-      const data = projectData();
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) {}
-      window.dispatchEvent(new CustomEvent("onemaker:project-change", { detail: data }));
-    }, 350);
+      const save = () => {
+        autosaveIdleHandle = null;
+        const data = projectData();
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) {}
+        window.dispatchEvent(new CustomEvent("onemaker:project-change", { detail: data }));
+      };
+      if ("requestIdleCallback" in window) {
+        if (autosaveIdleHandle) window.cancelIdleCallback(autosaveIdleHandle);
+        autosaveIdleHandle = window.requestIdleCallback(save, { timeout: 1500 });
+      } else {
+        save();
+      }
+    }, 700);
   }
 
   function restoreAutosave() {
@@ -2971,12 +3005,14 @@
   }
 
   function copyCode() {
+    if (codeDirty) refreshCode();
     navigator.clipboard?.writeText($("#codeView").value)
       .then(() => toast("Arduino 코드를 복사했습니다."))
       .catch(() => toast("코드를 직접 선택해 복사해주세요."));
   }
 
   function downloadIno() {
+    if (codeDirty) refreshCode();
     const name = safeFilename($("#projectName").value).replace(/\s+/g, "_");
     downloadBlob(`${name}.ino`, $("#codeView").value, "text/x-c++src");
     toast("Arduino INO 파일을 저장했습니다.");
@@ -2989,14 +3025,17 @@
     } catch (error) {
       $("#codeView").value = `// 코드 생성 오류: ${error.message}`;
     }
+    codeDirty = false;
   }
 
   function scheduleCodeRefresh() {
     clearTimeout(codeRefreshTimer);
+    // Arduino C++ generation walks the full workspace. Do it only when viewed.
+    if (activeSideTab !== "code" || document.hidden) return;
     codeRefreshTimer = setTimeout(() => {
       codeRefreshTimer = null;
       refreshCode();
-    }, 90);
+    }, 180);
   }
 
   function cppIdentifier(value, prefix = "value") {

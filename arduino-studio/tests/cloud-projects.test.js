@@ -6,6 +6,11 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const cloud = fs.readFileSync(path.join(root, "cloud.js"), "utf8");
+
+test("cloud project loading cannot spin forever", () => {
+  assert.match(cloud, /function withTimeout\(promise, milliseconds = 12000\)/);
+  assert.match(cloud, /finally\([\s\S]*delete list\.dataset\.loading/);
+});
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const sql = fs.readFileSync(path.join(root, "supabase/setup.sql"), "utf8");
 
