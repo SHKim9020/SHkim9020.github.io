@@ -15,7 +15,7 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
   };
   static Cache cache = {};
   // UNO/Nano share digital pins 0..19; Nano A6/A7 are analog-only.
-  if (pin >= 20 || (type != 11 && type != 22)) return -999;
+  if (pin >= 20) return -999;
   // Consecutive reads share a packet; switching sensors waits safely.
   Cache *entry = &cache;
   if (!entry->used || entry->pin != pin) {
