@@ -13,12 +13,11 @@ float readDhtValue(uint8_t pin, uint8_t type, bool humidity) {
     uint8_t data[5], pin, type;
     bool used, valid;
   };
-  static Cache cache[4] = {};
+  static Cache cache = {};
   // UNO/Nano share digital pins 0..19; Nano A6/A7 are analog-only.
   if (pin >= 20 || (type != 11 && type != 22)) return -999;
-  // Direct-mapped slots keep the full runtime within Nano's flash limit.
-  // A collision reinitializes safely with a two-second wait.
-  Cache *entry = &cache[pin & 3];
+  // Consecutive reads share a packet; switching sensors waits safely.
+  Cache *entry = &cache;
   if (!entry->used || entry->pin != pin) {
     entry->used = true;
     entry->pin = pin;
