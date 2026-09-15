@@ -656,42 +656,40 @@ VmValue evaluateStoredExpression(uint16_t &address) {
     } else if (opcode == EX_NOT && stackSize >= 1) {
       stack[stackSize - 1] = numberValue(!valueBoolean(stack[stackSize - 1]));
     } else if (stackSize >= 2) {
-      VmValue right = stack[--stackSize];
-      VmValue left = stack[--stackSize];
-      VmValue result = numberValue(0);
+      // Reuse the left stack slot instead of copying three temporary Strings.
+      VmValue &right = stack[--stackSize];
+      VmValue &left = stack[stackSize - 1];
       float a = valueNumber(left);
       float b = valueNumber(right);
-      switch (opcode) {
-        case EX_RANDOM: result.number = operatorRandom(a, b); break;
-        case EX_ADD: result.number = a + b; break;
-        case EX_SUBTRACT: result.number = a - b; break;
-        case EX_MULTIPLY: result.number = a * b; break;
-        case EX_DIVIDE: result.number = fabs(b) < 0.00001f ? 0 : a / b; break;
-        case EX_POWER: result.number = vmPower(a, b); break;
-        case EX_EQUAL:
-          result.number = left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f;
-          break;
-        case EX_NOT_EQUAL:
-          result.number = left.isText || right.isText ? valueText(left) != valueText(right) : fabs(a - b) >= 0.00001f;
-          break;
-        case EX_LESS: result.number = a < b; break;
-        case EX_LESS_EQUAL: result.number = a <= b; break;
-        case EX_GREATER: result.number = a > b; break;
-        case EX_GREATER_EQUAL: result.number = a >= b; break;
-        case EX_AND: result.number = valueBoolean(left) && valueBoolean(right); break;
-        case EX_OR: result.number = valueBoolean(left) || valueBoolean(right); break;
-        case EX_CONCAT: result = textValue(valueText(left) + valueText(right)); break;
-        case EX_BT_ITEM: {
-          int count = constrain((int)a, 1, 64);
-          int index = constrain((int)b, 1, count);
-          String value = readBluetoothText();
-          value = value.substring(0, min(count, (int)value.length()));
-          result = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
-          break;
+      if (opcode == EX_CONCAT) {
+        left = textValue(valueText(left) + valueText(right));
+      } else if (opcode == EX_BT_ITEM) {
+        int count = constrain((int)a, 1, 64);
+        int index = constrain((int)b, 1, count);
+        String value = readBluetoothText();
+        value = value.substring(0, min(count, (int)value.length()));
+        left = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
+      } else {
+        float result = 0;
+        switch (opcode) {
+          case EX_RANDOM: result = operatorRandom(a, b); break;
+          case EX_ADD: result = a + b; break;
+          case EX_SUBTRACT: result = a - b; break;
+          case EX_MULTIPLY: result = a * b; break;
+          case EX_DIVIDE: result = fabs(b) < 0.00001f ? 0 : a / b; break;
+          case EX_POWER: result = vmPower(a, b); break;
+          case EX_EQUAL: result = left.isText || right.isText ? valueText(left) == valueText(right) : fabs(a - b) < 0.00001f; break;
+          case EX_NOT_EQUAL: result = left.isText || right.isText ? valueText(left) != valueText(right) : fabs(a - b) >= 0.00001f; break;
+          case EX_LESS: result = a < b; break;
+          case EX_LESS_EQUAL: result = a <= b; break;
+          case EX_GREATER: result = a > b; break;
+          case EX_GREATER_EQUAL: result = a >= b; break;
+          case EX_AND: result = valueBoolean(left) && valueBoolean(right); break;
+          case EX_OR: result = valueBoolean(left) || valueBoolean(right); break;
+          default: break;
         }
-        default: break;
+        left = numberValue(result);
       }
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = result;
     }
   }
   address = expressionEnd;
