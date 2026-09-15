@@ -491,6 +491,12 @@ VmValue numberValue(float value) {
   return result;
 }
 
+void __attribute__((noinline)) setNumber(VmValue &value, float number) {
+  value.number = number;
+  value.isText = false;
+  value.text = "";
+}
+
 float parseNumber(const String &text) {
   uint8_t index = 0;
   bool negative = false;
@@ -651,16 +657,18 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       int16_t value = 0;
       uint8_t field = opcode == EX_HUSKY_SEEN ? 0 : opcode - EX_HUSKY_SEEN;
       bool seen = fetchHuskyValue(id, field, value);
-      stack[stackSize - 1] = numberValue(seen ? value : 0);
+      setNumber(stack[stackSize - 1], seen ? value : 0);
     } else if (opcode == EX_INTEGER && stackSize >= 1) {
-      stack[stackSize - 1] = numberValue(operatorInteger(valueNumber(stack[stackSize - 1])));
+      setNumber(stack[stackSize - 1], operatorInteger(valueNumber(stack[stackSize - 1])));
     } else if (opcode == EX_MAP && stackSize >= 5) {
       uint8_t base = stackSize - 5;
-      float mapped = operatorMap(valueNumber(stack[base]), valueNumber(stack[base + 1]), valueNumber(stack[base + 2]), valueNumber(stack[base + 3]), valueNumber(stack[base + 4]));
+      float args[5];
+      for (uint8_t i = 0; i < 5; i++) args[i] = valueNumber(stack[base + i]);
+      float mapped = operatorMap(args[0], args[1], args[2], args[3], args[4]);
       stackSize = base;
-      stack[stackSize++] = numberValue(mapped);
+      setNumber(stack[stackSize++], mapped);
     } else if (opcode == EX_NOT && stackSize >= 1) {
-      stack[stackSize - 1] = numberValue(!valueBoolean(stack[stackSize - 1]));
+      setNumber(stack[stackSize - 1], !valueBoolean(stack[stackSize - 1]));
     } else if (stackSize >= 2) {
       // Reuse the left stack slot instead of copying three temporary Strings.
       VmValue &right = stack[--stackSize];
@@ -694,11 +702,11 @@ VmValue evaluateStoredExpression(uint16_t &address) {
           case EX_OR: result = valueBoolean(left) || valueBoolean(right); break;
           default: break;
         }
-        left = numberValue(result);
+        setNumber(left, result);
       }
     }
     }
-    if (numericResult && stackSize < VM_MAX_STACK) stack[stackSize++] = numberValue(numeric);
+    if (numericResult && stackSize < VM_MAX_STACK) setNumber(stack[stackSize++], numeric);
   }
   address = expressionEnd;
   return stackSize ? stack[stackSize - 1] : numberValue(0);
