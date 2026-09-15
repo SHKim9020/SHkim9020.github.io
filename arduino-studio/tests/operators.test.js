@@ -45,7 +45,7 @@ test('compiled expressions execute in the real firmware VM and generated C++',()
  const {api}=load();
  const runtime=fs.readFileSync(path.join(root,'firmware/onemaker_runtime/onemaker_runtime.ino'),'utf8');
  const enumText=runtime.slice(runtime.indexOf('enum ExpressionOpcode'),runtime.indexOf('struct VmValue'));
- const evaluator=runtime.slice(runtime.indexOf('void __attribute__((noinline)) setNumber'), runtime.indexOf('float parseNumber')) + runtime.slice(runtime.indexOf('VmValue evaluateStoredExpression'),runtime.indexOf('\nuint16_t storedProgramChecksum'));
+ const evaluator=runtime.slice(runtime.indexOf('uint8_t hexDigit'), runtime.indexOf('void printHex')) + runtime.slice(runtime.indexOf('void __attribute__((noinline)) setNumber'), runtime.indexOf('float parseNumber')) + runtime.slice(runtime.indexOf('VmValue evaluateStoredExpression'),runtime.indexOf('\nuint16_t storedProgramChecksum'));
  const body=fs.readFileSync(path.join(__dirname,'operator-vm-harness.cpp'),'utf8');
  const sensorCases = [
   [block('sensor_light',{}, {PIN:0}),512],

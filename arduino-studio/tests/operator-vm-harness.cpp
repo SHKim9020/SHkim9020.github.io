@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <set>
+#include <cstring>
 using std::min; using std::max; using std::isfinite;
 struct String : std::string {
  using std::string::string;
@@ -47,6 +48,8 @@ bool fetchHuskyValue(int,int,int16_t &){return false;}
 float vmPower(float a,float b){return pow(a,b);}
 // EVALUATOR
 int main(){
+ assert(decodeHex("EC98A8EB8F843A3233") == String("온도:23"));
+ for(int i=0;i<256;i++){char text[3];snprintf(text,3,"%02x",i);assert(readHexByte(text)==i);snprintf(text,3,"%02X",i);assert(readHexByte(text)==i);}
  std::set<int> draws;
  for(int i=0;i<1000;i++){float v=operatorRandom(10,1);assert(v>=1 && v<=10 && v==truncf(v));draws.insert(v);}
  assert(draws.size()==10);

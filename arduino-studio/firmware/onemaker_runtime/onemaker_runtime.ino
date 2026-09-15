@@ -140,14 +140,23 @@ int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
 }
 
+uint8_t hexDigit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  c |= 0x20;
+  return c >= 'a' && c <= 'f' ? c - 'a' + 10 : 0;
+}
+
+uint8_t readHexByte(const char *hex) {
+  return (hexDigit(hex[0]) << 4) | hexDigit(hex[1]);
+}
+
 String decodeHex(const char *hex) {
   String value;
   if (!hex) return value;
   size_t length = strlen(hex);
   value.reserve(length / 2);
   for (size_t index = 0; index + 1 < length; index += 2) {
-    char byteText[3] = {hex[index], hex[index + 1], 0};
-    value += (char)strtoul(byteText, nullptr, 16);
+    value += (char)readHexByte(hex + index);
   }
   return value;
 }
@@ -170,7 +179,7 @@ void sendNumber(const char *id, double value) {
   Serial.print(F("V,"));
   Serial.print(id);
   Serial.print(',');
-  Serial.println(value, 2);
+  Serial.println(String(value, 2));
 }
 
 void sendText(const char *id, const String &value) {
@@ -945,8 +954,7 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
       return;
     }
     for (uint16_t index = 0; index < byteCount; index++) {
-      char byteText[3] = {hex[index * 2], hex[index * 2 + 1], 0};
-      EEPROM.update(PROGRAM_HEADER_SIZE + offset + index, strtoul(byteText, nullptr, 16));
+      EEPROM.update(PROGRAM_HEADER_SIZE + offset + index, readHexByte(hex + index * 2));
     }
     Serial.print(F("PROGRAM_DATA,"));
     Serial.println(offset + byteCount);
