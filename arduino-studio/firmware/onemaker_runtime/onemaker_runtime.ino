@@ -1147,7 +1147,6 @@ void processLine(char *line) {
 }
 
 void readBluetoothControl() {
-  if (!bluetooth) return;
   bluetooth->listen();
   if (!bluetoothControlLength) {
     if (!bluetooth->available() || bluetooth->peek() != 0x1e) return;
@@ -1155,13 +1154,10 @@ void readBluetoothControl() {
   }
   while (bluetooth->available()) {
     char character = bluetooth->read();
-    if (character == '\r') continue;
     if (character == '\n') {
       bluetoothControlLine[bluetoothControlLength] = 0;
-      if (bluetoothControlLength > 1) {
-        controlOutput = bluetooth;
-        processLine(bluetoothControlLine + 1);
-      }
+      controlOutput = bluetooth;
+      processLine(bluetoothControlLine + 1);
       bluetoothControlLength = 0;
     } else if (bluetoothControlLength < sizeof(bluetoothControlLine) - 1) {
       bluetoothControlLine[bluetoothControlLength++] = character;
