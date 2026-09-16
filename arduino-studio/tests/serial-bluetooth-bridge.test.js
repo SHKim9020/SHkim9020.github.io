@@ -27,5 +27,5 @@ test("ordinary Bluetooth messages remain available to existing blocks", () => {
   assert.match(runtime, /if \(!bluetooth->available\(\) \|\| bluetooth->peek\(\) != 0x1e\) return/);
   assert.doesNotMatch(runtime, /bluetoothUserPrefix/);
   assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetooth->available\(\)/);
-  assert.match(runtime, /numeric = bluetoothDataAvailable\(\) \? 1 : 0/);
+  assert.match(runtime, /numeric = bluetooth && bluetooth->available\(\) \? 1 : 0/);
 });

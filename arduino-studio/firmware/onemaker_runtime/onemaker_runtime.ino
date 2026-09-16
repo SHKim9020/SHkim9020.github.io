@@ -579,15 +579,10 @@ String valueText(const VmValue &value) {
 #include "operator_math.h"
 
 void beginBluetooth(uint8_t rx, uint8_t tx, uint16_t baud) {
-  bool wasControlOutput = bluetooth && controlOutput == bluetooth;
+  if (bluetooth && controlOutput == bluetooth) return;
   if (bluetooth) delete bluetooth;
   bluetooth = new SoftwareSerial(rx, tx);
   bluetooth->begin(baud);
-  if (wasControlOutput) controlOutput = bluetooth;
-}
-
-bool bluetoothDataAvailable() {
-  return bluetooth && bluetooth->available();
 }
 
 String readBluetoothText() {
@@ -670,7 +665,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       numeric = readDust(ledPin, analogPin);
     } else if (opcode == EX_BT_AVAILABLE) {
       if (bluetooth) bluetooth->listen();
-      numeric = bluetoothDataAvailable() ? 1 : 0;
+      numeric = bluetooth && bluetooth->available() ? 1 : 0;
     } else if (opcode == EX_BT_READ) {
       numericResult = false;
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
@@ -1027,7 +1022,7 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
     sendNumber(id, value);
   } else if (!strcmp(operation, "BTAVAIL")) {
     if (bluetooth) bluetooth->listen();
-    sendNumber(id, bluetoothDataAvailable() ? 1 : 0);
+    sendNumber(id, bluetooth && bluetooth->available() ? 1 : 0);
   } else if (!strcmp(operation, "BTREAD")) {
     sendText(id, readBluetoothText());
   } else {
@@ -1158,9 +1153,8 @@ void readBluetoothControl() {
     if (!bluetooth->available() || bluetooth->peek() != 0x1e) return;
     bluetoothControlLine[bluetoothControlLength++] = bluetooth->read();
   }
-  SoftwareSerial *source = bluetooth;
-  while (source == bluetooth && source->available()) {
-    char character = source->read();
+  while (bluetooth->available()) {
+    char character = bluetooth->read();
     if (character == '\r') continue;
     if (character == '\n') {
       bluetoothControlLine[bluetoothControlLength] = 0;

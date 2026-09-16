@@ -44,7 +44,6 @@ int analogRead(int){return 512;} int digitalRead(int){return 1;} void pinMode(in
 float readUltrasonic(int,int){return 10;} float readDhtValue(int,int,bool){return 23.8;} float readDust(int,int){return 5;}
 String readBluetoothText(){return "ABC";}
 struct Bt{void listen(){} int available(){return 0;}}; Bt *bluetooth=nullptr;
-bool bluetoothDataAvailable(){return bluetooth && bluetooth->available();}
 bool fetchHuskyValue(int,int,int16_t &){return false;}
 float vmPower(float a,float b){return pow(a,b);}
 // EVALUATOR
