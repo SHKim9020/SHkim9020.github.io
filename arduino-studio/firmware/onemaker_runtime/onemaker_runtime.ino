@@ -5,8 +5,8 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.11
-static const char *RUNTIME_VERSION = "1.1.11";
+// OneMaker Arduino UNO/Nano Runtime 1.1.12
+static const char *RUNTIME_VERSION = "1.1.12";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -135,6 +135,10 @@ uint8_t oledScale = 1;
 Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
+Print *controlOutput = &Serial;
+String bluetoothInbox;
+bool inputFromBluetooth = false;
+unsigned long bluetoothInputAt = 0;
 
 int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
@@ -165,29 +169,30 @@ void printHex(const String &value) {
   const char symbols[] = "0123456789abcdef";
   for (size_t index = 0; index < value.length(); index++) {
     uint8_t byteValue = (uint8_t)value[index];
-    Serial.print(symbols[byteValue >> 4]);
-    Serial.print(symbols[byteValue & 0x0F]);
+    controlOutput->print(symbols[byteValue >> 4]);
+    controlOutput->print(symbols[byteValue & 0x0F]);
   }
 }
 
 void sendReady() {
-  Serial.print(F("READY,OM,"));
-  Serial.println(RUNTIME_VERSION);
+  controlOutput->print(F("READY,OM,"));
+  controlOutput->print(RUNTIME_VERSION);
+  controlOutput->println(controlOutput == bluetooth ? F(",BT") : F(",USB"));
 }
 
 void sendNumber(const char *id, double value) {
-  Serial.print(F("V,"));
-  Serial.print(id);
-  Serial.print(',');
-  Serial.println(String(value, 2));
+  controlOutput->print(F("V,"));
+  controlOutput->print(id);
+  controlOutput->print(',');
+  controlOutput->println(String(value, 2));
 }
 
 void sendText(const char *id, const String &value) {
-  Serial.print(F("T,"));
-  Serial.print(id);
-  Serial.print(',');
+  controlOutput->print(F("T,"));
+  controlOutput->print(id);
+  controlOutput->print(',');
   printHex(value);
-  Serial.println();
+  controlOutput->println();
 }
 
 long readUltrasonic(uint8_t trigPin, uint8_t echoPin) {
@@ -575,8 +580,31 @@ String valueText(const VmValue &value) {
 #include "dht_reader.h"
 #include "operator_math.h"
 
+void beginBluetooth(uint8_t rx, uint8_t tx, long baud) {
+  bool wasControlOutput = bluetooth && controlOutput == bluetooth;
+  if (bluetooth) delete bluetooth;
+  bluetooth = new SoftwareSerial(rx, tx);
+  bluetooth->begin(baud);
+  if (wasControlOutput) controlOutput = bluetooth;
+}
+
+bool bluetoothDataAvailable() {
+  return bluetoothInbox.length() > 0 || (bluetooth && bluetooth->available());
+}
+
 String readBluetoothText() {
   String value;
+  if (bluetoothInbox.length()) {
+    int newline = bluetoothInbox.indexOf('\n');
+    if (newline < 0) {
+      value = bluetoothInbox;
+      bluetoothInbox = "";
+    } else {
+      value = bluetoothInbox.substring(0, newline);
+      bluetoothInbox.remove(0, newline + 1);
+    }
+    return value;
+  }
   if (!bluetooth) return value;
   bluetooth->listen();
   unsigned long started = millis();
@@ -655,7 +683,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       numeric = readDust(ledPin, analogPin);
     } else if (opcode == EX_BT_AVAILABLE) {
       if (bluetooth) bluetooth->listen();
-      numeric = bluetooth && bluetooth->available() ? 1 : 0;
+      numeric = bluetoothDataAvailable() ? 1 : 0;
     } else if (opcode == EX_BT_READ) {
       numericResult = false;
       if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
@@ -879,9 +907,7 @@ void executeStoredProgramStep() {
     uint8_t rx = programByte(vmProgramCounter++);
     uint8_t tx = programByte(vmProgramCounter++);
     uint16_t baud = programWord(vmProgramCounter);
-    if (bluetooth) delete bluetooth;
-    bluetooth = new SoftwareSerial(rx, tx);
-    bluetooth->begin(baud);
+    beginBluetooth(rx, tx, baud);
   } else if (opcode == OP_BT_SEND) {
     if (bluetooth) {
       bluetooth->listen();
@@ -900,8 +926,8 @@ void executeStoredProgramStep() {
     uint8_t mode = programByte(vmProgramCounter++);
     setBluetoothName(valueText(evaluateStoredExpression(vmProgramCounter)), mode);
   } else if (opcode == OP_SERIAL_PRINT) {
-    Serial.print(F("LOG,"));
-    Serial.println(valueText(evaluateStoredExpression(vmProgramCounter)));
+    controlOutput->print(F("LOG,"));
+    controlOutput->println(valueText(evaluateStoredExpression(vmProgramCounter)));
   } else if (opcode == OP_JUMP) {
     vmProgramCounter = programWord(vmProgramCounter);
   } else if (opcode == OP_JUMP_IF_FALSE) {
@@ -944,7 +970,7 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
       && incomingSetupLength <= incomingProgramLength;
     storedProgramValid = false;
     EEPROM.update(0, 0);
-    if (receivingProgram) Serial.println(F("PROGRAM_READY"));
+    if (receivingProgram) controlOutput->println(F("PROGRAM_READY"));
   } else if (!strcmp(operation, "DATA") && count >= 2 && receivingProgram) {
     uint16_t offset = tokenInt(args[0]);
     const char *hex = args[1];
@@ -956,8 +982,8 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
     for (uint16_t index = 0; index < byteCount; index++) {
       EEPROM.update(PROGRAM_HEADER_SIZE + offset + index, readHexByte(hex + index * 2));
     }
-    Serial.print(F("PROGRAM_DATA,"));
-    Serial.println(offset + byteCount);
+    controlOutput->print(F("PROGRAM_DATA,"));
+    controlOutput->println(offset + byteCount);
   } else if (!strcmp(operation, "SAVE") && receivingProgram) {
     if (storedProgramChecksum(incomingProgramLength) != incomingChecksum) {
       receivingProgram = false;
@@ -975,17 +1001,17 @@ void handleProgramCommand(char *operation, char **args, uint8_t count) {
     receivingProgram = false;
     stopOutputs();
     loadStoredProgram();
-    Serial.print(F("SAVED,"));
-    Serial.println(storedProgramLength);
+    controlOutput->print(F("SAVED,"));
+    controlOutput->println(storedProgramLength);
   } else if (!strcmp(operation, "RUN")) {
     stopOutputs();
     loadStoredProgram();
-    Serial.println(storedProgramValid ? F("OK") : F("ERR"));
+    controlOutput->println(storedProgramValid ? F("OK") : F("ERR"));
   } else if (!strcmp(operation, "CLEAR")) {
     EEPROM.update(0, 0);
     storedProgramValid = false;
     stopOutputs();
-    Serial.println(F("OK"));
+    controlOutput->println(F("OK"));
   }
 }
 
@@ -1014,7 +1040,7 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
     sendNumber(id, value);
   } else if (!strcmp(operation, "BTAVAIL")) {
     if (bluetooth) bluetooth->listen();
-    sendNumber(id, bluetooth && bluetooth->available() ? 1 : 0);
+    sendNumber(id, bluetoothDataAvailable() ? 1 : 0);
   } else if (!strcmp(operation, "BTREAD")) {
     sendText(id, readBluetoothText());
   } else {
@@ -1079,7 +1105,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     int volume = count >= 3 ? constrain(tokenInt(args[2]), 0, 30) : 20;
     if (initializeMp3(tokenInt(args[0]), tokenInt(args[1]))) {
       sendMp3Command(0x06, volume);
-      Serial.println(F("MP3_READY"));
+      controlOutput->println(F("MP3_READY"));
     }
   } else if (!strcmp(operation, "MP3PLAY") && count >= 1) {
     sendMp3Command(0x03, max(1, tokenInt(args[0])));
@@ -1088,9 +1114,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "MP3STOP")) {
     sendMp3Command(0x16, 0);
   } else if (!strcmp(operation, "BTBEGIN") && count >= 3) {
-    if (bluetooth) delete bluetooth;
-    bluetooth = new SoftwareSerial(tokenInt(args[0]), tokenInt(args[1]));
-    bluetooth->begin(tokenInt(args[2], 9600));
+    beginBluetooth(tokenInt(args[0]), tokenInt(args[1]), tokenInt(args[2], 9600));
   } else if (!strcmp(operation, "BTSEND") && count >= 1 && bluetooth) {
     bluetooth->listen();
     bluetooth->println(decodeHex(args[0]));
@@ -1100,8 +1124,8 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "BTNAME") && count >= 2) {
     setBluetoothName(decodeHex(args[1]), constrain(tokenInt(args[0]), 0, 1));
   } else if (!strcmp(operation, "PRINT") && count >= 1) {
-    Serial.print(F("LOG,"));
-    Serial.println(decodeHex(args[0]));
+    controlOutput->print(F("LOG,"));
+    controlOutput->println(decodeHex(args[0]));
   } else if (!strcmp(operation, "STOP")) {
     storedProgramValid = false;
     vmWaitUntil = 0;
@@ -1140,24 +1164,78 @@ void processLine(char *line) {
   }
 }
 
+void queueBluetoothInput(const char *line) {
+  if (!line || !line[0]) return;
+  while (bluetoothInbox.length() > MAX_LINE * 2) {
+    int newline = bluetoothInbox.indexOf('\n');
+    if (newline < 0) {
+      bluetoothInbox = "";
+      break;
+    }
+    bluetoothInbox.remove(0, newline + 1);
+  }
+  if (bluetoothInbox.length()) bluetoothInbox += '\n';
+  bluetoothInbox += line;
+}
+
+void finishInputLine() {
+  inputLine[inputLength] = 0;
+  if (inputLength) {
+    if (inputFromBluetooth) {
+      if (!strncmp(inputLine, "OM:", 3)) {
+        controlOutput = bluetooth;
+        processLine(inputLine + 3);
+      } else {
+        queueBluetoothInput(inputLine);
+      }
+    } else {
+      controlOutput = &Serial;
+      processLine(inputLine);
+    }
+  }
+  inputLength = 0;
+  inputFromBluetooth = false;
+}
+
+void readTransport(Stream &stream, bool fromBluetooth) {
+  SoftwareSerial *bluetoothSource = fromBluetooth ? bluetooth : nullptr;
+  while (true) {
+    if (fromBluetooth && bluetooth != bluetoothSource) return;
+    if (!stream.available()) return;
+    if (inputLength && inputFromBluetooth != fromBluetooth) return;
+    char character = stream.read();
+    if (!inputLength) inputFromBluetooth = fromBluetooth;
+    if (fromBluetooth) bluetoothInputAt = millis();
+    if (character == '\r') continue;
+    if (character == '\n') {
+      finishInputLine();
+    } else if (inputLength < MAX_LINE - 1) {
+      inputLine[inputLength++] = character;
+    } else {
+      inputLength = 0;
+      inputFromBluetooth = false;
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
+  beginBluetooth(2, 3, 9600);
   delay(350);
+  controlOutput = &Serial;
   sendReady();
   loadStoredProgram();
 }
 
 void loop() {
-  while (Serial.available()) {
-    char character = Serial.read();
-    if (character == '\r') continue;
-    if (character == '\n') {
-      inputLine[inputLength] = 0;
-      if (inputLength) processLine(inputLine);
-      inputLength = 0;
-    } else if (inputLength < MAX_LINE - 1) {
-      inputLine[inputLength++] = character;
-    } else inputLength = 0;
+  readTransport(Serial, false);
+  if (bluetooth && (!inputLength || inputFromBluetooth)) {
+    bluetooth->listen();
+    readTransport(*bluetooth, true);
+  }
+  if (inputFromBluetooth && inputLength && millis() - bluetoothInputAt > 100
+      && (inputLength < 3 || strncmp(inputLine, "OM:", 3))) {
+    finishInputLine();
   }
   executeStoredProgramStep();
 }

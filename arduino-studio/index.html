@@ -32,7 +32,7 @@
       <button id="openBtn" class="ghost">열기</button>
       <input id="openFile" type="file" accept=".omarduino,.json" hidden>
       <button id="firmwareBtn" class="outline">① 런타임 설치</button>
-      <button id="connectBtn" class="outline"><span class="dot"></span>② USB 연결</button>
+      <button id="connectBtn" class="outline"><span class="dot"></span>② USB/Bluetooth 연결</button>
       <button id="saveBoardBtn" class="primary">③ 보드에 저장·실행</button>
       <button id="aiRunBtn" class="ai-run">④ AI 음성 실행</button>
       <button id="stopBtn" class="danger">■ 정지</button>
@@ -226,17 +226,17 @@
     <form method="dialog" class="dialog-card firmware-card">
       <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
       <span class="step-chip">보드당 처음 1번</span>
-      <h2>OneMaker Arduino 런타임 1.1.11 설치</h2>
-      <p>정수·난수·범위 변환 연산을 지원하는 1.1.11을 설치합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
+      <h2>OneMaker Arduino 런타임 1.1.12 설치</h2>
+      <p>USB와 Bluetooth COM 연결을 함께 지원하는 1.1.12를 설치합니다. 설치 중에는 시리얼 모니터와 Arduino IDE를 닫아주세요.</p>
       <div class="firmware-options">
-        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.11.hex" board="uno" verify>
-          Arduino UNO에 1.1.11 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.12.hex" board="uno" verify>
+          Arduino UNO에 1.1.12 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.11.hex" board="nano" verify>
-          Nano에 1.1.11 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.12.hex" board="nano" verify>
+          Nano에 1.1.12 설치 <span class="upload-progress"></span>
         </button>
-        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.11.hex" board="nanoOldBootloader" verify>
-          Nano 구형 부트로더에 1.1.11 설치 <span class="upload-progress"></span>
+        <button type="button" arduino-uploader hex-href="https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/arduino-studio/firmware/onemaker_runtime-1.1.12.hex" board="nanoOldBootloader" verify>
+          Nano 구형 부트로더에 1.1.12 설치 <span class="upload-progress"></span>
         </button>
       </div>
       <ol class="mini-steps">
@@ -352,7 +352,7 @@
   <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="cloud-config.js?v=1.0.0"></script>
-  <script src="app.js?v=1.5.9"></script>
+  <script src="app.js?v=1.5.10"></script>
   <script src="cloud.js?v=1.0.1"></script>
 </body>
 </html>
