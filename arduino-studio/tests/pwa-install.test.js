@@ -31,6 +31,11 @@ test("board tab provides the official classroom CH340 driver and compact serial 
   assert.doesNotMatch(html, /data-tab="serial">시리얼 모니터<\/button>/);
 });
 
+test("quick test tab opens the IoT web app in a safe new tab", () => {
+  assert.match(html, /data-panel="test"[\s\S]*class="iot-webapp-button"[\s\S]*href="https:\/\/zerohouse\.ai\.studio\/" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html, />IoT웹앱</);
+});
+
 test("app handles native installation and fallback instructions", () => {
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /deferredInstallPrompt\.prompt\(\)/);
@@ -39,7 +44,7 @@ test("app handles native installation and fallback instructions", () => {
 });
 
 test("service worker caches and refreshes the app shell", () => {
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.10/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.11/);
   assert.match(sw, /cache\.addAll\(APP_SHELL\)/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
   assert.match(sw, /caches\.delete/);
