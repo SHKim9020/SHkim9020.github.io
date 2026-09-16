@@ -23,8 +23,8 @@ test("runtime accepts framed control commands over default HC-05\/HC-06 pins", (
 });
 
 test("ordinary Bluetooth messages remain available to existing blocks", () => {
-  assert.match(runtime, /queueBluetoothInput\(inputLine\)/);
-  assert.match(runtime, /bluetoothInbox\.length\(\) > 0/);
-  assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetoothInbox\.substring/);
+  assert.match(runtime, /bluetooth->peek\(\) == 'O'/);
+  assert.match(runtime, /bluetoothUserPrefixLength > 0/);
+  assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetoothUserPrefixLength/);
   assert.match(runtime, /numeric = bluetoothDataAvailable\(\) \? 1 : 0/);
 });

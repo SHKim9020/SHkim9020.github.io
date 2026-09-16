@@ -136,9 +136,9 @@ Adafruit_NeoPixel *pixels = nullptr;
 SoftwareSerial *bluetooth = nullptr;
 SoftwareSerial *mp3Serial = nullptr;
 Print *controlOutput = &Serial;
-String bluetoothInbox;
 bool inputFromBluetooth = false;
-unsigned long bluetoothInputAt = 0;
+char bluetoothUserPrefix[3];
+uint8_t bluetoothUserPrefixLength = 0;
 
 int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
@@ -589,22 +589,13 @@ void beginBluetooth(uint8_t rx, uint8_t tx, long baud) {
 }
 
 bool bluetoothDataAvailable() {
-  return bluetoothInbox.length() > 0 || (bluetooth && bluetooth->available());
+  return bluetoothUserPrefixLength > 0 || (bluetooth && bluetooth->available());
 }
 
 String readBluetoothText() {
   String value;
-  if (bluetoothInbox.length()) {
-    int newline = bluetoothInbox.indexOf('\n');
-    if (newline < 0) {
-      value = bluetoothInbox;
-      bluetoothInbox = "";
-    } else {
-      value = bluetoothInbox.substring(0, newline);
-      bluetoothInbox.remove(0, newline + 1);
-    }
-    return value;
-  }
+  for (uint8_t index = 0; index < bluetoothUserPrefixLength; index++) value += bluetoothUserPrefix[index];
+  bluetoothUserPrefixLength = 0;
   if (!bluetooth) return value;
   bluetooth->listen();
   unsigned long started = millis();
@@ -1164,20 +1155,6 @@ void processLine(char *line) {
   }
 }
 
-void queueBluetoothInput(const char *line) {
-  if (!line || !line[0]) return;
-  while (bluetoothInbox.length() > MAX_LINE * 2) {
-    int newline = bluetoothInbox.indexOf('\n');
-    if (newline < 0) {
-      bluetoothInbox = "";
-      break;
-    }
-    bluetoothInbox.remove(0, newline + 1);
-  }
-  if (bluetoothInbox.length()) bluetoothInbox += '\n';
-  bluetoothInbox += line;
-}
-
 void finishInputLine() {
   inputLine[inputLength] = 0;
   if (inputLength) {
@@ -1186,7 +1163,8 @@ void finishInputLine() {
         controlOutput = bluetooth;
         processLine(inputLine + 3);
       } else {
-        queueBluetoothInput(inputLine);
+        bluetoothUserPrefixLength = min(inputLength, (uint8_t)sizeof(bluetoothUserPrefix));
+        memcpy(bluetoothUserPrefix, inputLine, bluetoothUserPrefixLength);
       }
     } else {
       controlOutput = &Serial;
@@ -1205,12 +1183,18 @@ void readTransport(Stream &stream, bool fromBluetooth) {
     if (inputLength && inputFromBluetooth != fromBluetooth) return;
     char character = stream.read();
     if (!inputLength) inputFromBluetooth = fromBluetooth;
-    if (fromBluetooth) bluetoothInputAt = millis();
     if (character == '\r') continue;
     if (character == '\n') {
       finishInputLine();
     } else if (inputLength < MAX_LINE - 1) {
       inputLine[inputLength++] = character;
+      if (fromBluetooth && inputLength == 3 && strncmp(inputLine, "OM:", 3)) {
+        memcpy(bluetoothUserPrefix, inputLine, 3);
+        bluetoothUserPrefixLength = 3;
+        inputLength = 0;
+        inputFromBluetooth = false;
+        return;
+      }
     } else {
       inputLength = 0;
       inputFromBluetooth = false;
@@ -1229,13 +1213,11 @@ void setup() {
 
 void loop() {
   readTransport(Serial, false);
-  if (bluetooth && (!inputLength || inputFromBluetooth)) {
+  if (bluetooth && !bluetoothUserPrefixLength && (!inputLength || inputFromBluetooth)) {
     bluetooth->listen();
-    readTransport(*bluetooth, true);
-  }
-  if (inputFromBluetooth && inputLength && millis() - bluetoothInputAt > 100
-      && (inputLength < 3 || strncmp(inputLine, "OM:", 3))) {
-    finishInputLine();
+    if ((inputLength && inputFromBluetooth) || (bluetooth->available() && bluetooth->peek() == 'O')) {
+      readTransport(*bluetooth, true);
+    }
   }
   executeStoredProgramStep();
 }
