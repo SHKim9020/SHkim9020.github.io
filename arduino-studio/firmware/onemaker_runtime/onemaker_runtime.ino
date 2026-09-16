@@ -579,7 +579,7 @@ String valueText(const VmValue &value) {
 #include "operator_math.h"
 
 void beginBluetooth(uint8_t rx, uint8_t tx, uint16_t baud) {
-  if (bluetooth && controlOutput == bluetooth) return;
+  if (controlOutput == bluetooth) return;
   if (bluetooth) delete bluetooth;
   bluetooth = new SoftwareSerial(rx, tx);
   bluetooth->begin(baud);
