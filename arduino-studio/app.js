@@ -8,7 +8,7 @@
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.11";
+  const RUNTIME_VERSION = "1.1.12";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -28,6 +28,7 @@
   let serialWriteQueue = Promise.resolve();
   let runtimeReady = false;
   let runtimeVersion = "";
+  let serialTransport = "unknown";
   let serialBuffer = "";
   let selectedBlockId = null;
   let copiedBlockState = null;
@@ -1759,12 +1760,18 @@
       serialWriteQueue = Promise.resolve();
       runtimeReady = false;
       runtimeVersion = "";
+      serialTransport = "unknown";
       setConnected(true);
       readSerialLoop();
       const deadline = Date.now() + 8000;
       while (!runtimeReady && Date.now() < deadline) {
-        await sleep(500);
-        await sendLine("PING");
+        serialTransport = "bluetooth";
+        await sendLine("\x1ePING", true);
+        await sleep(180);
+        if (!runtimeReady) {
+          serialTransport = "usb";
+          await sendLine("PING", true);
+        }
         await sleep(250);
       }
       if (!runtimeReady) throw new Error("OneMaker 런타임 응답이 없습니다. 먼저 런타임을 다시 설치하세요.");
@@ -1772,7 +1779,7 @@
         toast(`현재 런타임 ${runtimeVersion || "확인 불가"} · ${RUNTIME_VERSION} 재설치가 필요합니다.`);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
       } else {
-        toast(`OneMaker Arduino Runtime ${runtimeVersion} 연결 완료`);
+        toast(`${serialTransport === "bluetooth" ? "Bluetooth COM" : "USB"} · OneMaker Runtime ${runtimeVersion} 연결 완료`);
       }
     } catch (error) {
       console.error(error);
@@ -1783,7 +1790,7 @@
 
   function formatUsbError(error) {
     const androidCh340 = window.OneMakerCH340?.active;
-    if (!androidCh340) return `USB 연결 실패: ${error.message}`;
+    if (!androidCh340) return `USB/Bluetooth 연결 실패: ${error.message}`;
     if (error.name === "SecurityError") return "CH340 USB 권한이 거부되었습니다. Android USB 창을 닫고 앱에서 다시 연결하세요.";
     if (error.name === "NetworkError") return "CH340를 열지 못했습니다. 다른 USB 앱을 완전히 종료하고 케이블을 다시 연결하세요.";
     if (error.name === "NotSupportedError") return `지원하지 않는 CH340 구성입니다: ${error.message}`;
@@ -1798,6 +1805,7 @@
     serialWriteQueue = Promise.resolve();
     runtimeReady = false;
     runtimeVersion = "";
+    serialTransport = "unknown";
     const reader = serialReader;
     const writer = serialWriter;
     const port = serialPort;
@@ -1838,19 +1846,21 @@
     serialConnected = false;
     runtimeReady = false;
     runtimeVersion = "";
+    serialTransport = "unknown";
     setConnected(false);
   }
 
   function setConnected(connected) {
+    const transportLabel = serialTransport === "bluetooth" ? "Bluetooth COM" : "USB";
     $("#connectionStatus").textContent = connected
-      ? (runtimeReady ? `런타임 ${runtimeVersion || ""} 연결됨` : "USB 확인 중")
+      ? (runtimeReady ? `${transportLabel} · 런타임 ${runtimeVersion || ""}` : "연결 확인 중")
       : "연결 안 됨";
     $("#connectionStatus").className = `status ${connected ? "connected" : "disconnected"}`;
     $("#connectBtn").classList.toggle("primary", connected);
     $("#connectBtn .dot").classList.toggle("on", connected);
     $("#connectBtn").lastChild.textContent = connected
       ? " 연결 끊기"
-      : (window.OneMakerCH340?.active ? "② CH340 USB 연결" : "② USB 연결");
+      : (window.OneMakerCH340?.active ? "② CH340 USB 연결" : "② USB/Bluetooth 연결");
   }
 
   async function readSerialLoop() {
@@ -1901,6 +1911,7 @@
       if (parts[0] === "READY") {
         runtimeReady = true;
         runtimeVersion = parts[2] || "";
+        if (serialTransport === "unknown") serialTransport = "usb";
         setConnected(true);
         while (runtimeReadyWaiters.length) runtimeReadyWaiters.shift().resolve(line);
       } else if ((parts[0] === "V" || parts[0] === "T") && parts[1]) {
@@ -1926,11 +1937,12 @@
     });
   }
 
-  async function sendLine(line) {
+  async function sendLine(line, raw = false) {
     if (!serialWriter || !serialConnected) throw new Error("먼저 USB를 연결하세요.");
     const writer = serialWriter;
     const session = serialSession;
-    const bytes = new TextEncoder().encode(`${line}\n`);
+    const transportLine = !raw && serialTransport === "bluetooth" ? `\x1e${line}` : line;
+    const bytes = new TextEncoder().encode(`${transportLine}\n`);
     const task = serialWriteQueue.catch(() => {}).then(async () => {
       if (!serialConnected || serialWriter !== writer || serialSession !== session) throw new Error("USB 연결이 끊어졌습니다.");
       await withTimeout(writer.write(bytes), SERIAL_WRITE_TIMEOUT_MS, "USB 쓰기 응답 시간이 초과되었습니다.");
