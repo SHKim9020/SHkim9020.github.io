@@ -10,21 +10,21 @@ const runtime = fs.readFileSync(path.join(root, "firmware/onemaker_runtime/onema
 
 test("USB port picker also probes a paired Bluetooth COM port", () => {
   assert.match(html, /② USB\/Bluetooth 연결/);
-  assert.match(app, /await sendLine\("OM:PING", true\)/);
+  assert.match(app, /await sendLine\("\\x1ePING", true\)/);
   assert.match(app, /parts\[3\] === "BT" \? "bluetooth" : "usb"/);
-  assert.match(app, /serialTransport === "bluetooth" \? `OM:\$\{line\}` : line/);
+  assert.match(app, /serialTransport === "bluetooth" \? `\\x1e\$\{line\}` : line/);
 });
 
 test("runtime accepts framed control commands over default HC-05\/HC-06 pins", () => {
   assert.match(runtime, /beginBluetooth\(2, 3, 9600\)/);
-  assert.match(runtime, /!strncmp\(bluetoothControlLine, "OM:", 3\)/);
-  assert.match(runtime, /controlOutput = bluetooth;[\s\S]*processLine\(bluetoothControlLine \+ 3\)/);
+  assert.match(runtime, /bluetooth->peek\(\) != 0x1e/);
+  assert.match(runtime, /controlOutput = bluetooth;[\s\S]*processLine\(bluetoothControlLine \+ 1\)/);
   assert.match(runtime, /controlOutput == bluetooth \? F\(",BT"\) : F\(",USB"\)/);
 });
 
 test("ordinary Bluetooth messages remain available to existing blocks", () => {
-  assert.match(runtime, /bluetooth->peek\(\) != 'O'/);
-  assert.match(runtime, /bluetoothUserPrefixLength > 0/);
-  assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetoothUserPrefixLength/);
+  assert.match(runtime, /if \(!bluetooth->available\(\) \|\| bluetooth->peek\(\) != 0x1e\) return/);
+  assert.doesNotMatch(runtime, /bluetoothUserPrefix/);
+  assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetooth->available\(\)/);
   assert.match(runtime, /numeric = bluetoothDataAvailable\(\) \? 1 : 0/);
 });

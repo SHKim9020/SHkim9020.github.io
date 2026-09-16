@@ -1765,7 +1765,7 @@
       readSerialLoop();
       const deadline = Date.now() + 8000;
       while (!runtimeReady && Date.now() < deadline) {
-        await sendLine("OM:PING", true);
+        await sendLine("\x1ePING", true);
         await sleep(180);
         if (!runtimeReady) await sendLine("PING", true);
         await sleep(250);
@@ -1937,7 +1937,7 @@
     if (!serialWriter || !serialConnected) throw new Error("먼저 USB를 연결하세요.");
     const writer = serialWriter;
     const session = serialSession;
-    const transportLine = !raw && serialTransport === "bluetooth" ? `OM:${line}` : line;
+    const transportLine = !raw && serialTransport === "bluetooth" ? `\x1e${line}` : line;
     const bytes = new TextEncoder().encode(`${transportLine}\n`);
     const task = serialWriteQueue.catch(() => {}).then(async () => {
       if (!serialConnected || serialWriter !== writer || serialSession !== session) throw new Error("USB 연결이 끊어졌습니다.");

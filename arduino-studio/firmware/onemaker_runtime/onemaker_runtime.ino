@@ -138,8 +138,6 @@ SoftwareSerial *mp3Serial = nullptr;
 Print *controlOutput = &Serial;
 char bluetoothControlLine[128];
 uint8_t bluetoothControlLength = 0;
-char bluetoothUserPrefix[3];
-uint8_t bluetoothUserPrefixLength = 0;
 
 int tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
@@ -590,13 +588,11 @@ void beginBluetooth(uint8_t rx, uint8_t tx, long baud) {
 }
 
 bool bluetoothDataAvailable() {
-  return bluetoothUserPrefixLength > 0 || (bluetooth && bluetooth->available());
+  return bluetooth && bluetooth->available();
 }
 
 String readBluetoothText() {
   String value;
-  for (uint8_t index = 0; index < bluetoothUserPrefixLength; index++) value += bluetoothUserPrefix[index];
-  bluetoothUserPrefixLength = 0;
   if (!bluetooth) return value;
   bluetooth->listen();
   unsigned long started = millis();
@@ -1157,28 +1153,25 @@ void processLine(char *line) {
 }
 
 void readBluetoothControl() {
-  if (!bluetooth || bluetoothUserPrefixLength) return;
+  if (!bluetooth) return;
   bluetooth->listen();
-  if (!bluetoothControlLength && (!bluetooth->available() || bluetooth->peek() != 'O')) return;
+  if (!bluetoothControlLength) {
+    if (!bluetooth->available() || bluetooth->peek() != 0x1e) return;
+    bluetoothControlLine[bluetoothControlLength++] = bluetooth->read();
+  }
   SoftwareSerial *source = bluetooth;
   while (source == bluetooth && source->available()) {
     char character = source->read();
     if (character == '\r') continue;
     if (character == '\n') {
       bluetoothControlLine[bluetoothControlLength] = 0;
-      if (bluetoothControlLength > 3 && !strncmp(bluetoothControlLine, "OM:", 3)) {
+      if (bluetoothControlLength > 1) {
         controlOutput = bluetooth;
-        processLine(bluetoothControlLine + 3);
+        processLine(bluetoothControlLine + 1);
       }
       bluetoothControlLength = 0;
     } else if (bluetoothControlLength < sizeof(bluetoothControlLine) - 1) {
       bluetoothControlLine[bluetoothControlLength++] = character;
-      if (bluetoothControlLength == 3 && strncmp(bluetoothControlLine, "OM:", 3)) {
-        memcpy(bluetoothUserPrefix, bluetoothControlLine, 3);
-        bluetoothUserPrefixLength = 3;
-        bluetoothControlLength = 0;
-        return;
-      }
     } else {
       bluetoothControlLength = 0;
     }
