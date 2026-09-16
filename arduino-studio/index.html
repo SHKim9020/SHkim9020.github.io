@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.7">
+  <link rel="stylesheet" href="style.css?v=1.2.8">
 </head>
 <body>
   <header class="topbar">
@@ -75,7 +75,7 @@
           <button data-tab="test">빠른 테스트</button>
           <button data-tab="chat">AI 채팅</button>
           <button data-tab="code">텍스트 코드</button>
-          <button data-tab="serial">시리얼 모니터</button>
+          <button data-tab="serial">시리얼</button>
         </div>
         <button id="sideCollapseBtn" class="side-collapse-btn" type="button" aria-expanded="true" aria-label="오른쪽 패널 접기" title="오른쪽 패널 접기">
           <span class="collapse-arrow">›</span><span class="collapse-label">접기</span>
@@ -83,6 +83,14 @@
       </nav>
 
       <section class="tab-panel active board-panel" data-panel="board">
+        <div class="driver-download-card">
+          <div>
+            <b>USB 포트가 보이지 않나요?</b>
+            <span>Windows용 CH340 드라이버를 설치해주세요.</span>
+          </div>
+          <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener noreferrer">⬇ CH340 공식 드라이버</a>
+          <small>공식 페이지에서 Download → 설치 파일 실행 → INSTALL 선택 → Chrome을 다시 열어주세요.</small>
+        </div>
         <div class="board-card">
           <div class="board-title">
             <div><small>선택 보드</small><h2 id="boardTitle">Arduino UNO R3</h2></div>
