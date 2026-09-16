@@ -1765,9 +1765,13 @@
       readSerialLoop();
       const deadline = Date.now() + 8000;
       while (!runtimeReady && Date.now() < deadline) {
+        serialTransport = "bluetooth";
         await sendLine("\x1ePING", true);
         await sleep(180);
-        if (!runtimeReady) await sendLine("PING", true);
+        if (!runtimeReady) {
+          serialTransport = "usb";
+          await sendLine("PING", true);
+        }
         await sleep(250);
       }
       if (!runtimeReady) throw new Error("OneMaker 런타임 응답이 없습니다. 먼저 런타임을 다시 설치하세요.");
@@ -1907,7 +1911,7 @@
       if (parts[0] === "READY") {
         runtimeReady = true;
         runtimeVersion = parts[2] || "";
-        serialTransport = parts[3] === "BT" ? "bluetooth" : "usb";
+        if (serialTransport === "unknown") serialTransport = "usb";
         setConnected(true);
         while (runtimeReadyWaiters.length) runtimeReadyWaiters.shift().resolve(line);
       } else if ((parts[0] === "V" || parts[0] === "T") && parts[1]) {
