@@ -25,6 +25,12 @@ test("page exposes install UI, icon metadata, and versioned PWA assets", () => {
   assert.match(html, /app\.js\?v=1\.5\.9/);
 });
 
+test("board tab provides the official classroom CH340 driver and compact serial tab", () => {
+  assert.match(html, /data-panel="board"[\s\S]*href="https:\/\/www\.wch-ic\.com\/downloads\/CH341SER_EXE\.html" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html, /data-tab="serial">시리얼<\/button>/);
+  assert.doesNotMatch(html, /data-tab="serial">시리얼 모니터<\/button>/);
+});
+
 test("app handles native installation and fallback instructions", () => {
   assert.match(app, /beforeinstallprompt/);
   assert.match(app, /deferredInstallPrompt\.prompt\(\)/);
@@ -33,7 +39,7 @@ test("app handles native installation and fallback instructions", () => {
 });
 
 test("service worker caches and refreshes the app shell", () => {
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.9/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.10/);
   assert.match(sw, /cache\.addAll\(APP_SHELL\)/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
   assert.match(sw, /caches\.delete/);
