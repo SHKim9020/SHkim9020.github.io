@@ -17,13 +17,13 @@ test("USB port picker also probes a paired Bluetooth COM port", () => {
 
 test("runtime accepts framed control commands over default HC-05\/HC-06 pins", () => {
   assert.match(runtime, /beginBluetooth\(2, 3, 9600\)/);
-  assert.match(runtime, /!strncmp\(inputLine, "OM:", 3\)/);
-  assert.match(runtime, /controlOutput = bluetooth;[\s\S]*processLine\(inputLine \+ 3\)/);
+  assert.match(runtime, /!strncmp\(bluetoothControlLine, "OM:", 3\)/);
+  assert.match(runtime, /controlOutput = bluetooth;[\s\S]*processLine\(bluetoothControlLine \+ 3\)/);
   assert.match(runtime, /controlOutput == bluetooth \? F\(",BT"\) : F\(",USB"\)/);
 });
 
 test("ordinary Bluetooth messages remain available to existing blocks", () => {
-  assert.match(runtime, /bluetooth->peek\(\) == 'O'/);
+  assert.match(runtime, /bluetooth->peek\(\) != 'O'/);
   assert.match(runtime, /bluetoothUserPrefixLength > 0/);
   assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetoothUserPrefixLength/);
   assert.match(runtime, /numeric = bluetoothDataAvailable\(\) \? 1 : 0/);
