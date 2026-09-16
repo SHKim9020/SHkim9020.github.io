@@ -1,8 +1,8 @@
-const CACHE_NAME = "onemaker-arduino-studio-1.5.11";
+const CACHE_NAME = "onemaker-arduino-studio-1.5.12";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=1.2.9",
+  "./style.css?v=1.2.10",
   "./app.js?v=1.5.9",
   "./cloud-config.js?v=1.0.0",
   "./cloud.js?v=1.0.1",
@@ -10,6 +10,7 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/iot-webapp-qr.svg",
   "./icons/icon-maskable-512.png"
 ];
 
