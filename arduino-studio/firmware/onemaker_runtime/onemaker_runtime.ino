@@ -1149,7 +1149,7 @@ void processLine(char *line) {
 void readBluetoothControl() {
   bluetooth->listen();
   if (!bluetoothControlLength) {
-    if (!bluetooth->available() || bluetooth->peek() != 0x1e) return;
+    if (bluetooth->peek() != 0x1e) return;
     bluetoothControlLine[bluetoothControlLength++] = bluetooth->read();
   }
   while (bluetooth->available()) {
@@ -1171,7 +1171,6 @@ void setup() {
   Serial.begin(115200);
   beginBluetooth(2, 3, 9600);
   delay(350);
-  controlOutput = &Serial;
   sendReady();
   loadStoredProgram();
 }

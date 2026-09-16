@@ -24,7 +24,7 @@ test("runtime accepts framed control commands over default HC-05\/HC-06 pins", (
 });
 
 test("ordinary Bluetooth messages remain available to existing blocks", () => {
-  assert.match(runtime, /if \(!bluetooth->available\(\) \|\| bluetooth->peek\(\) != 0x1e\) return/);
+  assert.match(runtime, /if \(bluetooth->peek\(\) != 0x1e\) return/);
   assert.doesNotMatch(runtime, /bluetoothUserPrefix/);
   assert.match(runtime, /String readBluetoothText\(\)[\s\S]*bluetooth->available\(\)/);
   assert.match(runtime, /numeric = bluetooth && bluetooth->available\(\) \? 1 : 0/);
