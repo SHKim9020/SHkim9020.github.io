@@ -13,7 +13,7 @@
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = nullptr;
 #ifdef ONEMAKER_ESP32_S3_CAM
-static const char *RUNTIME_VERSION = "0.1.2-s3";
+static const char *RUNTIME_VERSION = "0.1.3-s3";
 static const char *BOARD_DISPLAY_NAME = "ESP32-S3 N16R8 CAM";
 static const int FLASH_LED = -1;
 static const int DEFAULT_MOTOR_PINS[4] = {1, 2, 14, 21};
@@ -274,9 +274,22 @@ void setupBluetooth(){
 void remoteHandlerTask(void*){String name=pendingHandlerName;remoteUiSpeedActive=pendingHandlerUseUiSpeed;JsonArrayConst h=activeDocument["program"]["handlers"][name].as<JsonArrayConst>();executeSteps(h);remoteUiSpeedActive=false;handlerTaskHandle=nullptr;vTaskDelete(nullptr);}
 void runProgramHandler(const String &name,bool useUiSpeed){JsonArrayConst h=activeDocument["program"]["handlers"][name].as<JsonArrayConst>();if(h.isNull()||!h.size())return;stopRemoteHandler();programTaskStop=false;pendingHandlerName=name;pendingHandlerUseUiSpeed=useUiSpeed;xTaskCreatePinnedToCore(remoteHandlerTask,"rc-handler",6144,nullptr,2,&handlerTaskHandle,0);}
 void runRemoteHandler(const String &dir){pendingHandlerDirection=dir;runProgramHandler(dir,true);}
+void sendMainServerSnapshot(){
+  if(!cameraReady){webServer.send(503,"text/plain","Camera unavailable");return;}
+  camera_fb_t *fb=esp_camera_fb_get();
+  if(!fb){cameraFrameFailures++;cameraReady=false;cameraError="capture timeout";webServer.send(500,"text/plain","Capture failed");return;}
+  webServer.sendHeader("Cache-Control","no-store, no-cache, must-revalidate");
+  webServer.sendHeader("Connection","close");
+  webServer.setContentLength(fb->len);
+  webServer.send(200,"image/jpeg","");
+  WiFiClient &client=webServer.client();
+  if(client.write(fb->buf,fb->len)!=fb->len)cameraFrameFailures++;
+  esp_camera_fb_return(fb);
+}
 void setupWebRoutes(){
   webServer.on("/",HTTP_GET,[](){webServer.send_P(200,"text/html; charset=utf-8",REMOTE_PAGE);});
   webServer.on("/api/status",HTTP_GET,[](){JsonDocument d;d["camera"]=cameraReady;d["cameraError"]=cameraError;d["frameSize"]=config.frameSize;d["psram"]=psramFound();d["freeHeap"]=ESP.getFreeHeap();d["wifi"]=wifiName();d["ip"]=WiFi.softAPIP().toString();d["frameFailures"]=cameraFrameFailures;d["cameraRestarts"]=cameraRestarts;d["runtime"]=RUNTIME_VERSION;d["board"]=BOARD_DISPLAY_NAME;String out;serializeJson(d,out);webServer.send(200,"application/json",out);});
+  webServer.on("/api/capture",HTTP_GET,sendMainServerSnapshot);
   webServer.on("/api/drive",HTTP_GET,[](){String dir=webServer.arg("dir");int l=constrain(webServer.arg("left").toInt(),0,255),r=constrain(webServer.arg("right").toInt(),0,255);stopProgram();stopRemoteHandler();remoteUiLeftSpeed=l;remoteUiRightSpeed=r;if(dir=="stop")stopCar();else drive(dir,l,r);if(webServer.arg("blocks")=="1")runRemoteHandler(dir);webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/face",HTTP_GET,[](){String side=webServer.arg("side");if(side!="left"&&side!="right")side="center";stopProgram();stopRemoteHandler();lastFaceSide=side;runProgramHandler("face",false);webServer.send(200,"application/json",String("{\"ok\":true,\"side\":\"")+side+"\"}");});
   webServer.on("/api/heartbeat",HTTP_GET,[](){lastRemoteAt=millis();webServer.send(200,"application/json","{\"ok\":true}");});
