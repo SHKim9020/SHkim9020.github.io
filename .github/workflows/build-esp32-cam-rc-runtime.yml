@@ -39,6 +39,19 @@ jobs:
             --output-dir /tmp/onemaker-rc-cam-build \
             esp32-cam-rc-car/firmware/rc_cam_runtime
 
+      - name: Compile ESP32-S3 N16R8 camera runtime
+        run: |
+          rm -rf /tmp/onemaker-rc-s3-build
+          mkdir -p /tmp/onemaker-rc-s3-build
+          arduino-cli compile \
+            --clean \
+            --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashMode=qio,FlashSize=16M,PSRAM=opi,PartitionScheme=huge_app" \
+            --build-property "compiler.cpp.extra_flags=-DONEMAKER_ESP32_S3_CAM" \
+            --output-dir /tmp/onemaker-rc-s3-build \
+            esp32-cam-rc-car/firmware/rc_cam_runtime
+          cp /tmp/onemaker-rc-s3-build/rc_cam_runtime.ino.merged.bin \
+            esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.0.merged.bin
+
       - name: Split application image for web installer
         run: |
           python3 - <<'PY'
@@ -64,12 +77,26 @@ jobs:
           print(f'application bytes={len(image)}, part0={split}, part1={len(image)-split}')
           PY
 
+      - name: Verify ESP32-S3 runtime image
+        run: |
+          test -s esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.0.merged.bin
+          python3 - <<'PY'
+          from pathlib import Path
+          image = Path('esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.0.merged.bin').read_bytes()
+          assert b'ESP32-S3 N16R8 CAM' in image
+          assert b'0.1.0-s3' in image
+          assert b'OneMaker-RC-BLE-' in image
+          assert b'/api/face' in image
+          print(f'ESP32-S3 merged image bytes={len(image)}')
+          PY
+
       - name: Commit verified RC firmware
         run: |
           git add \
             esp32-cam-rc-car/firmware/rc-runtime-0.1.17-part-0.bin \
-            esp32-cam-rc-car/firmware/rc-runtime-0.1.17-part-1.bin
+            esp32-cam-rc-car/firmware/rc-runtime-0.1.17-part-1.bin \
+            esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.0.merged.bin
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Build ESP32-CAM RC runtime 0.1.17 [skip rc firmware]"
+          git commit -m "Build ESP32-CAM and ESP32-S3 RC firmware [skip rc firmware]"
           git push
