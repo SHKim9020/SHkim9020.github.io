@@ -13,7 +13,7 @@
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = nullptr;
 #ifdef ONEMAKER_ESP32_S3_CAM
-static const char *RUNTIME_VERSION = "0.1.0-s3";
+static const char *RUNTIME_VERSION = "0.1.1-s3";
 static const char *BOARD_DISPLAY_NAME = "ESP32-S3 N16R8 CAM";
 static const int FLASH_LED = -1;
 static const int DEFAULT_MOTOR_PINS[4] = {1, 2, 14, 21};
@@ -103,6 +103,10 @@ int variableCount=0;
 int attachedMotorPins[4]={-1,-1,-1,-1};
 bool cameraReady=false;
 String cameraError;
+volatile bool cameraStreamActive=false;
+volatile uint32_t cameraFrameFailures=0;
+uint32_t cameraRestarts=0;
+unsigned long lastCameraRecoveryAt=0;
 NimBLECharacteristic *bleTxCharacteristic=nullptr;
 volatile bool bleConnected=false;
 
@@ -163,13 +167,28 @@ framesize_t parseFrameSize(const String &value){if(value=="QQVGA")return FRAMESI
 void applyCameraSettings(){sensor_t *s=esp_camera_sensor_get();if(!s)return;s->set_framesize(s,parseFrameSize(config.frameSize));s->set_quality(s,constrain(config.quality,8,30));s->set_vflip(s,config.flip?1:0);s->set_hmirror(s,config.flip?1:0);}
 bool setupCamera(){
   camera_config_t c={};c.ledc_channel=LEDC_CHANNEL_0;c.ledc_timer=LEDC_TIMER_0;c.pin_d0=Y2_GPIO_NUM;c.pin_d1=Y3_GPIO_NUM;c.pin_d2=Y4_GPIO_NUM;c.pin_d3=Y5_GPIO_NUM;c.pin_d4=Y6_GPIO_NUM;c.pin_d5=Y7_GPIO_NUM;c.pin_d6=Y8_GPIO_NUM;c.pin_d7=Y9_GPIO_NUM;c.pin_xclk=XCLK_GPIO_NUM;c.pin_pclk=PCLK_GPIO_NUM;c.pin_vsync=VSYNC_GPIO_NUM;c.pin_href=HREF_GPIO_NUM;c.pin_sccb_sda=SIOD_GPIO_NUM;c.pin_sccb_scl=SIOC_GPIO_NUM;c.pin_pwdn=PWDN_GPIO_NUM;c.pin_reset=RESET_GPIO_NUM;c.xclk_freq_hz=20000000;c.pixel_format=PIXFORMAT_JPEG;c.frame_size=FRAMESIZE_QVGA;c.jpeg_quality=12;c.fb_count=psramFound()?2:1;c.grab_mode=CAMERA_GRAB_LATEST;c.fb_location=psramFound()?CAMERA_FB_IN_PSRAM:CAMERA_FB_IN_DRAM;
-  esp_err_t err=esp_camera_init(&c);if(err!=ESP_OK){cameraReady=false;cameraError=String("0x")+String(err,HEX);emit("error",String("camera ")+cameraError);return false;}cameraReady=true;cameraError="";applyCameraSettings();return true;
+  esp_err_t err=esp_camera_init(&c);if(err!=ESP_OK){cameraReady=false;cameraError=String("init 0x")+String(err,HEX);emit("error",String("camera ")+cameraError);return false;}
+  applyCameraSettings();delay(120);
+  camera_fb_t *testFrame=esp_camera_fb_get();
+  if(!testFrame||testFrame->len<100){if(testFrame)esp_camera_fb_return(testFrame);cameraReady=false;cameraError="first frame timeout";esp_camera_deinit();emit("error",String("camera ")+cameraError);return false;}
+  esp_camera_fb_return(testFrame);cameraFrameFailures=0;cameraReady=true;cameraError="";return true;
+}
+
+void recoverCamera(){
+  if(cameraStreamActive||millis()-lastCameraRecoveryAt<3000)return;
+  lastCameraRecoveryAt=millis();cameraReady=false;esp_camera_deinit();delay(120);cameraRestarts++;setupCamera();
 }
 
 static esp_err_t streamHandler(httpd_req_t *req){
   if(!cameraReady){httpd_resp_set_status(req,"503 Service Unavailable");return httpd_resp_sendstr(req,"Camera initialization failed");}
-  esp_err_t result=httpd_resp_set_type(req,"multipart/x-mixed-replace;boundary=frame");if(result!=ESP_OK)return result;httpd_resp_set_hdr(req,"Access-Control-Allow-Origin","*");
-  char header[96];while(true){camera_fb_t *fb=esp_camera_fb_get();if(!fb){delay(30);continue;}size_t hlen=snprintf(header,sizeof(header),"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",fb->len);result=httpd_resp_send_chunk(req,header,hlen);if(result==ESP_OK)result=httpd_resp_send_chunk(req,(const char*)fb->buf,fb->len);if(result==ESP_OK)result=httpd_resp_send_chunk(req,"\r\n",2);esp_camera_fb_return(fb);if(result!=ESP_OK)break;delay(1);}return result;
+  esp_err_t result=httpd_resp_set_type(req,"multipart/x-mixed-replace;boundary=frame");if(result!=ESP_OK)return result;httpd_resp_set_hdr(req,"Access-Control-Allow-Origin","*");httpd_resp_set_hdr(req,"Cache-Control","no-store");
+  cameraStreamActive=true;uint8_t consecutiveFailures=0;char header[96];
+  while(true){
+    camera_fb_t *fb=esp_camera_fb_get();
+    if(!fb){cameraFrameFailures++;if(++consecutiveFailures>=20){cameraReady=false;cameraError="frame timeout";result=ESP_FAIL;break;}delay(35);continue;}
+    consecutiveFailures=0;size_t hlen=snprintf(header,sizeof(header),"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",fb->len);result=httpd_resp_send_chunk(req,header,hlen);if(result==ESP_OK)result=httpd_resp_send_chunk(req,(const char*)fb->buf,fb->len);if(result==ESP_OK)result=httpd_resp_send_chunk(req,"\r\n",2);esp_camera_fb_return(fb);if(result!=ESP_OK)break;delay(1);
+  }
+  cameraStreamActive=false;return result;
 }
 void startStreamServer(){httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();cfg.server_port=81;cfg.ctrl_port=32769;httpd_uri_t stream={.uri="/stream",.method=HTTP_GET,.handler=streamHandler,.user_ctx=nullptr};if(httpd_start(&streamServer,&cfg)==ESP_OK)httpd_register_uri_handler(streamServer,&stream);}
 
@@ -250,7 +269,7 @@ void runProgramHandler(const String &name,bool useUiSpeed){JsonArrayConst h=acti
 void runRemoteHandler(const String &dir){pendingHandlerDirection=dir;runProgramHandler(dir,true);}
 void setupWebRoutes(){
   webServer.on("/",HTTP_GET,[](){webServer.send_P(200,"text/html; charset=utf-8",REMOTE_PAGE);});
-  webServer.on("/api/status",HTTP_GET,[](){JsonDocument d;d["camera"]=cameraReady;d["cameraError"]=cameraError;d["frameSize"]=config.frameSize;d["psram"]=psramFound();d["freeHeap"]=ESP.getFreeHeap();d["wifi"]=wifiName();d["ip"]=WiFi.softAPIP().toString();String out;serializeJson(d,out);webServer.send(200,"application/json",out);});
+  webServer.on("/api/status",HTTP_GET,[](){JsonDocument d;d["camera"]=cameraReady;d["cameraError"]=cameraError;d["frameSize"]=config.frameSize;d["psram"]=psramFound();d["freeHeap"]=ESP.getFreeHeap();d["wifi"]=wifiName();d["ip"]=WiFi.softAPIP().toString();d["frameFailures"]=cameraFrameFailures;d["cameraRestarts"]=cameraRestarts;d["runtime"]=RUNTIME_VERSION;d["board"]=BOARD_DISPLAY_NAME;String out;serializeJson(d,out);webServer.send(200,"application/json",out);});
   webServer.on("/api/drive",HTTP_GET,[](){String dir=webServer.arg("dir");int l=constrain(webServer.arg("left").toInt(),0,255),r=constrain(webServer.arg("right").toInt(),0,255);stopProgram();stopRemoteHandler();remoteUiLeftSpeed=l;remoteUiRightSpeed=r;if(dir=="stop")stopCar();else drive(dir,l,r);if(webServer.arg("blocks")=="1")runRemoteHandler(dir);webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/face",HTTP_GET,[](){String side=webServer.arg("side");if(side!="left"&&side!="right")side="center";stopProgram();stopRemoteHandler();lastFaceSide=side;runProgramHandler("face",false);webServer.send(200,"application/json",String("{\"ok\":true,\"side\":\"")+side+"\"}");});
   webServer.on("/api/heartbeat",HTTP_GET,[](){lastRemoteAt=millis();webServer.send(200,"application/json","{\"ok\":true}");});
@@ -279,5 +298,5 @@ void setup(){
   LittleFS.begin(true);setupCamera();loadProgram();setupBluetooth();startWifi();stopProgram();stopCar();emit("ready",String("OneMaker ")+BOARD_DISPLAY_NAME+" RC Runtime "+RUNTIME_VERSION+" / camera "+(cameraReady?"OK":cameraError));
 }
 void loop(){
-  webServer.handleClient();if(remoteMoving&&millis()-lastRemoteAt>REMOTE_WATCHDOG_MS){stopRemoteHandler();stopCar();}static String input;while(Serial.available()){char c=Serial.read();if(c=='\n'){input.trim();if(input.length())handleSerialLine(input);input="";}else if(c!='\r'&&input.length()<2048)input+=c;}delay(2);
+  webServer.handleClient();if(!cameraReady&&!cameraStreamActive)recoverCamera();if(remoteMoving&&millis()-lastRemoteAt>REMOTE_WATCHDOG_MS){stopRemoteHandler();stopCar();}static String input;while(Serial.available()){char c=Serial.read();if(c=='\n'){input.trim();if(input.length())handleSerialLine(input);input="";}else if(c!='\r'&&input.length()<2048)input+=c;}delay(2);
 }
