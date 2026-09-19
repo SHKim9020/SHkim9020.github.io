@@ -9,10 +9,20 @@
 #include "esp_http_server.h"
 #include "mbedtls/base64.h"
 
-// OneMaker ESP32-CAM RC Runtime 0.1.17 — open Wi-Fi AP and reliable face detection
+// OneMaker ESP32-CAM / ESP32-S3 RC Runtime — open Wi-Fi AP and reliable face detection
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = nullptr;
+#ifdef ONEMAKER_ESP32_S3_CAM
+static const char *RUNTIME_VERSION = "0.1.0-s3";
+static const char *BOARD_DISPLAY_NAME = "ESP32-S3 N16R8 CAM";
+static const int FLASH_LED = -1;
+static const int DEFAULT_MOTOR_PINS[4] = {1, 2, 14, 21};
+#else
+static const char *RUNTIME_VERSION = "0.1.17";
+static const char *BOARD_DISPLAY_NAME = "ESP32-CAM AI Thinker";
 static const int FLASH_LED = 4;
+static const int DEFAULT_MOTOR_PINS[4] = {12, 13, 14, 15};
+#endif
 static const unsigned long REMOTE_WATCHDOG_MS = 900;
 static const int MOTOR_PWM_FREQ = 18000;
 static const int MOTOR_PWM_BITS = 8;
@@ -21,7 +31,25 @@ static const char *BLE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 static const char *BLE_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 static const char *BLE_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
-// AI Thinker ESP32-CAM camera pins
+// Camera pins: Freenove-compatible ESP32-S3 N16R8 CAM or AI Thinker ESP32-CAM
+#ifdef ONEMAKER_ESP32_S3_CAM
+#define PWDN_GPIO_NUM -1
+#define RESET_GPIO_NUM -1
+#define XCLK_GPIO_NUM 15
+#define SIOD_GPIO_NUM 4
+#define SIOC_GPIO_NUM 5
+#define Y9_GPIO_NUM 16
+#define Y8_GPIO_NUM 17
+#define Y7_GPIO_NUM 18
+#define Y6_GPIO_NUM 12
+#define Y5_GPIO_NUM 10
+#define Y4_GPIO_NUM 8
+#define Y3_GPIO_NUM 9
+#define Y2_GPIO_NUM 11
+#define VSYNC_GPIO_NUM 6
+#define HREF_GPIO_NUM 7
+#define PCLK_GPIO_NUM 13
+#else
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -38,9 +66,10 @@ static const char *BLE_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 #define VSYNC_GPIO_NUM 25
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
+#endif
 
 struct RcConfig {
-  int in1=12, in2=13, in3=14, in4=15;
+  int in1=DEFAULT_MOTOR_PINS[0], in2=DEFAULT_MOTOR_PINS[1], in3=DEFAULT_MOTOR_PINS[2], in4=DEFAULT_MOTOR_PINS[3];
   bool invertLeft=true, invertRight=true;
   String frameSize="QVGA";
   int quality=12;
@@ -159,7 +188,7 @@ bool executeSteps(JsonArrayConst steps){
     if(op=="drive"){int speed=(int)eval(s["speed"]);drive(s["dir"]|"stop",remoteUiSpeedActive?remoteUiLeftSpeed:speed,remoteUiSpeedActive?remoteUiRightSpeed:speed);}
     else if(op=="motors"){if(remoteUiSpeedActive)drive(pendingHandlerDirection,remoteUiLeftSpeed,remoteUiRightSpeed);else setMotors((int)eval(s["left"]),(int)eval(s["right"]));}
     else if(op=="stop")stopCar();
-    else if(op=="flash")digitalWrite(FLASH_LED,(bool)(s["on"]|false));
+    else if(op=="flash"&&FLASH_LED>=0)digitalWrite(FLASH_LED,(bool)(s["on"]|false));
     else if(op=="cameraFrame"){config.frameSize=(const char*)(s["size"]|"QVGA");applyCameraSettings();}
     else if(op=="cameraFlip"){config.flip=s["on"]|false;applyCameraSettings();}
     else if(op=="faceAvoid"){
@@ -183,7 +212,7 @@ void stopProgram(){programTaskStop=true;delay(2);if(programTaskHandle){vTaskDele
 void startProgram(){stopRemoteHandler();stopProgram();programTaskStop=false;memset(variables,0,sizeof(variables));variableCount=0;xTaskCreatePinnedToCore(programTask,"rc-program",8192,nullptr,1,&programTaskHandle,0);}
 
 String decodeBase64(const String &encoded){size_t outLen=0,cap=encoded.length();unsigned char *out=(unsigned char*)malloc(cap+1);if(!out)return"";int result=mbedtls_base64_decode(out,cap,&outLen,(const unsigned char*)encoded.c_str(),encoded.length());String decoded;if(result==0){out[outLen]=0;decoded=String((char*)out).substring(0,outLen);}free(out);return decoded;}
-void applyConfig(JsonObjectConst c){JsonObjectConst p=c["pins"];config.in1=p["in1"]|12;config.in2=p["in2"]|13;config.in3=p["in3"]|14;config.in4=p["in4"]|15;config.invertLeft=c["invertLeft"]|true;config.invertRight=c["invertRight"]|true;JsonObjectConst cam=c["camera"];config.frameSize=(const char*)(cam["frameSize"]|"QVGA");config.quality=cam["quality"]|12;config.flip=cam["flip"]|false;setupMotorOutputs();stopCar();applyCameraSettings();}
+void applyConfig(JsonObjectConst c){JsonObjectConst p=c["pins"];config.in1=p["in1"]|DEFAULT_MOTOR_PINS[0];config.in2=p["in2"]|DEFAULT_MOTOR_PINS[1];config.in3=p["in3"]|DEFAULT_MOTOR_PINS[2];config.in4=p["in4"]|DEFAULT_MOTOR_PINS[3];config.invertLeft=c["invertLeft"]|true;config.invertRight=c["invertRight"]|true;JsonObjectConst cam=c["camera"];config.frameSize=(const char*)(cam["frameSize"]|"QVGA");config.quality=cam["quality"]|12;config.flip=cam["flip"]|false;setupMotorOutputs();stopCar();applyCameraSettings();}
 bool loadProgram(){if(!LittleFS.exists(PROGRAM_PATH))return false;File f=LittleFS.open(PROGRAM_PATH,"r");DeserializationError e=deserializeJson(activeDocument,f);f.close();if(e)return false;applyConfig(activeDocument["config"]);return true;}
 bool saveUploadedProgram(){JsonDocument test;DeserializationError e=deserializeJson(test,uploadBuffer);if(e){emit("error",String("JSON: ")+e.c_str());return false;}File f=LittleFS.open(PROGRAM_PATH,"w");if(!f){emit("error","file open");return false;}f.print(uploadBuffer);f.close();activeDocument.clear();deserializeJson(activeDocument,uploadBuffer);applyConfig(activeDocument["config"]);return true;}
 
@@ -226,7 +255,7 @@ void setupWebRoutes(){
   webServer.on("/api/face",HTTP_GET,[](){String side=webServer.arg("side");if(side!="left"&&side!="right")side="center";stopProgram();stopRemoteHandler();lastFaceSide=side;runProgramHandler("face",false);webServer.send(200,"application/json",String("{\"ok\":true,\"side\":\"")+side+"\"}");});
   webServer.on("/api/heartbeat",HTTP_GET,[](){lastRemoteAt=millis();webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/stop",HTTP_ANY,[](){stopProgram();stopRemoteHandler();stopCar();webServer.send(200,"application/json","{\"ok\":true}");});
-  webServer.on("/api/flash",HTTP_GET,[](){digitalWrite(FLASH_LED,webServer.arg("on")=="1");webServer.send(200,"application/json","{\"ok\":true}");});
+  webServer.on("/api/flash",HTTP_GET,[](){if(FLASH_LED>=0)digitalWrite(FLASH_LED,webServer.arg("on")=="1");webServer.send(200,"application/json",FLASH_LED>=0?"{\"ok\":true}":"{\"ok\":false,\"message\":\"flash unavailable\"}");});
   webServer.on("/api/flip",HTTP_GET,[](){config.flip=webServer.arg("on")=="1";applyCameraSettings();webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/frame",HTTP_GET,[](){config.frameSize=webServer.arg("size");applyCameraSettings();webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.onNotFound([](){webServer.sendHeader("Location","/");webServer.send(302);});webServer.begin();
@@ -235,7 +264,7 @@ void startWifi(){WiFi.mode(WIFI_AP);WiFi.setSleep(false);WiFi.setTxPower(WIFI_PO
 
 void handleSerialLine(const String &line){
   JsonDocument d;DeserializationError e=deserializeJson(d,line);if(e){emit("error","JSON command");return;}String cmd=d["cmd"]|"";
-  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]="0.1.17";info["board"]="ESP32-CAM AI Thinker";info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
+  if(cmd=="hello"){stopProgram();stopCar();JsonDocument info;info["type"]="info";info["runtime"]=RUNTIME_VERSION;info["board"]=BOARD_DISPLAY_NAME;info["wifi"]=wifiName();serializeJson(info,Serial);Serial.println();return;}
   if(cmd=="stop"){stopProgram();ack("stopped");return;}
   if(cmd=="drive"){drive(d["dir"]|"stop",d["speed"]|150,d["speed"]|150);ack();return;}
   if(cmd=="setNumber"){int n=d["number"]|1;if(n<1||n>16){emit("error","number 1-16");return;}Preferences p;p.begin("onemaker-rc",false);p.putUChar("number",n);p.end();ack("number saved");delay(200);ESP.restart();return;}
@@ -246,8 +275,8 @@ void handleSerialLine(const String &line){
 }
 
 void setup(){
-  setupMotorOutputs();stopCar();Serial.begin(115200);delay(100);pinMode(FLASH_LED,OUTPUT);digitalWrite(FLASH_LED,LOW);Preferences p;if(p.begin("onemaker-rc",false)){carNumber=p.getUChar("number",1);p.end();}else carNumber=1;if(carNumber<1||carNumber>16)carNumber=1;
-  LittleFS.begin(true);setupCamera();loadProgram();setupBluetooth();startWifi();stopProgram();stopCar();emit("ready",String("OneMaker ESP32-CAM RC Runtime 0.1.17 / camera ")+(cameraReady?"OK":cameraError));
+  setupMotorOutputs();stopCar();Serial.begin(115200);delay(100);if(FLASH_LED>=0){pinMode(FLASH_LED,OUTPUT);digitalWrite(FLASH_LED,LOW);}Preferences p;if(p.begin("onemaker-rc",false)){carNumber=p.getUChar("number",1);p.end();}else carNumber=1;if(carNumber<1||carNumber>16)carNumber=1;
+  LittleFS.begin(true);setupCamera();loadProgram();setupBluetooth();startWifi();stopProgram();stopCar();emit("ready",String("OneMaker ")+BOARD_DISPLAY_NAME+" RC Runtime "+RUNTIME_VERSION+" / camera "+(cameraReady?"OK":cameraError));
 }
 void loop(){
   webServer.handleClient();if(remoteMoving&&millis()-lastRemoteAt>REMOTE_WATCHDOG_MS){stopRemoteHandler();stopCar();}static String input;while(Serial.available()){char c=Serial.read();if(c=='\n'){input.trim();if(input.length())handleSerialLine(input);input="";}else if(c!='\r'&&input.length()<2048)input+=c;}delay(2);
