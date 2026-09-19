@@ -1,0 +1,16 @@
+{
+  "name": "OneMaker ESP32-S3 N16R8 CAM RC Runtime",
+  "version": "0.1.0-s3",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        {
+          "path": "https://raw.githubusercontent.com/SHKim9020/SHkim9020.github.io/main/esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.0.merged.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}
