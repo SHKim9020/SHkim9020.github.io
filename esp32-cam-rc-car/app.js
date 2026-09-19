@@ -2,7 +2,22 @@
   "use strict";
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
-  const DEFAULT_PINS = { in1: 12, in2: 13, in3: 14, in4: 15 };
+  const BOARD_PROFILES = {
+    esp32cam: {
+      label:"ESP32-CAM AI Thinker", title:'ESP32‑CAM <span>AI Thinker</span>',
+      summary:"OV2640 카메라 · Wi‑Fi AP · 2휠 DC모터", pins:{in1:12,in2:13,in3:14,in4:15},
+      pinOptions:[12,13,14,15,1,3,2,4],
+      note:"기존 ESP32-CAM용 펌웨어와 GPIO 설정을 사용합니다.",
+      warning:"기본값 GPIO 12·13·14·15는 microSD를 사용하지 않을 때만 가능합니다. ESP32‑CAM과 모터드라이버 GND는 반드시 공통 연결하세요."
+    },
+    esp32s3: {
+      label:"ESP32-S3 N16R8 CAM", title:'ESP32‑S3 <span>N16R8 CAM</span>',
+      summary:"OV2640 · 16MB Flash · 8MB PSRAM · Native USB", pins:{in1:1,in2:2,in3:14,in4:21},
+      pinOptions:[1,2,14,21,35,36,37,38,39,40,41,42,47],
+      note:"S3 전용 펌웨어와 카메라 충돌을 피한 모터 GPIO를 사용합니다.",
+      warning:"S3 기본값은 GPIO 1·2·14·21입니다. 카메라 GPIO 4~13·15~18과 USB GPIO 19·20은 모터에 사용하지 마세요. GND는 반드시 공통 연결하세요."
+    }
+  };
   const COLORS = { event: 38, motor: 210, camera: 285, ai: 330, output: 65 };
   const SIDE_PANEL_KEY = "onemaker-esp32cam-rc-side-collapsed";
   const REMOTE_URL = "http://192.168.4.1/";
@@ -139,15 +154,24 @@
   function numberOptions(select, values) { select.innerHTML = values.map(v => `<option value="${v}">GPIO ${v}</option>`).join(""); }
   function initSettings() {
     for(let i=1;i<=16;i++) $("#carNumber").add(new Option(String(i).padStart(2,"0"),i));
-    ["pinIn1","pinIn2","pinIn3","pinIn4"].forEach(id => numberOptions($("#"+id),[12,13,14,15,1,3,2,4]));
-    applyDefaultPins();
+    applyBoardProfile("esp32cam",true);
+    $("#boardModel").addEventListener("change",e=>{applyBoardProfile(e.target.value,true);saveLocal();updateCode()});
+    $("#firmwareBoardModel").addEventListener("change",e=>{syncFirmwareBoard(e.target.value);if($("#boardModel").value!==e.target.value){$("#boardModel").value=e.target.value;applyBoardProfile(e.target.value,true);saveLocal();updateCode()}});
     $("#carNumber").addEventListener("change", updateWifiName);
     ["pinIn1","pinIn2","pinIn3","pinIn4","invertLeft","invertRight","frameSize","jpegQuality","flipCamera"].forEach(id => $("#"+id).addEventListener("change",()=>{saveLocal();updateCode()}));
     $("#testSpeed").addEventListener("input", e => $("#testSpeedValue").value=e.target.value);
   }
-  function applyDefaultPins(){Object.entries(DEFAULT_PINS).forEach(([k,v])=>$("#pin"+k.slice(0,1).toUpperCase()+k.slice(1)).value=v)}
+  function boardProfile(){return BOARD_PROFILES[$("#boardModel").value]||BOARD_PROFILES.esp32cam}
+  function syncFirmwareBoard(model){$("#firmwareBoardModel").value=model;$("#esp32CamInstall").hidden=model!=="esp32cam";$("#esp32S3Install").hidden=model!=="esp32s3"}
+  function applyBoardProfile(model,resetPins=false){
+    const profile=BOARD_PROFILES[model]||BOARD_PROFILES.esp32cam;$("#boardModel").value=model;
+    ["pinIn1","pinIn2","pinIn3","pinIn4"].forEach(id=>numberOptions($("#"+id),profile.pinOptions));
+    if(resetPins)applyDefaultPins();
+    $("#boardTitle").innerHTML=profile.title;$("#boardSummary").textContent=profile.summary;$("#boardModelNote").textContent=profile.note;$("#pinWarning").textContent=profile.warning;syncFirmwareBoard(model);
+  }
+  function applyDefaultPins(){Object.entries(boardProfile().pins).forEach(([k,v])=>$("#pin"+k.slice(0,1).toUpperCase()+k.slice(1)).value=v)}
   function updateWifiName(){const n=String($("#carNumber").value).padStart(2,"0");$("#wifiNamePreview").textContent=`OneMaker‑RC‑${n}`;$("#remoteWifiName").textContent=`OneMaker‑RC‑${n}`;saveLocal()}
-  function settings(){return {carNumber:Number($("#carNumber").value),pins:{in1:Number($("#pinIn1").value),in2:Number($("#pinIn2").value),in3:Number($("#pinIn3").value),in4:Number($("#pinIn4").value)},invertLeft:$("#invertLeft").checked,invertRight:$("#invertRight").checked,camera:{frameSize:$("#frameSize").value,quality:Number($("#jpegQuality").value),flip:$("#flipCamera").checked}}}
+  function settings(){return {board:$("#boardModel").value,carNumber:Number($("#carNumber").value),pins:{in1:Number($("#pinIn1").value),in2:Number($("#pinIn2").value),in3:Number($("#pinIn3").value),in4:Number($("#pinIn4").value)},invertLeft:$("#invertLeft").checked,invertRight:$("#invertRight").checked,camera:{frameSize:$("#frameSize").value,quality:Number($("#jpegQuality").value),flip:$("#flipCamera").checked}}}
 
   function expr(block){
     if(!block)return {type:"number",value:0};
@@ -235,11 +259,11 @@
   }
   function cppExpr(e){if(!e)return"0";if(e.type==="number")return String(e.value);if(e.type==="text")return JSON.stringify(e.value);if(e.type==="variable")return e.name;if(e.type==="boolean")return e.value?"true":"false";if(e.type==="random")return`random(${cppExpr(e.from)}, ${cppExpr(e.to)} + 1)`;if(e.type==="math")return`(${cppExpr(e.a)} ${{ADD:"+",MINUS:"-",MULTIPLY:"*",DIVIDE:"/",POWER:"^"}[e.op]||"+"} ${cppExpr(e.b)})`;if(e.type==="compare")return`(${cppExpr(e.a)} ${{EQ:"==",NEQ:"!=",LT:"<",LTE:"<=",GT:">",GTE:">="}[e.op]} ${cppExpr(e.b)})`;if(e.type==="logic")return`(${cppExpr(e.a)} ${e.op==="AND"?"&&":"||"} ${cppExpr(e.b)})`;return"0"}
   function cppSteps(list,depth=1){const p="  ".repeat(depth);return list.map(s=>{switch(s.op){case"drive":return`${p}rcDrive("${s.dir}", ${cppExpr(s.speed)});`;case"motors":return`${p}setMotors(${cppExpr(s.left)}, ${cppExpr(s.right)});`;case"stop":return`${p}stopCar();`;case"flash":return`${p}setCameraLight(${s.on});`;case"cameraFrame":return`${p}setCameraFrame("${s.size}");`;case"cameraFlip":return`${p}setCameraFlip(${s.on});`;case"faceAvoid":return`${p}avoidDetectedFace(${cppExpr(s.speed)});`;case"wait":return`${p}delay(${cppExpr(s.ms)});`;case"print":return`${p}Serial.println(${cppExpr(s.value)});`;case"setVar":return`${p}${s.name} = ${cppExpr(s.value)};`;case"changeVar":return`${p}${s.name} += ${cppExpr(s.value)};`;case"repeat":return`${p}for (int i=0; i<${cppExpr(s.times)}; i++) {\n${cppSteps(s.steps,depth+1)}\n${p}}`;case"if":return`${p}if (${cppExpr(s.condition)}) {\n${cppSteps(s.then,depth+1)}\n${p}}${s.else?.length?` else {\n${cppSteps(s.else,depth+1)}\n${p}}`:""}`;default:return""}}).join("\n")}
-  function generateCode(){const cfg=settings(),p=compileProgram(),vars=workspace.getAllVariables().map(v=>`double ${v.name}=0;`).join("\n"),face=p.handlers.face;return `// OneMaker ESP32-CAM RC Studio 교육용 코드\n#include <WiFi.h>\n#include <esp_camera.h>\n\nconst int IN1=${cfg.pins.in1}, IN2=${cfg.pins.in2}, IN3=${cfg.pins.in3}, IN4=${cfg.pins.in4};\n${vars||"// 사용한 변수 없음"}\n\nvoid onFaceDetected() {\n${face?.length?cppSteps(face,1):"  // 얼굴 감지 이벤트 블록을 연결하세요."}\n}\n\nvoid setup() {\n  Serial.begin(115200);\n  setupCamera();\n  setupMotorDriver();\n  startRcWifi("OneMaker-RC-${String(cfg.carNumber).padStart(2,"0")}", "onemaker1");\n${cppSteps(p.start,1)||"  // 시작 블록을 연결하세요."}\n}\n\nvoid loop() {\n  serviceCameraRemote();\n${cppSteps(p.forever,1)||"  delay(10);"}\n}\n`;}
+  function generateCode(){const cfg=settings(),p=compileProgram(),vars=workspace.getAllVariables().map(v=>`double ${v.name}=0;`).join("\n"),face=p.handlers.face;return `// OneMaker ${boardProfile().label} RC Studio 교육용 코드\n#include <WiFi.h>\n#include <esp_camera.h>\n\nconst int IN1=${cfg.pins.in1}, IN2=${cfg.pins.in2}, IN3=${cfg.pins.in3}, IN4=${cfg.pins.in4};\n${vars||"// 사용한 변수 없음"}\n\nvoid onFaceDetected() {\n${face?.length?cppSteps(face,1):"  // 얼굴 감지 이벤트 블록을 연결하세요."}\n}\n\nvoid setup() {\n  Serial.begin(115200);\n  setupCamera();\n  setupMotorDriver();\n  startRcWifi("OneMaker-RC-${String(cfg.carNumber).padStart(2,"0")}", nullptr);\n${cppSteps(p.start,1)||"  // 시작 블록을 연결하세요."}\n}\n\nvoid loop() {\n  serviceCameraRemote();\n${cppSteps(p.forever,1)||"  delay(10);"}\n}\n`;}
   function updateCode(){try{$("#codePreview code").textContent=generateCode()}catch(e){$("#codePreview code").textContent="// " + e.message}}
 
   function snapshot(){return {version:1,name:$("#projectName").value,settings:settings(),workspace:Blockly.serialization.workspaces.save(workspace)}}
-  function applySnapshot(data){if(!data?.workspace)throw new Error("프로젝트 형식이 아닙니다.");$("#projectName").value=data.name||"나의 영상탐사 RC카";const c=data.settings||{};$("#carNumber").value=c.carNumber||1;Object.entries(c.pins||DEFAULT_PINS).forEach(([k,v])=>$("#pin"+k[0].toUpperCase()+k.slice(1)).value=v);$("#invertLeft").checked=c.invertLeft!==false;$("#invertRight").checked=c.invertRight!==false;$("#frameSize").value=c.camera?.frameSize||"QVGA";$("#jpegQuality").value=c.camera?.quality||12;$("#flipCamera").checked=!!c.camera?.flip;Blockly.serialization.workspaces.load(data.workspace,workspace);updateWifiName();updateCode()}
+  function applySnapshot(data){if(!data?.workspace)throw new Error("프로젝트 형식이 아닙니다.");$("#projectName").value=data.name||"나의 영상탐사 RC카";const c=data.settings||{},model=BOARD_PROFILES[c.board]?c.board:"esp32cam";applyBoardProfile(model,false);$("#carNumber").value=c.carNumber||1;Object.entries(c.pins||BOARD_PROFILES[model].pins).forEach(([k,v])=>$("#pin"+k[0].toUpperCase()+k.slice(1)).value=v);$("#invertLeft").checked=c.invertLeft!==false;$("#invertRight").checked=c.invertRight!==false;$("#frameSize").value=c.camera?.frameSize||"QVGA";$("#jpegQuality").value=c.camera?.quality||12;$("#flipCamera").checked=!!c.camera?.flip;Blockly.serialization.workspaces.load(data.workspace,workspace);updateWifiName();updateCode()}
   function saveLocal(){if(!workspace)return;localStorage.setItem("om-esp32cam-rc-project",JSON.stringify(snapshot()))}
   function loadLocal(){try{const raw=localStorage.getItem("om-esp32cam-rc-project");if(!raw)return false;applySnapshot(JSON.parse(raw));return true}catch(e){console.warn(e);return false}}
   function loadExample(notify=true){const xml=`<xml xmlns="https://developers.google.com/blockly/xml"><block type="event_start" x="35" y="35"><statement name="DO"><block type="camera_flash"><field name="STATE">on</field><next><block type="wait_ms"><value name="SECONDS"><shadow type="math_number"><field name="NUM">1</field></shadow></value><next><block type="camera_flash"><field name="STATE">off</field><next><block type="serial_print"><value name="VALUE"><shadow type="text"><field name="TEXT">영상탐사 RC카 준비 완료!</field></shadow></value></block></next></block></next></block></statement></block><block type="remote_when" x="390" y="35"><field name="BUTTON">forward</field><statement name="DO"><block type="car_drive"><field name="DIR">forward</field><value name="SPEED"><shadow type="math_number"><field name="NUM">150</field></shadow></value></block></statement></block><block type="remote_when" x="390" y="190"><field name="BUTTON">stop</field><statement name="DO"><block type="car_stop"/></statement></block><block type="face_when" x="720" y="35"><statement name="DO"><block type="face_avoid"><value name="SPEED"><shadow type="math_number"><field name="NUM">150</field></shadow></value></block></statement></block></xml>`;workspace.clear();Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xml),workspace);workspace.zoomToFit();if(notify)toast("얼굴인식 회피 예제를 불러왔습니다.")}
@@ -317,7 +341,7 @@
     $("#sideCollapseBtn").onclick=()=>setSidePanelCollapsed(!$(".app-shell").classList.contains("side-collapsed"));
     $("#pwaInstallBtn").onclick=installPwa;
     $("#openRemoteBtn").onclick=openRemote;
-    $("#firmwareBtn").onclick=()=>$("#firmwareDialog").showModal();$("#connectBtn").onclick=connectSerial;$("#bleConnectBtn").onclick=()=>connectionMode==="ble"?disconnectBle():connectBle();$("#uploadBtn").onclick=uploadProgram;$("#stopBtn").onclick=emergencyStop;
+    $("#firmwareBtn").onclick=()=>{syncFirmwareBoard($("#boardModel").value);$("#firmwareDialog").showModal()};$("#connectBtn").onclick=connectSerial;$("#bleConnectBtn").onclick=()=>connectionMode==="ble"?disconnectBle():connectBle();$("#uploadBtn").onclick=uploadProgram;$("#stopBtn").onclick=emergencyStop;
     $("#saveNumberBtn").onclick=()=>command({cmd:"setNumber",number:Number($("#carNumber").value)}).then(()=>toast("RC카 번호를 저장했습니다. 보드가 재시작됩니다.")).catch(e=>toast(e.message));
     $("#resetPinsBtn").onclick=()=>{applyDefaultPins();updateCode();saveLocal()};
     $$("[data-test]").forEach(b=>{b.onpointerdown=e=>{e.preventDefault();quickTest(b.dataset.test)};if(b.dataset.test!=="stop"){b.onpointerup=()=>quickTest("stop");b.onpointercancel=()=>quickTest("stop");b.onpointerleave=e=>{if(e.buttons)quickTest("stop")}}});

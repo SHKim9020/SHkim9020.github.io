@@ -1,4 +1,4 @@
-const CACHE = "om-esp32cam-rc-v0.1.28-remote-safety";
+const CACHE = "om-esp32cam-rc-v0.1.29-s3-board";
 const ASSETS = ["./", "index.html", "style.css", "responsive-fix.css", "app.js", "manifest.webmanifest", "icons/rc-studio.svg"];
 
 self.addEventListener("install", event => {

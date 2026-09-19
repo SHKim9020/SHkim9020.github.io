@@ -8,8 +8,8 @@
   <title>OneMaker ESP32-CAM RC Studio</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/rc-studio.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=0.1.17-ble">
-  <link rel="stylesheet" href="responsive-fix.css?v=0.1.17-ble">
+  <link rel="stylesheet" href="style.css?v=0.1.29-s3">
+  <link rel="stylesheet" href="responsive-fix.css?v=0.1.29-s3">
   <script src="https://unpkg.com/blockly@12.1.0/blockly_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
@@ -53,21 +53,27 @@
 
       <section class="tab-panel active" data-panel="board">
         <div class="hero-card">
-          <div><small>선택 보드</small><h2>ESP32‑CAM <span>AI Thinker</span></h2><p>OV2640 카메라 · Wi‑Fi AP · 2휠 DC모터</p></div>
+          <div><small>선택 보드</small><h2 id="boardTitle">ESP32‑CAM <span>AI Thinker</span></h2><p id="boardSummary">OV2640 카메라 · Wi‑Fi AP · 2휠 DC모터</p></div>
           <svg viewBox="0 0 180 110" aria-label="ESP32-CAM RC카"><rect class="car-body" x="42" y="18" width="96" height="74" rx="15"/><circle class="wheel" cx="35" cy="42" r="18"/><circle class="wheel" cx="145" cy="42" r="18"/><circle class="wheel" cx="35" cy="78" r="18"/><circle class="wheel" cx="145" cy="78" r="18"/><rect class="board" x="65" y="28" width="50" height="55" rx="6"/><circle class="lens" cx="90" cy="44" r="13"/><circle class="lens-eye" cx="90" cy="44" r="6"/><path class="wifi" d="M75 17q15-14 30 0M81 20q9-8 18 0M88 24q2-2 4 0"/></svg>
+        </div>
+
+        <div class="settings-card board-selector-card">
+          <div class="card-head"><h3>사용할 개발보드</h3><span>펌웨어 자동 선택</span></div>
+          <label class="board-select-label">보드 종류<select id="boardModel"><option value="esp32cam" selected>ESP32-CAM AI Thinker</option><option value="esp32s3">ESP32-S3 N16R8 CAM (OV2640)</option></select></label>
+          <p id="boardModelNote" class="note">기존 ESP32-CAM용 펌웨어와 GPIO 설정을 사용합니다.</p>
         </div>
 
         <div class="settings-card">
           <div class="card-head"><h3>수업용 RC카 번호</h3><span>01~16</span></div>
           <div class="inline-row"><label>번호 <select id="carNumber"></select></label><button id="saveNumberBtn" class="primary">USB로 번호 저장</button></div>
-          <p class="note">Wi‑Fi 이름이 <b id="wifiNamePreview">OneMaker‑RC‑01</b>로 저장됩니다. 비밀번호는 <b>onemaker1</b>입니다.</p>
+          <p class="note">Wi‑Fi 이름이 <b id="wifiNamePreview">OneMaker‑RC‑01</b>로 저장됩니다. 비밀번호는 <b>없습니다.</b></p>
         </div>
 
         <div class="settings-card">
           <div class="card-head"><h3>모터드라이버 배선</h3><button id="resetPinsBtn">기본값</button></div>
           <div class="pin-grid"><label>왼쪽 A‑IA<select id="pinIn1"></select></label><label>왼쪽 A‑IB<select id="pinIn2"></select></label><label>오른쪽 B‑IA<select id="pinIn3"></select></label><label>오른쪽 B‑IB<select id="pinIn4"></select></label></div>
           <div class="switch-row"><label><input id="invertLeft" type="checkbox" checked> 왼쪽 방향 반전</label><label><input id="invertRight" type="checkbox" checked> 오른쪽 방향 반전</label></div>
-          <p class="warning">기본값 GPIO 12·13·14·15는 microSD를 사용하지 않을 때만 가능합니다. ESP32‑CAM과 모터드라이버 GND는 반드시 공통 연결하세요.</p>
+          <p id="pinWarning" class="warning">기본값 GPIO 12·13·14·15는 microSD를 사용하지 않을 때만 가능합니다. ESP32‑CAM과 모터드라이버 GND는 반드시 공통 연결하세요.</p>
         </div>
 
         <div class="settings-card">
@@ -86,7 +92,7 @@
 
       <section class="tab-panel" data-panel="remote">
         <div class="remote-hero"><span>📹</span><div><h2>실시간 영상 원격조종</h2><p>RC카가 직접 만드는 Wi‑Fi에 스마트폰을 연결합니다.</p></div></div>
-        <div class="step-list"><div><b>1</b><span>RC카 전원을 켭니다.</span></div><div><b>2</b><span>스마트폰 Wi‑Fi에서 <strong id="remoteWifiName">OneMaker‑RC‑01</strong> 선택<br><small>비밀번호: onemaker1 · “인터넷 없음”이어도 연결 유지</small></span></div><div><b>3</b><span>아래 버튼을 누르면 현재 화면에서 영상 조종기로 이동합니다.</span></div></div>
+        <div class="step-list"><div><b>1</b><span>RC카 전원을 켭니다.</span></div><div><b>2</b><span>스마트폰 Wi‑Fi에서 <strong id="remoteWifiName">OneMaker‑RC‑01</strong> 선택<br><small>비밀번호 없음 · “인터넷 없음”이어도 연결 유지</small></span></div><div><b>3</b><span>아래 버튼을 누르면 현재 화면에서 영상 조종기로 이동합니다.</span></div></div>
         <a id="openRemoteBtn" class="remote-open" href="http://192.168.4.1/">📡 ESP32‑CAM 영상 조종기 열기</a>
         <p id="remoteOpenStatus" class="remote-status" role="status">연결 주소: http://192.168.4.1</p>
         <div class="camera-mock"><div class="scan-line"></div><span>RC카에 연결하면<br>이곳 대신 실시간 영상 조종기가 열립니다.</span><div class="hud"><i>REC</i><b>ESP32‑CAM</b></div></div>
@@ -99,8 +105,8 @@
   </main>
 
   <dialog id="pwaInstallDialog"><form method="dialog"><button class="dialog-close">×</button><img src="icons/rc-studio.svg" width="76" height="76" alt="RC Studio 앱 아이콘"><h2>홈 화면에 RC Studio 설치</h2><ol><li>Android Chrome 오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 선택합니다.</li><li>설치된 OneMaker RC 아이콘으로 실행합니다.</li></ol><button class="primary install-button">확인</button></form></dialog>
-  <dialog id="firmwareDialog"><form method="dialog"><button class="dialog-close">×</button><h2>ESP32‑CAM 펌웨어 설치</h2><div class="shield-guide"><h3>✅ ESP32-CAM-MB USB 쉴드 사용</h3><ol><li>ESP32-CAM을 쉴드에 끝까지 꽂고 USB 케이블을 연결합니다.</li><li><b>GPIO 선은 따로 연결하지 않습니다.</b></li><li>아래 설치 버튼을 누르고 쉴드의 USB 포트를 선택합니다.</li><li>설치 완료 후 <b>RST</b>를 누르거나 USB를 다시 연결합니다.</li></ol><p>연결 실패가 나올 때만 <b>IO0/BOOT를 누른 채 RST를 짧게 누르고</b>, IO0/BOOT를 놓은 뒤 다시 설치하세요.</p></div><details class="ttl-guide"><summary>외장 USB-TTL을 사용하는 경우</summary><div class="boot-wiring"><span>USB‑TTL TX → U0R</span><span>USB‑TTL RX → U0T</span><span>5V → 5V</span><span>GND → GND</span><b>설치할 때만 GPIO0 → GND</b></div></details><div class="camera-test-install"><h3>① 카메라만 먼저 테스트</h3><p>모터 기능 없이 OV2640 영상과 Wi‑Fi만 확인합니다. 설치 후 <b>OneMaker-CAM-TEST</b>에 연결하고 <b>192.168.4.1</b>을 여세요.</p><esp-web-install-button manifest="firmware/camera-test-manifest.json"><button slot="activate" class="camera-install-button">카메라 전용 테스트 펌웨어 설치</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></div><div class="full-firmware-install"><h3>② AI 얼굴 회피·Bluetooth RC카 펌웨어 설치</h3><p>RC카 펌웨어 0.1.17입니다. 최초 설치는 USB가 필요하며, 설치 후에는 Android·PC Chrome에서 <b>Bluetooth로 블록 프로그램을 저장·실행</b>할 수 있습니다.</p><esp-web-install-button manifest="firmware/manifest.json?v=0.1.17"><button slot="activate" class="primary install-button">AI·Bluetooth 펌웨어 설치</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></div></form></dialog>
+  <dialog id="firmwareDialog"><form method="dialog"><button class="dialog-close">×</button><h2>RC카 펌웨어 설치</h2><label class="firmware-board-select">설치할 보드<select id="firmwareBoardModel"><option value="esp32cam">ESP32-CAM AI Thinker</option><option value="esp32s3">ESP32-S3 N16R8 CAM (OV2640)</option></select></label><section id="esp32CamInstall"><div class="shield-guide"><h3>✅ ESP32-CAM-MB USB 쉴드 사용</h3><ol><li>ESP32-CAM을 쉴드에 끝까지 꽂고 USB 케이블을 연결합니다.</li><li><b>GPIO 선은 따로 연결하지 않습니다.</b></li><li>아래 설치 버튼을 누르고 쉴드의 USB 포트를 선택합니다.</li><li>설치 완료 후 <b>RST</b>를 누르거나 USB를 다시 연결합니다.</li></ol><p>연결 실패가 나올 때만 <b>IO0/BOOT를 누른 채 RST를 짧게 누르고</b>, IO0/BOOT를 놓은 뒤 다시 설치하세요.</p></div><details class="ttl-guide"><summary>외장 USB-TTL을 사용하는 경우</summary><div class="boot-wiring"><span>USB‑TTL TX → U0R</span><span>USB‑TTL RX → U0T</span><span>5V → 5V</span><span>GND → GND</span><b>설치할 때만 GPIO0 → GND</b></div></details><div class="camera-test-install"><h3>① 카메라만 먼저 테스트</h3><p>모터 기능 없이 OV2640 영상과 Wi‑Fi만 확인합니다. 설치 후 <b>OneMaker-CAM-TEST</b>에 연결하고 <b>192.168.4.1</b>을 여세요.</p><esp-web-install-button manifest="firmware/camera-test-manifest.json"><button slot="activate" class="camera-install-button">카메라 전용 테스트 펌웨어 설치</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></div><div class="full-firmware-install"><h3>② AI 얼굴 회피·Bluetooth RC카 펌웨어 설치</h3><p>기존 ESP32-CAM 전용 펌웨어 0.1.17입니다.</p><esp-web-install-button manifest="firmware/manifest.json?v=0.1.17"><button slot="activate" class="primary install-button">ESP32-CAM 펌웨어 설치</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></div></section><section id="esp32S3Install" hidden><div class="shield-guide s3-guide"><h3>✅ ESP32-S3 N16R8 CAM USB 연결</h3><ol><li>OV2640 카메라 케이블이 끝까지 연결됐는지 확인합니다.</li><li>보드의 USB 단자와 PC를 데이터 케이블로 연결합니다.</li><li>아래 설치 버튼에서 <b>USB JTAG/serial debug unit</b> 포트를 선택합니다.</li><li>연결되지 않으면 <b>BOOT를 누른 채 RST를 짧게 누른 후</b> 다시 설치합니다.</li></ol><p>이 펌웨어는 Freenove 호환 ESP32-S3 N16R8 CAM 핀맵을 사용합니다. 모터 기본 GPIO는 1·2·14·21입니다.</p></div><div class="full-firmware-install"><h3>AI 얼굴 회피·Bluetooth S3 펌웨어</h3><p>16MB Flash·8MB PSRAM과 OV2640 카메라용입니다. 최초 설치 후에는 기존과 같은 Wi-Fi 조종과 Bluetooth 블록 전송을 사용할 수 있습니다.</p><esp-web-install-button manifest="firmware/manifest-esp32s3-n16r8.json?v=0.1.0"><button slot="activate" class="primary install-button">ESP32-S3 N16R8 펌웨어 설치</button><span slot="unsupported">PC Chrome/Edge에서 설치할 수 있습니다.</span></esp-web-install-button></div></section></form></dialog>
   <div id="toast" role="status"></div>
-  <script src="app.js?v=0.1.28-remote-safety"></script>
+  <script src="app.js?v=0.1.29-s3"></script>
 </body>
 </html>
