@@ -282,7 +282,7 @@ void sendMainServerSnapshot(){
   webServer.sendHeader("Connection","close");
   webServer.setContentLength(fb->len);
   webServer.send(200,"image/jpeg","");
-  WiFiClient &client=webServer.client();
+  WiFiClient client=webServer.client();
   if(client.write(fb->buf,fb->len)!=fb->len)cameraFrameFailures++;
   esp_camera_fb_return(fb);
 }
