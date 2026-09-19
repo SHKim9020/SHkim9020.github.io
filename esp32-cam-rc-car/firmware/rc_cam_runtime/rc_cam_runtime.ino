@@ -13,7 +13,7 @@
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = nullptr;
 #ifdef ONEMAKER_ESP32_S3_CAM
-static const char *RUNTIME_VERSION = "0.1.1-s3";
+static const char *RUNTIME_VERSION = "0.1.2-s3";
 static const char *BOARD_DISPLAY_NAME = "ESP32-S3 N16R8 CAM";
 static const int FLASH_LED = -1;
 static const int DEFAULT_MOTOR_PINS[4] = {1, 2, 14, 21};
@@ -190,7 +190,14 @@ static esp_err_t streamHandler(httpd_req_t *req){
   }
   cameraStreamActive=false;return result;
 }
-void startStreamServer(){httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();cfg.server_port=81;cfg.ctrl_port=32769;httpd_uri_t stream={.uri="/stream",.method=HTTP_GET,.handler=streamHandler,.user_ctx=nullptr};if(httpd_start(&streamServer,&cfg)==ESP_OK)httpd_register_uri_handler(streamServer,&stream);}
+static esp_err_t captureHandler(httpd_req_t *req){
+  if(!cameraReady){httpd_resp_set_status(req,"503 Service Unavailable");return httpd_resp_sendstr(req,"Camera unavailable");}
+  camera_fb_t *fb=esp_camera_fb_get();
+  if(!fb){cameraFrameFailures++;cameraReady=false;cameraError="capture timeout";return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"Capture failed");}
+  httpd_resp_set_type(req,"image/jpeg");httpd_resp_set_hdr(req,"Access-Control-Allow-Origin","*");httpd_resp_set_hdr(req,"Cache-Control","no-store, no-cache, must-revalidate");
+  esp_err_t result=httpd_resp_send(req,(const char*)fb->buf,fb->len);esp_camera_fb_return(fb);return result;
+}
+void startStreamServer(){httpd_config_t cfg=HTTPD_DEFAULT_CONFIG();cfg.server_port=81;cfg.ctrl_port=32769;httpd_uri_t stream={.uri="/stream",.method=HTTP_GET,.handler=streamHandler,.user_ctx=nullptr};httpd_uri_t capture={.uri="/capture",.method=HTTP_GET,.handler=captureHandler,.user_ctx=nullptr};if(httpd_start(&streamServer,&cfg)==ESP_OK){httpd_register_uri_handler(streamServer,&stream);httpd_register_uri_handler(streamServer,&capture);}}
 
 int variableIndex(const String &name){for(int i=0;i<variableCount;i++)if(variableNames[i]==name)return i;if(variableCount<20){variableNames[variableCount]=name;return variableCount++;}return 0;}
 double eval(JsonVariantConst e){
