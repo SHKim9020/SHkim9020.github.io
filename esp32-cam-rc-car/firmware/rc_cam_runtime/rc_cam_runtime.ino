@@ -13,7 +13,7 @@
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = nullptr;
 #ifdef ONEMAKER_ESP32_S3_CAM
-static const char *RUNTIME_VERSION = "0.1.4-s3";
+static const char *RUNTIME_VERSION = "0.1.5-s3";
 static const char *BOARD_DISPLAY_NAME = "ESP32-S3 N16R8 CAM";
 static const int FLASH_LED = -1;
 static const int DEFAULT_MOTOR_PINS[4] = {1, 2, 14, 21};
