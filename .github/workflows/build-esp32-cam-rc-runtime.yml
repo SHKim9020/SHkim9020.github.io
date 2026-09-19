@@ -72,7 +72,8 @@ jobs:
           assert b'OneMaker-RC-' in image
           assert b'data-frame="QVGA"' in image
           assert b'id="blockMode"' in image
-          assert b'Runtime 0.1.17' in image
+          assert b'0.1.17' in image
+          assert b'ESP32-CAM AI Thinker' in image
           assert b'FACE_MODEL_B64' in image
           assert 'AI 얼굴 회피'.encode() in image
           assert b'/api/face' in image
