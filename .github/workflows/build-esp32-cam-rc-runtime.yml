@@ -50,13 +50,13 @@ jobs:
             --output-dir /tmp/onemaker-rc-s3-build \
             esp32-cam-rc-car/firmware/rc_cam_runtime
           cp /tmp/onemaker-rc-s3-build/rc_cam_runtime.ino.bootloader.bin \
-            esp32-cam-rc-car/firmware/rc-s3-bootloader-0.1.3.bin
+            esp32-cam-rc-car/firmware/rc-s3-bootloader-0.1.4.bin
           cp /tmp/onemaker-rc-s3-build/rc_cam_runtime.ino.partitions.bin \
-            esp32-cam-rc-car/firmware/rc-s3-partitions-0.1.3.bin
+            esp32-cam-rc-car/firmware/rc-s3-partitions-0.1.4.bin
           cp "$HOME/.arduino15/packages/esp32/hardware/esp32/2.0.17/tools/partitions/boot_app0.bin" \
-            esp32-cam-rc-car/firmware/rc-s3-boot_app0-0.1.3.bin
+            esp32-cam-rc-car/firmware/rc-s3-boot_app0-0.1.4.bin
           cp /tmp/onemaker-rc-s3-build/rc_cam_runtime.ino.bin \
-            esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.3.bin
+            esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.4.bin
 
       - name: Split application image for web installer
         run: |
@@ -86,15 +86,15 @@ jobs:
 
       - name: Verify ESP32-S3 runtime image
         run: |
-          test -s esp32-cam-rc-car/firmware/rc-s3-bootloader-0.1.3.bin
-          test -s esp32-cam-rc-car/firmware/rc-s3-partitions-0.1.3.bin
-          test -s esp32-cam-rc-car/firmware/rc-s3-boot_app0-0.1.3.bin
-          test -s esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.3.bin
+          test -s esp32-cam-rc-car/firmware/rc-s3-bootloader-0.1.4.bin
+          test -s esp32-cam-rc-car/firmware/rc-s3-partitions-0.1.4.bin
+          test -s esp32-cam-rc-car/firmware/rc-s3-boot_app0-0.1.4.bin
+          test -s esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.4.bin
           python3 - <<'PY'
           from pathlib import Path
-          image = Path('esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.3.bin').read_bytes()
+          image = Path('esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.4.bin').read_bytes()
           assert b'ESP32-S3 N16R8 CAM' in image
-          assert b'0.1.3-s3' in image
+          assert b'0.1.4-s3' in image
           assert b'/api/capture' in image
           assert b'OneMaker-RC-BLE-' in image
           assert b'/api/face' in image
@@ -106,10 +106,10 @@ jobs:
           git add \
             esp32-cam-rc-car/firmware/rc-runtime-0.1.17-part-0.bin \
             esp32-cam-rc-car/firmware/rc-runtime-0.1.17-part-1.bin \
-            esp32-cam-rc-car/firmware/rc-s3-bootloader-0.1.3.bin \
-            esp32-cam-rc-car/firmware/rc-s3-partitions-0.1.3.bin \
-            esp32-cam-rc-car/firmware/rc-s3-boot_app0-0.1.3.bin \
-            esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.3.bin
+            esp32-cam-rc-car/firmware/rc-s3-bootloader-0.1.4.bin \
+            esp32-cam-rc-car/firmware/rc-s3-partitions-0.1.4.bin \
+            esp32-cam-rc-car/firmware/rc-s3-boot_app0-0.1.4.bin \
+            esp32-cam-rc-car/firmware/rc-runtime-s3-0.1.4.bin
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Build ESP32-CAM and ESP32-S3 RC firmware [skip rc firmware]"
