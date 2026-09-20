@@ -13,7 +13,7 @@
 static const char *PROGRAM_PATH = "/rc-program.json";
 static const char *WIFI_PASSWORD = nullptr;
 #ifdef ONEMAKER_ESP32_S3_CAM
-static const char *RUNTIME_VERSION = "0.1.5-s3";
+static const char *RUNTIME_VERSION = "0.1.6-s3";
 static const char *BOARD_DISPLAY_NAME = "ESP32-S3 N16R8 CAM";
 static const int FLASH_LED = -1;
 static const int DEFAULT_MOTOR_PINS[4] = {1, 2, 14, 21};
@@ -295,7 +295,7 @@ void setupWebRoutes(){
   webServer.on("/api/stop",HTTP_ANY,[](){stopProgram();stopRemoteHandler();stopCar();webServer.send(200,"application/json","{\"ok\":true}");});
   webServer.on("/api/flash",HTTP_GET,[](){if(FLASH_LED>=0)digitalWrite(FLASH_LED,webServer.arg("on")=="1");webServer.send(200,"application/json",FLASH_LED>=0?"{\"ok\":true}":"{\"ok\":false,\"message\":\"flash unavailable\"}");});
   webServer.on("/api/flip",HTTP_GET,[](){config.flip=webServer.arg("on")=="1";applyCameraSettings();webServer.send(200,"application/json","{\"ok\":true}");});
-  webServer.on("/api/frame",HTTP_GET,[](){config.frameSize=webServer.arg("size");applyCameraSettings();webServer.send(200,"application/json","{\"ok\":true}");});
+  webServer.on("/api/frame",HTTP_GET,[](){config.frameSize=webServer.arg("size");if(webServer.hasArg("quality"))config.quality=constrain(webServer.arg("quality").toInt(),8,30);applyCameraSettings();webServer.send(200,"application/json",String("{\"ok\":true,\"size\":\"")+config.frameSize+"\",\"quality\":"+config.quality+"}");});
   webServer.onNotFound([](){webServer.sendHeader("Location","/");webServer.send(302);});webServer.begin();
 }
 void startWifi(){WiFi.mode(WIFI_AP);WiFi.setSleep(false);WiFi.setTxPower(WIFI_POWER_19_5dBm);WiFi.softAP(wifiName().c_str(),WIFI_PASSWORD,1,false,4);setupWebRoutes();startStreamServer();emit("wifi",wifiName()+" / http://192.168.4.1");}

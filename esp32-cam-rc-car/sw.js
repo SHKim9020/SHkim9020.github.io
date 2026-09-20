@@ -1,4 +1,4 @@
-const CACHE = "om-esp32cam-rc-v0.1.33-s3-mobile-ai";
+const CACHE = "om-esp32cam-rc-v0.1.34-s3-video-modes";
 const ASSETS = ["./", "index.html", "style.css", "responsive-fix.css", "app.js", "manifest.webmanifest", "icons/rc-studio.svg"];
 
 self.addEventListener("install", event => {
