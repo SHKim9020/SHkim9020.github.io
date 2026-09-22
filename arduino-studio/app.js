@@ -1760,19 +1760,14 @@
       serialWriteQueue = Promise.resolve();
       runtimeReady = false;
       runtimeVersion = "";
-      serialTransport = "unknown";
+      serialTransport = detectSerialTransport(serialPort);
       setConnected(true);
       readSerialLoop();
       const deadline = Date.now() + 8000;
       while (!runtimeReady && Date.now() < deadline) {
-        serialTransport = "bluetooth";
-        await sendLine("\x1ePING", true);
-        await sleep(180);
-        if (!runtimeReady) {
-          serialTransport = "usb";
-          await sendLine("PING", true);
-        }
-        await sleep(250);
+        if (serialTransport === "usb") await sendLine("PING", true);
+        else await sendLine("\x1ePING", true);
+        await sleep(430);
       }
       if (!runtimeReady) throw new Error("OneMaker 런타임 응답이 없습니다. 먼저 런타임을 다시 설치하세요.");
       if (runtimeVersion !== RUNTIME_VERSION) {
@@ -1786,6 +1781,13 @@
       if (error.name !== "NotFoundError") toast(formatUsbError(error));
       await disconnectSerial().catch(() => {});
     }
+  }
+
+  function detectSerialTransport(port) {
+    if (window.OneMakerCH340?.active) return "usb";
+    const info = port?.getInfo?.() || {};
+    if (info.usbVendorId !== undefined || info.usbProductId !== undefined) return "usb";
+    return "bluetooth";
   }
 
   function formatUsbError(error) {
