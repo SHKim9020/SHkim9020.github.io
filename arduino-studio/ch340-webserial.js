@@ -13,7 +13,8 @@
   const REGISTER = Object.freeze({ PRESCALER: 0x12, DIVISOR: 0x13, LCR: 0x18, LCR2: 0x25 });
   const MODEM = Object.freeze({ DTR: 1 << 5, RTS: 1 << 6 });
   const LCR_8N1 = 0x80 | 0x40 | 0x03;
-  const USB_FILTERS = Object.freeze([{ vendorId: CH340_VENDOR_ID, productId: CH340_PRODUCT_ID }]);
+  // CH340-compatible boards can report product IDs other than 0x7523.
+  const USB_FILTERS = Object.freeze([{ vendorId: CH340_VENDOR_ID }]);
   const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
   function isAndroid() {
@@ -254,7 +255,7 @@
         this.dispatchEvent(new Event("disconnect"));
       });
       this.usb.addEventListener("connect", event => {
-        if (event.device.vendorId === CH340_VENDOR_ID && event.device.productId === CH340_PRODUCT_ID) {
+        if (event.device.vendorId === CH340_VENDOR_ID) {
           this.dispatchEvent(new Event("connect"));
         }
       });
@@ -273,7 +274,7 @@
     async getPorts() {
       const devices = await this.usb.getDevices();
       return devices
-        .filter(device => device.vendorId === CH340_VENDOR_ID && device.productId === CH340_PRODUCT_ID)
+        .filter(device => device.vendorId === CH340_VENDOR_ID)
         .map(device => this.portFor(device));
     }
   }

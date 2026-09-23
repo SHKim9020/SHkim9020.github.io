@@ -1014,6 +1014,8 @@
       if (activeSideTab === "serial" && serialDirty) flushSerialOutput();
       Blockly.svgResize(workspace);
     });
+    window.addEventListener("resize", () => requestAnimationFrame(() => Blockly.svgResize(workspace)));
+    window.addEventListener("orientationchange", () => setTimeout(() => Blockly.svgResize(workspace), 250));
     if ("serial" in navigator) {
       navigator.serial.addEventListener("disconnect", () => closeSerialState());
     }
@@ -1777,7 +1779,11 @@
       }
     } catch (error) {
       console.error(error);
-      if (error.name !== "NotFoundError") toast(formatUsbError(error));
+      if (error.name === "NotFoundError" && window.OneMakerCH340?.isAndroid) {
+        toast("USB 장치를 찾지 못했습니다. OTG 젠더·데이터 케이블을 다시 연결한 뒤 CH340 USB 연결을 눌러주세요.");
+      } else if (error.name !== "NotFoundError") {
+        toast(formatUsbError(error));
+      }
       await disconnectSerial().catch(() => {});
     }
   }

@@ -44,7 +44,7 @@ test("Android adapter replaces Web Serial with the confirmed CH340 VID and PID",
   assert.equal(port.getInfo().usbProductId, 0x7523);
   assert.equal(usb.requestOptions.filters.length, 1);
   assert.equal(usb.requestOptions.filters[0].vendorId, 0x1a86);
-  assert.equal(usb.requestOptions.filters[0].productId, 0x7523);
+  assert.equal(usb.requestOptions.filters[0].productId, undefined);
 });
 
 test("CH340 divisor calculation covers UNO runtime and bootloader rates", () => {
@@ -116,7 +116,7 @@ test("driver initializes CH340, discovers bulk endpoints, and pulses DTR/RTS", a
 
 test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.ok(html.indexOf("ch340-webserial.js") < html.indexOf("arduino-web-uploader"));
-  assert.match(sw, /ch340-webserial\.js\?v=1\.0\.2/);
+  assert.match(sw, /ch340-webserial\.js\?v=1\.0\.3/);
   assert.match(app, /OneMakerCH340\?\.active/);
   assert.match(app, /function preferredSerialApi\(\)/);
   assert.match(app, /ch340\?\.isAndroid && ch340\?\.supported && ch340\?\.serial/);
