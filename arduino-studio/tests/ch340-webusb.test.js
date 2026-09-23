@@ -118,5 +118,9 @@ test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.ok(html.indexOf("ch340-webserial.js") < html.indexOf("arduino-web-uploader"));
   assert.match(sw, /ch340-webserial\.js\?v=1\.0\.2/);
   assert.match(app, /OneMakerCH340\?\.active/);
+  assert.match(app, /function preferredSerialApi\(\)/);
+  assert.match(app, /ch340\?\.isAndroid && ch340\?\.supported && ch340\?\.serial/);
+  assert.match(app, /serialPort = await serialApi\.requestPort\(\)/);
+  assert.match(app, /isCh340Port\(port\)/);
   assert.match(html, /UNO CH340\(1A86:7523\)/);
 });

@@ -1101,18 +1101,16 @@
   }
 
   function updateBrowserSupport() {
-    const supported = "serial" in navigator;
+    const directCh340 = Boolean(window.OneMakerCH340?.isAndroid && window.OneMakerCH340?.supported && window.OneMakerCH340?.serial);
+    const supported = "serial" in navigator || directCh340;
     const speechSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
-    const androidCh340 = window.OneMakerCH340?.active;
+    const androidCh340 = window.OneMakerCH340?.active || directCh340;
     $("#connectBtn").disabled = !supported;
     $("#saveBoardBtn").disabled = !supported;
     $("#aiRunBtn").disabled = !supported;
     if (androidCh340) {
       $("#connectBtn").lastChild.textContent = "② CH340 USB 연결";
-      $("#connectionStatus").textContent = `Android CH340 준비${window.OneMakerCH340.mode === "patched" ? " · 호환 모드" : ""}`;
-    } else if (window.OneMakerCH340?.isAndroid && window.OneMakerCH340?.supported) {
-      $("#connectBtn").lastChild.textContent = "② CH340 USB 점검";
-      $("#connectionStatus").textContent = "CH340 활성화 실패";
+      $("#connectionStatus").textContent = `Android CH340 준비${window.OneMakerCH340.active ? "" : " · 직접 연결"}`;
     } else if (!supported) {
       $("#connectionStatus").textContent = "Chrome·Edge 필요";
     }
@@ -1750,9 +1748,10 @@
       await disconnectSerial();
       return;
     }
-    if (!("serial" in navigator)) return toast("Chrome의 Web Serial 또는 CH340 WebUSB 환경이 필요합니다.");
+    const serialApi = preferredSerialApi();
+    if (!serialApi) return toast("Android Chrome의 USB 권한을 확인해주세요.");
     try {
-      serialPort = await navigator.serial.requestPort();
+      serialPort = await serialApi.requestPort();
       await serialPort.open({ baudRate: 115200, bufferSize: 1024 });
       serialWriter = serialPort.writable.getWriter();
       serialConnected = true;
@@ -1783,15 +1782,25 @@
     }
   }
 
+  function preferredSerialApi() {
+    const ch340 = window.OneMakerCH340;
+    if (ch340?.isAndroid && ch340?.supported && ch340?.serial) return ch340.serial;
+    return navigator.serial || null;
+  }
+
+  function isCh340Port(port) {
+    return Boolean(window.OneMakerCH340?.CH340Port && port instanceof window.OneMakerCH340.CH340Port);
+  }
+
   function detectSerialTransport(port) {
-    if (window.OneMakerCH340?.active) return "usb";
+    if (isCh340Port(port) || window.OneMakerCH340?.active) return "usb";
     const info = port?.getInfo?.() || {};
     if (info.usbVendorId !== undefined || info.usbProductId !== undefined) return "usb";
     return "bluetooth";
   }
 
   function formatUsbError(error) {
-    const androidCh340 = window.OneMakerCH340?.active;
+    const androidCh340 = window.OneMakerCH340?.isAndroid && window.OneMakerCH340?.supported;
     if (!androidCh340) return `USB/Bluetooth 연결 실패: ${error.message}`;
     if (error.name === "SecurityError") return "CH340 USB 권한이 거부되었습니다. Android USB 창을 닫고 앱에서 다시 연결하세요.";
     if (error.name === "NetworkError") return "CH340를 열지 못했습니다. 다른 USB 앱을 완전히 종료하고 케이블을 다시 연결하세요.";
@@ -1825,7 +1834,7 @@
     try {
       const cancelPromise = reader?.cancel().catch(() => {});
       try { writer?.releaseLock(); } catch (_) {}
-      if (window.OneMakerCH340?.active && port) {
+      if (isCh340Port(port) && port) {
         await Promise.race([
           Promise.allSettled([cancelPromise, port.close()]),
           sleep(1500)
@@ -1862,7 +1871,7 @@
     $("#connectBtn .dot").classList.toggle("on", connected);
     $("#connectBtn").lastChild.textContent = connected
       ? " 연결 끊기"
-      : (window.OneMakerCH340?.active ? "② CH340 USB 연결" : "② USB/Bluetooth 연결");
+      : (window.OneMakerCH340?.isAndroid && window.OneMakerCH340?.supported ? "② CH340 USB 연결" : "② USB/Bluetooth 연결");
   }
 
   async function readSerialLoop() {
