@@ -1,0 +1,19 @@
+{
+  "name": "원레트로",
+  "short_name": "원레트로",
+  "description": "MakeCode Arcade 게임을 만들고 micro:bit Arcade Shield에 업로드합니다.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2264ff",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
