@@ -6,6 +6,13 @@
   const DIGITAL_PINS = Array.from({ length: 12 }, (_, index) => index + 2);
   const PWM_PINS = [3, 5, 6, 9, 10, 11];
   const ANALOG_PINS = ["A0", "A1", "A2", "A3", "A4", "A5"];
+  const USB_SERIAL_FILTERS = [
+    { usbVendorId: 0x2341 }, // Arduino LLC
+    { usbVendorId: 0x2A03 }, // Arduino.org
+    { usbVendorId: 0x1A86 }, // CH340/CH341
+    { usbVendorId: 0x0403 }, // FTDI
+    { usbVendorId: 0x10C4 }  // CP210x
+  ];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
   const RUNTIME_VERSION = "1.1.12";
@@ -681,7 +688,7 @@
       previousStatement: null,
       nextStatement: null,
       colour: 14,
-      tooltip: "HC-05/HC-06 VCC는 VIN이 아닌 Arduino 5V에 연결하고 GND를 공통으로 연결하세요. Bluetooth TX→Arduino RX, Bluetooth RX→Arduino TX입니다."
+      tooltip: "USB 통신(D0·D1)과 Bluetooth(D2·D3)는 동시에 사용할 수 있습니다. 포트 선택창에서는 Arduino 또는 USB-SERIAL(CH340) 포트를 선택하세요."
     },
     {
       type: "bt_send",
@@ -1756,7 +1763,7 @@
     const serialApi = preferredSerialApi();
     if (!serialApi) return toast("Android Chrome의 USB 권한을 확인해주세요.");
     try {
-      serialPort = await serialApi.requestPort();
+      serialPort = await requestProjectSerialPort(serialApi);
       await serialPort.open({ baudRate: 115200, bufferSize: 1024 });
       serialWriter = serialPort.writable.getWriter();
       serialConnected = true;
@@ -1778,11 +1785,10 @@
         toast(`현재 런타임 ${runtimeVersion || "확인 불가"} · ${RUNTIME_VERSION} 재설치가 필요합니다.`);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
       } else {
-        const hasBluetoothBlocks = workspace?.getAllBlocks(false).some(block => block.type.startsWith("bt_"));
-        const powerHint = serialTransport === "usb" && hasBluetoothBlocks
-          ? " · HC-05/06 VCC는 VIN이 아닌 5V에 연결하세요"
+        const simultaneousBluetooth = serialTransport === "usb" && projectUsesBluetooth()
+          ? " · Bluetooth D2/D3 동시 사용"
           : "";
-        toast(`${serialTransport === "bluetooth" ? "Bluetooth COM" : "USB"} · OneMaker Runtime ${runtimeVersion} 연결 완료${powerHint}`);
+        toast(`${serialTransport === "bluetooth" ? "Bluetooth COM" : "USB"} · OneMaker Runtime ${runtimeVersion} 연결 완료${simultaneousBluetooth}`);
       }
     } catch (error) {
       console.error(error);
@@ -1799,6 +1805,20 @@
     const ch340 = window.OneMakerCH340;
     if (ch340?.isAndroid && ch340?.supported && ch340?.serial) return ch340.serial;
     return navigator.serial || null;
+  }
+
+  function projectUsesBluetooth() {
+    return Boolean(workspace?.getAllBlocks(false).some(block => block.type.startsWith("bt_")));
+  }
+
+  function requestProjectSerialPort(serialApi) {
+    const nativeWebSerial = typeof navigator !== "undefined" && serialApi === navigator.serial;
+    // A Bluetooth program needs the HC-05/HC-06 radio free for its own data.
+    // Filtering the chooser prevents accidentally opening its Bluetooth COM port.
+    if (nativeWebSerial && projectUsesBluetooth()) {
+      return serialApi.requestPort({ filters: USB_SERIAL_FILTERS });
+    }
+    return serialApi.requestPort();
   }
 
   function isCh340Port(port) {
