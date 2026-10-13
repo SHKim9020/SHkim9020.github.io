@@ -16,6 +16,7 @@
   const SERIAL_FLUSH_DELAY_MS = 100;
   const MAX_SERIAL_LINES = 400;
   const SERIAL_WRITE_TIMEOUT_MS = 1800;
+  const BLUETOOTH_VALUE_CACHE_MS = 750;
   const MAX_SPEECH_COMMAND_QUEUE = 2;
 
   let workspace;
@@ -30,6 +31,8 @@
   let runtimeVersion = "";
   let serialTransport = "unknown";
   let serialBuffer = "";
+  let lastBluetoothValue = "";
+  let lastBluetoothValueAt = 0;
   let selectedBlockId = null;
   let copiedBlockState = null;
   let toastTimer;
@@ -678,7 +681,7 @@
       previousStatement: null,
       nextStatement: null,
       colour: 14,
-      tooltip: "Bluetooth TX를 Arduino RX에, Bluetooth RX를 Arduino TX에 연결합니다."
+      tooltip: "HC-05/HC-06 VCC는 VIN이 아닌 Arduino 5V에 연결하고 GND를 공통으로 연결하세요. Bluetooth TX→Arduino RX, Bluetooth RX→Arduino TX입니다."
     },
     {
       type: "bt_send",
@@ -1775,7 +1778,11 @@
         toast(`현재 런타임 ${runtimeVersion || "확인 불가"} · ${RUNTIME_VERSION} 재설치가 필요합니다.`);
         if (!$("#firmwareDialog").open) $("#firmwareDialog").showModal();
       } else {
-        toast(`${serialTransport === "bluetooth" ? "Bluetooth COM" : "USB"} · OneMaker Runtime ${runtimeVersion} 연결 완료`);
+        const hasBluetoothBlocks = workspace?.getAllBlocks(false).some(block => block.type.startsWith("bt_"));
+        const powerHint = serialTransport === "usb" && hasBluetoothBlocks
+          ? " · HC-05/06 VCC는 VIN이 아닌 5V에 연결하세요"
+          : "";
+        toast(`${serialTransport === "bluetooth" ? "Bluetooth COM" : "USB"} · OneMaker Runtime ${runtimeVersion} 연결 완료${powerHint}`);
       }
     } catch (error) {
       console.error(error);
@@ -2603,15 +2610,16 @@
         return requestValue("HUSKY", clamp(await evaluate(inputBlock(block, "ID"), functionDepth), 0, 32767), fields[block.getFieldValue("FIELD")] || 1);
       }
       case "bt_available": return Boolean(await requestValue("BTAVAIL"));
-      case "bt_read": return requestValue("BTREAD");
+      case "bt_read":
+        return readBluetoothValue();
       case "bt_received_item": {
-        const value = String(await requestValue("BTREAD"));
+        const value = await readBluetoothValue(true);
         const count = clamp(await evaluate(inputBlock(block, "COUNT"), functionDepth), 1, 64);
         const index = clamp(await evaluate(inputBlock(block, "INDEX"), functionDepth), 1, count);
         return value.slice(0, count).charAt(index - 1);
       }
       case "bt_value_equals":
-        return String(await requestValue("BTREAD")) === String(await evaluate(inputBlock(block, "VALUE"), functionDepth));
+        return (await readBluetoothValue(true)) === String(await evaluate(inputBlock(block, "VALUE"), functionDepth));
       case "speech_result": return lastSpeechText;
       case "speech_number": return lastSpeechNumber;
       case "my_function_call_value": {
@@ -2626,6 +2634,19 @@
       }
       default: return 0;
     }
+  }
+
+  async function readBluetoothValue(reuseRecent = false) {
+    const now = Date.now();
+    if (reuseRecent && lastBluetoothValue && now - lastBluetoothValueAt <= BLUETOOTH_VALUE_CACHE_MS) {
+      return lastBluetoothValue;
+    }
+    const value = String(await requestValue("BTREAD"));
+    if (value) {
+      lastBluetoothValue = value;
+      lastBluetoothValueAt = Date.now();
+    }
+    return value;
   }
 
   async function executeChain(firstBlock, functionDepth = 0) {
@@ -2808,6 +2829,8 @@
       case "mp3_stop":
         return sendAction("MP3STOP");
       case "bt_begin":
+        lastBluetoothValue = "";
+        lastBluetoothValueAt = 0;
         if (block.getFieldValue("RX") === block.getFieldValue("TX")) {
           throw new Error("Bluetooth RX와 TX는 서로 다른 핀을 선택하세요.");
         }
