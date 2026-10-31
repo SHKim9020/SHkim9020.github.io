@@ -143,7 +143,7 @@ Print *controlOutput = &Serial;
 char bluetoothControlLine[128];
 uint8_t bluetoothControlLength = 0;
 
-int tokenInt(char *value, int fallback = 0) {
+int __attribute__((noinline)) tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
 }
 
@@ -182,7 +182,7 @@ void sendReady() {
   controlOutput->println(RUNTIME_VERSION);
 }
 
-void sendNumber(const char *id, double value) {
+void __attribute__((noinline)) sendNumber(const char *id, double value) {
   controlOutput->print(F("V,"));
   controlOutput->print(id);
   controlOutput->print(',');
@@ -540,7 +540,7 @@ VmValue textValue(const String &value) {
   return result;
 }
 
-long clampLong(long value, long minimum, long maximum) {
+long __attribute__((noinline)) clampLong(long value, long minimum, long maximum) {
   if (value < minimum) return minimum;
   if (value > maximum) return maximum;
   return value;
