@@ -493,6 +493,25 @@
       tooltip: "회전 후 코일 전원을 꺼 발열을 줄입니다. 위치 고정 힘도 함께 해제됩니다."
     },
     {
+      type: "buzzer_note",
+      message0: "피에조 핀 %1 음 %2 %3초 연주",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: digitalOptions },
+        { type: "field_dropdown", name: "NOTE", options: [
+          ["도 (2093 Hz)", "2093"], ["레 (2349 Hz)", "2349"],
+          ["미 (2637 Hz)", "2637"], ["파 (2794 Hz)", "2794"],
+          ["솔 (3136 Hz)", "3136"], ["라 (3520 Hz)", "3520"],
+          ["시 (3951 Hz)", "3951"], ["높은 도 (4186 Hz)", "4186"]
+        ] },
+        { type: "field_number", name: "SECONDS", value: 0.5, min: 0.01, max: 60, precision: 0.01 }
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      inputsInline: true,
+      colour: 35,
+      tooltip: "수동형 피에조용 도레미파솔라시도(C7~C8)입니다. 지정한 시간 동안 연주한 뒤 다음 블록을 실행합니다. 실제 소리 크기는 부품의 공진 특성에 따라 달라집니다."
+    },
+    {
       type: "buzzer_tone",
       message0: "피에조 핀 %1 주파수 %2 Hz %3초",
       args0: [
@@ -862,6 +881,7 @@
         { kind: "block", type: "stepper_28byj_release" }
       ] },
       { kind: "category", name: "피에조", colour: "35", contents: [
+        { kind: "block", type: "buzzer_note", fields: { PIN: "8" } },
         { kind: "block", type: "buzzer_tone", inputs: { FREQ: numberShadow(262), SECONDS: numberShadow(0.5) } },
         { kind: "block", type: "buzzer_stop" }
       ] },
@@ -1517,6 +1537,9 @@
         writer.u8(VM.WAIT); expression("SECONDS"); return;
       case "servo_detach":
         writer.u8(VM.SERVO); pin("PIN"); numberExpression(-1); return;
+      case "buzzer_note":
+        writer.u8(VM.TONE); pin("PIN"); numberExpression(Number(block.getFieldValue("NOTE"))); numberExpression(Number(block.getFieldValue("SECONDS")));
+        writer.u8(VM.WAIT); numberExpression(Number(block.getFieldValue("SECONDS"))); return;
       case "buzzer_tone":
         writer.u8(VM.TONE); pin("PIN"); expression("FREQ"); expression("SECONDS"); return;
       case "buzzer_stop":
@@ -2775,6 +2798,10 @@
       }
       case "servo_detach":
         return sendAction("SERVO", block.getFieldValue("PIN"), -1);
+      case "buzzer_note":
+        await sendAction("TONE", block.getFieldValue("PIN"), Number(block.getFieldValue("NOTE")), Number(block.getFieldValue("SECONDS")) * 1000);
+        await executionSleep(Number(block.getFieldValue("SECONDS")) * 1000);
+        return;
       case "buzzer_tone":
         return sendAction(
           "TONE",
@@ -3279,6 +3306,11 @@
       }
       case "servo_detach":
         return line(`${cppIdentifier(block.getFieldValue("PIN"), "servo")}.detach();`);
+      case "buzzer_note": {
+        const durationMs = Math.round(Number(block.getFieldValue("SECONDS")) * 1000);
+        return line(`tone(${block.getFieldValue("PIN")}, ${Number(block.getFieldValue("NOTE"))}, ${durationMs}UL);`)
+          + line(`delay(${durationMs}UL);`);
+      }
       case "buzzer_tone":
         return line(`tone(${block.getFieldValue("PIN")}, ${cppInput(block, "FREQ")}, (unsigned long)(${cppInput(block, "SECONDS")}) * 1000UL);`);
       case "buzzer_stop": return line(`noTone(${block.getFieldValue("PIN")});`);
