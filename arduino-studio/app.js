@@ -15,7 +15,7 @@
   ];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.12";
+  const RUNTIME_VERSION = "1.1.13";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -80,6 +80,36 @@
   const digitalOptions = DIGITAL_PINS.map(pin => [`D${pin}`, String(pin)]);
   const pwmOptions = PWM_PINS.map(pin => [`D${pin} (PWM)`, String(pin)]);
   const analogOptions = ANALOG_PINS.map((pin, index) => [pin, String(index)]);
+
+  const PIANO_NOTES = [554,622,740,831,932,523,587,659,698,784,880,988,1047,1175,1319,1397];
+  const TTP229_CPP = `uint8_t readTtp229(uint8_t scl, uint8_t sdo) {
+  // One module, 16-key active-LOW two-wire mode. Do not touch during calibration.
+  static uint8_t oldScl = 255, oldSdo = 255, raw = 0, stable = 0;
+  static unsigned long scanned = 0, changed = 0;
+  if (scl == sdo || scl < 2 || scl > 13 || sdo < 2 || sdo > 13) return 0;
+  if (scl != oldScl || sdo != oldSdo) {
+    oldScl = scl; oldSdo = sdo; raw = stable = 0;
+    digitalWrite(scl, HIGH); pinMode(scl, OUTPUT); pinMode(sdo, INPUT_PULLUP);
+    delay(600);
+    scanned = millis() - 10; changed = millis();
+  }
+  unsigned long now = millis();
+  if (now - scanned < 10) return stable;
+  scanned = now;
+  uint8_t key = 0;
+  for (uint8_t i = 0; i < 16; ++i) {
+    digitalWrite(scl, LOW); delayMicroseconds(20);
+    if (digitalRead(sdo) == LOW && !key) key = i + 1;
+    digitalWrite(scl, HIGH); delayMicroseconds(20);
+  }
+  if (key != raw) { raw = key; changed = now; }
+  if (now - changed >= 25) stable = raw;
+  return stable;
+}
+uint16_t pianoFrequency(int key, uint8_t high) {
+  static const uint16_t notes[16] = {554,622,740,831,932,523,587,659,698,784,880,988,1047,1175,1319,1397};
+  return key >= 1 && key <= 16 ? notes[key - 1] * (high ? 4 : 1) : 0;
+}`;
 
   const blocks = [
     {
@@ -493,6 +523,36 @@
       tooltip: "회전 후 코일 전원을 꺼 발열을 줄입니다. 위치 고정 힘도 함께 해제됩니다."
     },
     {
+      type: "ttp229_key",
+      message0: "TTP229 SCL %1 SDO %2 누른 키 번호",
+      args0: [
+        { type: "field_dropdown", name: "SCL", options: digitalOptions },
+        { type: "field_dropdown", name: "SDO", options: digitalOptions }
+      ],
+      output: "Number", inputsInline: true, colour: 35,
+      tooltip: "TTP229 1개를 16키·active-LOW·2선 모드로 설정하세요. 처음 0.6초는 손을 떼세요. 안 누르면 0, 여러 키는 가장 작은 번호를 반환합니다. SCL/SDO는 서로 다른 핀을 사용하세요."
+    },
+    {
+      type: "piano_frequency",
+      message0: "터치 피아노 키 %1 의 주파수 %2",
+      args0: [
+        { type: "input_value", name: "KEY", check: "Number" },
+        { type: "field_dropdown", name: "HIGH", options: [["높은 음역 C7", "1"], ["기존 코드 음역 C5", "0"]] }
+      ],
+      output: "Number", inputsInline: true, colour: 35,
+      tooltip: "1~5: 도♯·레♯·파♯·솔♯·라♯, 6~12: 도·레·미·파·솔·라·시, 13~16: 높은 도·레·미·파. 키 0은 무음입니다."
+    },
+    {
+      type: "buzzer_hold",
+      message0: "피에조 핀 %1 주파수 %2 Hz 계속 연주 (0은 끄기)",
+      args0: [
+        { type: "field_dropdown", name: "PIN", options: digitalOptions },
+        { type: "input_value", name: "FREQ", check: "Number" }
+      ],
+      previousStatement: null, nextStatement: null, inputsInline: true, colour: 35,
+      tooltip: "기다리지 않고 다음 블록을 실행합니다. 터치 피아노 주파수를 연결하면 손을 뗄 때 자동으로 소리가 꺼집니다. 수동형 피에조를 사용하세요."
+    },
+    {
       type: "buzzer_note",
       message0: "피에조 핀 %1 음 %2 %3초 연주",
       args0: [
@@ -881,6 +941,9 @@
         { kind: "block", type: "stepper_28byj_release" }
       ] },
       { kind: "category", name: "피에조", colour: "35", contents: [
+        { kind: "block", type: "ttp229_key", fields: { SCL: "2", SDO: "3" } },
+        { kind: "block", type: "piano_frequency", inputs: { KEY: numberShadow(6) } },
+        { kind: "block", type: "buzzer_hold", fields: { PIN: "12" }, inputs: { FREQ: { block: { type: "piano_frequency", fields: { HIGH: "1" }, inputs: { KEY: { block: { type: "ttp229_key", fields: { SCL: "2", SDO: "3" } } } } } } } },
         { kind: "block", type: "buzzer_note", fields: { PIN: "8" } },
         { kind: "block", type: "buzzer_tone", inputs: { FREQ: numberShadow(262), SECONDS: numberShadow(0.5) } },
         { kind: "block", type: "buzzer_stop" }
@@ -1162,13 +1225,13 @@
     MP3_PLAY: 17, MP3_VOLUME: 18, MP3_STOP: 19, BT_BEGIN: 20, BT_SEND: 21,
     SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26,
     BT_SEND_RAW: 27, BT_SET_NAME: 28, OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31,
-    HUSKY_ALGORITHM: 32
+    HUSKY_ALGORITHM: 32, TONE_HOLD: 33
   });
 
   const EX = Object.freeze({
     NUMBER: 1, TEXT: 2, VARIABLE: 3, ANALOG: 4, DIGITAL: 5, BUTTON: 6,
     ULTRASONIC: 7, DHT: 8, DUST: 9, BT_AVAILABLE: 10, BT_READ: 11,
-    HUSKY_SEEN: 12, HUSKY_X: 13, HUSKY_Y: 14, HUSKY_WIDTH: 15, HUSKY_HEIGHT: 16,
+    HUSKY_SEEN: 12, HUSKY_X: 13, HUSKY_Y: 14, HUSKY_WIDTH: 15, HUSKY_HEIGHT: 16, TTP229: 17, PIANO: 18,
     ADD: 20, SUBTRACT: 21, MULTIPLY: 22, DIVIDE: 23, POWER: 24,
     EQUAL: 30, NOT_EQUAL: 31, LESS: 32, LESS_EQUAL: 33, GREATER: 34,
     GREATER_EQUAL: 35, AND: 40, OR: 41, NOT: 42, CONCAT: 43, BT_ITEM: 44, INTEGER: 45, RANDOM: 46, MAP: 47
@@ -1220,9 +1283,10 @@
       if (opcode === EX.NUMBER) { index += 4; depth++; }
       else if (opcode === EX.TEXT) { index += 1 + writer.bytes[index + 1]; depth++; }
       else if ([EX.VARIABLE, EX.ANALOG, EX.DIGITAL, EX.BUTTON].includes(opcode)) { index++; depth++; }
-      else if ([EX.ULTRASONIC, EX.DUST].includes(opcode)) { index += 2; depth++; }
+      else if ([EX.ULTRASONIC, EX.DUST, EX.TTP229].includes(opcode)) { index += 2; depth++; }
       else if (opcode === EX.DHT) { index += 3; depth++; }
       else if ([EX.BT_AVAILABLE, EX.BT_READ].includes(opcode)) depth++;
+      else if (opcode === EX.PIANO) index++;
       else if (opcode === EX.MAP) depth -= 4;
       else if (![EX.NOT, EX.INTEGER, EX.HUSKY_SEEN, EX.HUSKY_X, EX.HUSKY_Y, EX.HUSKY_WIDTH, EX.HUSKY_HEIGHT].includes(opcode)) depth--;
       if (depth > 8) throw new Error("보드 저장 수식이 너무 깊습니다. 일부 계산을 변수에 먼저 저장해주세요.");
@@ -1322,6 +1386,12 @@
         writer.u8(EX.BUTTON);
         writer.u8(block.getFieldValue("PIN"));
         return;
+      case "ttp229_key":
+        if (block.getFieldValue("SCL") === block.getFieldValue("SDO")) throw new Error("TTP229의 SCL과 SDO는 서로 다른 핀을 선택하세요.");
+        writer.u8(EX.TTP229); writer.u8(block.getFieldValue("SCL")); writer.u8(block.getFieldValue("SDO")); return;
+      case "piano_frequency":
+        writeExpressionValue(writer, inputBlock(block, "KEY"), context);
+        writer.u8(EX.PIANO); writer.u8(block.getFieldValue("HIGH")); return;
       case "sensor_ultrasonic":
         writer.u8(EX.ULTRASONIC);
         writer.u8(block.getFieldValue("TRIG"));
@@ -1537,6 +1607,8 @@
         writer.u8(VM.WAIT); expression("SECONDS"); return;
       case "servo_detach":
         writer.u8(VM.SERVO); pin("PIN"); numberExpression(-1); return;
+      case "buzzer_hold":
+        writer.u8(VM.TONE_HOLD); pin("PIN"); expression("FREQ"); return;
       case "buzzer_note":
         writer.u8(VM.TONE); pin("PIN"); numberExpression(Number(block.getFieldValue("NOTE"))); numberExpression(Number(block.getFieldValue("SECONDS")));
         writer.u8(VM.WAIT); numberExpression(Number(block.getFieldValue("SECONDS"))); return;
@@ -2642,6 +2714,13 @@
       case "sensor_button":
       case "sensor_push_button":
       case "sensor_tact_button": return Boolean(await requestValue("BUTTON", block.getFieldValue("PIN")));
+      case "ttp229_key":
+        if (block.getFieldValue("SCL") === block.getFieldValue("SDO")) throw new Error("TTP229의 SCL과 SDO는 서로 다른 핀을 선택하세요.");
+        return requestValue("TTP229", block.getFieldValue("SCL"), block.getFieldValue("SDO"));
+      case "piano_frequency": {
+        const key = Math.trunc(Number(await evaluate(inputBlock(block, "KEY"), functionDepth)));
+        return key >= 1 && key <= 16 ? PIANO_NOTES[key - 1] * (block.getFieldValue("HIGH") === "1" ? 4 : 1) : 0;
+      }
       case "sensor_ultrasonic": return requestValue("SONAR", block.getFieldValue("TRIG"), block.getFieldValue("ECHO"));
       case "sensor_dht": return requestValue("DHT", block.getFieldValue("PIN"), block.getFieldValue("TYPE"), block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
       case "sensor_dht_simple": return requestValue("DHT", block.getFieldValue("PIN"), 11, block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
@@ -2798,6 +2877,8 @@
       }
       case "servo_detach":
         return sendAction("SERVO", block.getFieldValue("PIN"), -1);
+      case "buzzer_hold":
+        return sendAction("TONEHOLD", block.getFieldValue("PIN"), clamp(Number(await evaluate(inputBlock(block, "FREQ"), functionDepth)), 0, 20000));
       case "buzzer_note":
         await sendAction("TONE", block.getFieldValue("PIN"), Number(block.getFieldValue("NOTE")), Number(block.getFieldValue("SECONDS")) * 1000);
         await executionSleep(Number(block.getFieldValue("SECONDS")) * 1000);
@@ -3206,6 +3287,8 @@
       case "sensor_button": return `(readDigitalPin(${block.getFieldValue("PIN")}) == 1)`;
       case "sensor_push_button":
       case "sensor_tact_button": return `(readDigitalPin(${block.getFieldValue("PIN")}) == 1)`;
+      case "ttp229_key": return `readTtp229(${block.getFieldValue("SCL")}, ${block.getFieldValue("SDO")})`;
+      case "piano_frequency": return `pianoFrequency(${cppInput(block, "KEY")}, ${block.getFieldValue("HIGH")})`;
       case "sensor_ultrasonic": return `readUltrasonic(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
       case "sensor_dht": {
         const object = dhtName(block.getFieldValue("PIN"), block.getFieldValue("TYPE"));
@@ -3306,6 +3389,8 @@
       }
       case "servo_detach":
         return line(`${cppIdentifier(block.getFieldValue("PIN"), "servo")}.detach();`);
+      case "buzzer_hold":
+        return line(`{ long hz = constrain((long)(${cppInput(block, "FREQ")}), 0L, 20000L); if (hz > 0) tone(${block.getFieldValue("PIN")}, max(20L, hz)); else noTone(${block.getFieldValue("PIN")}); }`);
       case "buzzer_note": {
         const durationMs = Math.round(Number(block.getFieldValue("SECONDS")) * 1000);
         return line(`tone(${block.getFieldValue("PIN")}, ${Number(block.getFieldValue("NOTE"))}, ${durationMs}UL);`)
@@ -3457,6 +3542,7 @@
     });
 
     const helpers = [];
+    if (["ttp229_key", "piano_frequency"].some(type => hardware.types.has(type))) helpers.push(TTP229_CPP);
     if (["operator_integer", "operator_random", "operator_map"].some(type => hardware.types.has(type))) helpers.push(`
 float operatorInteger(float value) {
   return isfinite(value) ? truncf(value) : 0;

@@ -120,7 +120,7 @@ test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.match(app, /OneMakerCH340\?\.active/);
   assert.match(app, /function preferredSerialApi\(\)/);
   assert.match(app, /ch340\?\.isAndroid && ch340\?\.supported && ch340\?\.serial/);
-  assert.match(app, /serialPort = await serialApi\.requestPort\(\)/);
+  assert.match(app, /return serialApi\.requestPort\(\{ filters: USB_SERIAL_FILTERS \}\)/);
   assert.match(app, /isCh340Port\(port\)/);
   assert.match(html, /UNO CH340\(1A86:7523\)/);
 });

@@ -4,9 +4,10 @@
 #include <Servo.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
+#include "ttp229_reader.h"
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.12
-static const char *RUNTIME_VERSION = "1.1.12";
+// OneMaker Arduino UNO/Nano Runtime 1.1.13
+static const char *RUNTIME_VERSION = "1.1.13";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -51,7 +52,8 @@ enum StatementOpcode : uint8_t {
   OP_OLED_BEGIN = 29,
   OP_OLED_PRINT = 30,
   OP_OLED_CLEAR = 31,
-  OP_HUSKY_ALGORITHM = 32
+  OP_HUSKY_ALGORITHM = 32,
+  OP_TONE_HOLD = 33
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -71,6 +73,8 @@ enum ExpressionOpcode : uint8_t {
   EX_HUSKY_Y = 14,
   EX_HUSKY_WIDTH = 15,
   EX_HUSKY_HEIGHT = 16,
+  EX_TTP229 = 17,
+  EX_PIANO = 18,
   EX_ADD = 20,
   EX_SUBTRACT = 21,
   EX_MULTIPLY = 22,
@@ -650,6 +654,12 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
       numeric = digitalRead(pin) == HIGH ? 1 : 0;
+    } else if (opcode == EX_TTP229) {
+      uint8_t scl = programByte(address++), sdo = programByte(address++);
+      numeric = readTtp229(scl, sdo);
+    } else if (opcode == EX_PIANO) {
+      uint8_t high = programByte(address++);
+      numeric = stackSize ? pianoFrequency((int)valueNumber(stack[--stackSize]), high) : 0;
     } else if (opcode == EX_ULTRASONIC) {
       uint8_t trig = programByte(address++);
       uint8_t echo = programByte(address++);
@@ -824,6 +834,11 @@ void executeStoredProgramStep() {
     unsigned long duration = nonNegative(seconds) * 1000.0f;
     lastTonePin = pin;
     tone(pin, frequency, max(1UL, duration));
+  } else if (opcode == OP_TONE_HOLD) {
+    uint8_t pin = programByte(vmProgramCounter++);
+    long hz = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 20000);
+    lastTonePin = pin;
+    if (hz > 0) tone(pin, max(20L, hz)); else noTone(pin);
   } else if (opcode == OP_NO_TONE) {
     noTone(programByte(vmProgramCounter++));
   } else if (opcode == OP_LCD_BEGIN) {
@@ -1009,6 +1024,8 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
     uint8_t pin = tokenInt(args[0]);
     pinMode(pin, INPUT);
     sendNumber(id, digitalRead(pin) == HIGH ? 1 : 0);
+  } else if (!strcmp(operation, "TTP229") && count >= 2) {
+    sendNumber(id, readTtp229(tokenInt(args[0]), tokenInt(args[1])));
   } else if (!strcmp(operation, "SONAR") && count >= 2) {
     sendNumber(id, readUltrasonic(tokenInt(args[0]), tokenInt(args[1])));
   } else if (!strcmp(operation, "DUST") && count >= 2) {
@@ -1055,6 +1072,10 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "TONE") && count >= 3) {
     lastTonePin = tokenInt(args[0]);
     tone(lastTonePin, constrain(tokenInt(args[1]), 20, 20000), max(1, tokenInt(args[2])));
+  } else if (!strcmp(operation, "TONEHOLD") && count >= 2) {
+    lastTonePin = tokenInt(args[0]);
+    long hz = constrain(tokenInt(args[1]), 0, 20000);
+    if (hz > 0) tone(lastTonePin, max(20L, hz)); else noTone(lastTonePin);
   } else if (!strcmp(operation, "NOTONE") && count >= 1) {
     noTone(tokenInt(args[0]));
   } else if (!strcmp(operation, "LCDBEGIN") && count >= 3) {
