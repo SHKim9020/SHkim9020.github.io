@@ -777,6 +777,10 @@ float __attribute__((noinline)) readStoredNumber() {
   return valueNumber(evaluateStoredExpression(vmProgramCounter));
 }
 
+String __attribute__((noinline)) readStoredText() {
+  return valueText(evaluateStoredExpression(vmProgramCounter));
+}
+
 void executeStoredProgramStep() {
   if (!storedProgramValid) return;
   if (vmWaitUntil && (long)(millis() - vmWaitUntil) < 0) return;
@@ -856,7 +860,7 @@ void executeStoredProgramStep() {
     long columnValue = (long)readStoredNumber();
     uint8_t row = clampLong(rowValue, 0, 3);
     uint8_t column = clampLong(columnValue, 0, 19);
-    String value = valueText(evaluateStoredExpression(vmProgramCounter));
+    String value = readStoredText();
     if (lcdReady) { lcdSetCursor(column, row); lcdPrint(value); }
   } else if (opcode == OP_LCD_CLEAR) {
     lcdClear();
@@ -866,7 +870,7 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_OLED_PRINT) {
     long row = clampLong((long)readStoredNumber(), 0, 7);
     long column = clampLong((long)readStoredNumber(), 0, 15);
-    String value = valueText(evaluateStoredExpression(vmProgramCounter));
+    String value = readStoredText();
     oledPrint(value, column, row);
   } else if (opcode == OP_OLED_CLEAR) {
     oledClear();
@@ -913,23 +917,23 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_BT_SEND) {
     if (bluetooth) {
       bluetooth->listen();
-      bluetooth->println(valueText(evaluateStoredExpression(vmProgramCounter)));
+      bluetooth->println(readStoredText());
     } else {
       evaluateStoredExpression(vmProgramCounter);
     }
   } else if (opcode == OP_BT_SEND_RAW) {
     if (bluetooth) {
       bluetooth->listen();
-      bluetooth->print(valueText(evaluateStoredExpression(vmProgramCounter)));
+      bluetooth->print(readStoredText());
     } else {
       evaluateStoredExpression(vmProgramCounter);
     }
   } else if (opcode == OP_BT_SET_NAME) {
     uint8_t mode = programByte(vmProgramCounter++);
-    setBluetoothName(valueText(evaluateStoredExpression(vmProgramCounter)), mode);
+    setBluetoothName(readStoredText(), mode);
   } else if (opcode == OP_SERIAL_PRINT) {
     controlOutput->print(F("LOG,"));
-    controlOutput->println(valueText(evaluateStoredExpression(vmProgramCounter)));
+    controlOutput->println(readStoredText());
   } else if (opcode == OP_JUMP) {
     vmProgramCounter = programWord(vmProgramCounter);
   } else if (opcode == OP_JUMP_IF_FALSE) {
