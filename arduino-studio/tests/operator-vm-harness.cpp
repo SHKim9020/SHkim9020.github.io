@@ -41,6 +41,8 @@ float vmVariables[8]={};
 long clampLong(long a,long lo,long hi){return min(hi,max(lo,a));}
 #define constrain(a,b,c) clampLong(a,b,c)
 int analogRead(int){return 512;} int digitalRead(int){return 1;} void pinMode(int,int){}
+uint8_t readTtp229(uint8_t,uint8_t){return 6;}
+uint16_t pianoFrequency(int key,uint8_t high){return key==6?(high?2092:523):0;}
 float readUltrasonic(int,int){return 10;} float readDhtValue(int,int,bool){return 23.8;} float readDust(int,int){return 5;}
 String readBluetoothText(){return "ABC";}
 struct Bt{void listen(){} int available(){return 0;}}; Bt *bluetooth=nullptr;

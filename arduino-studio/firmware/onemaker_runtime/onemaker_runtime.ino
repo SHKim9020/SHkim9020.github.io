@@ -4,9 +4,10 @@
 #include <Servo.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
+#include "ttp229_reader.h"
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.12
-static const char *RUNTIME_VERSION = "1.1.12";
+// OneMaker Arduino UNO/Nano Runtime 1.1.13
+static const char *RUNTIME_VERSION = "1.1.13";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -51,7 +52,8 @@ enum StatementOpcode : uint8_t {
   OP_OLED_BEGIN = 29,
   OP_OLED_PRINT = 30,
   OP_OLED_CLEAR = 31,
-  OP_HUSKY_ALGORITHM = 32
+  OP_HUSKY_ALGORITHM = 32,
+  OP_TONE_HOLD = 33
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -71,6 +73,8 @@ enum ExpressionOpcode : uint8_t {
   EX_HUSKY_Y = 14,
   EX_HUSKY_WIDTH = 15,
   EX_HUSKY_HEIGHT = 16,
+  EX_TTP229 = 17,
+  EX_PIANO = 18,
   EX_ADD = 20,
   EX_SUBTRACT = 21,
   EX_MULTIPLY = 22,
@@ -139,7 +143,7 @@ Print *controlOutput = &Serial;
 char bluetoothControlLine[128];
 uint8_t bluetoothControlLength = 0;
 
-int tokenInt(char *value, int fallback = 0) {
+int __attribute__((noinline)) tokenInt(char *value, int fallback = 0) {
   return value ? atoi(value) : fallback;
 }
 
@@ -178,7 +182,7 @@ void sendReady() {
   controlOutput->println(RUNTIME_VERSION);
 }
 
-void sendNumber(const char *id, double value) {
+void __attribute__((noinline)) sendNumber(const char *id, double value) {
   controlOutput->print(F("V,"));
   controlOutput->print(id);
   controlOutput->print(',');
@@ -322,7 +326,7 @@ bool initializeMp3(uint8_t rx, uint8_t tx) {
   return true;
 }
 
-uint8_t programByte(uint16_t address) {
+uint8_t __attribute__((noinline)) programByte(uint16_t address) {
   if (address >= storedProgramLength) return 0;
   return EEPROM.read(PROGRAM_HEADER_SIZE + address);
 }
@@ -509,6 +513,12 @@ void __attribute__((noinline)) setNumber(VmValue &value, float number) {
   value.text = "";
 }
 
+void __attribute__((noinline)) setText(VmValue &value, const String &text) {
+  value.number = 0;
+  value.text = text;
+  value.isText = true;
+}
+
 float parseNumber(const String &text) {
   uint8_t index = 0;
   bool negative = false;
@@ -528,15 +538,8 @@ float parseNumber(const String &text) {
   return negative ? -value : value;
 }
 
-VmValue textValue(const String &value) {
-  VmValue result;
-  result.number = 0;
-  result.text = value;
-  result.isText = true;
-  return result;
-}
 
-long clampLong(long value, long minimum, long maximum) {
+long __attribute__((noinline)) clampLong(long value, long minimum, long maximum) {
   if (value < minimum) return minimum;
   if (value > maximum) return maximum;
   return value;
@@ -635,7 +638,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       String value;
       value.reserve(length);
       while (length-- && address < expressionEnd) value += (char)programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(value);
+      if (stackSize < VM_MAX_STACK) setText(stack[stackSize++], value);
     } else if (opcode == EX_VARIABLE) {
       uint8_t index = programByte(address++);
       numeric = index < VM_MAX_VARIABLES ? vmVariables[index] : 0;
@@ -650,6 +653,12 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       uint8_t pin = programByte(address++);
       pinMode(pin, INPUT);
       numeric = digitalRead(pin) == HIGH ? 1 : 0;
+    } else if (opcode == EX_TTP229) {
+      uint8_t scl = programByte(address++), sdo = programByte(address++);
+      numeric = readTtp229(scl, sdo);
+    } else if (opcode == EX_PIANO) {
+      uint8_t high = programByte(address++);
+      numeric = stackSize ? pianoFrequency((int)valueNumber(stack[--stackSize]), high) : 0;
     } else if (opcode == EX_ULTRASONIC) {
       uint8_t trig = programByte(address++);
       uint8_t echo = programByte(address++);
@@ -668,7 +677,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       numeric = bluetooth && bluetooth->available() ? 1 : 0;
     } else if (opcode == EX_BT_READ) {
       numericResult = false;
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
+      if (stackSize < VM_MAX_STACK) setText(stack[stackSize++], readBluetoothText());
     } else {
       numericResult = false;
       if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
@@ -695,13 +704,13 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       float a = valueNumber(left);
       float b = valueNumber(right);
       if (opcode == EX_CONCAT) {
-        left = textValue(valueText(left) + valueText(right));
+        setText(left, valueText(left) + valueText(right));
       } else if (opcode == EX_BT_ITEM) {
         int count = constrain((int)a, 1, 64);
         int index = constrain((int)b, 1, count);
         String value = readBluetoothText();
         value = value.substring(0, min(count, (int)value.length()));
-        left = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
+        setText(left, index <= value.length() ? value.substring(index - 1, index) : String(""));
       } else {
         float result = 0;
         switch (opcode) {
@@ -762,6 +771,15 @@ void stopOutputs() {
   if (mp3Serial) sendMp3Command(0x16, 0);
 }
 
+// Share temporary VmValue cleanup instead of repeating it for every numeric input.
+float __attribute__((noinline)) readStoredNumber() {
+  return valueNumber(evaluateStoredExpression(vmProgramCounter));
+}
+
+String __attribute__((noinline)) readStoredText() {
+  return valueText(evaluateStoredExpression(vmProgramCounter));
+}
+
 void executeStoredProgramStep() {
   if (!storedProgramValid) return;
   if (vmWaitUntil && (long)(millis() - vmWaitUntil) < 0) return;
@@ -783,12 +801,12 @@ void executeStoredProgramStep() {
   if (opcode == OP_END) {
     vmProgramCounter = segmentEnd;
   } else if (opcode == OP_WAIT) {
-    float seconds = valueNumber(evaluateStoredExpression(vmProgramCounter));
+    float seconds = readStoredNumber();
     unsigned long milliseconds = nonNegative(seconds) * 1000.0f;
     vmWaitUntil = millis() + milliseconds;
   } else if (opcode == OP_SET_VAR || opcode == OP_CHANGE_VAR) {
     uint8_t index = programByte(vmProgramCounter++);
-    float value = valueNumber(evaluateStoredExpression(vmProgramCounter));
+    float value = readStoredNumber();
     if (index < VM_MAX_VARIABLES) {
       if (opcode == OP_SET_VAR) vmVariables[index] = value;
       else vmVariables[index] += value;
@@ -801,29 +819,34 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_PWM_WRITE) {
     uint8_t pin = programByte(vmProgramCounter++);
     pinMode(pin, OUTPUT);
-    long value = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long value = (long)readStoredNumber();
     analogWrite(pin, clampLong(value, 0, 255));
   } else if (opcode == OP_MOTOR) {
     uint8_t pin1 = programByte(vmProgramCounter++);
     uint8_t pin2 = programByte(vmProgramCounter++);
-    long speed = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long speed = (long)readStoredNumber();
     setMotor(pin1, pin2, clampLong(speed, -255, 255));
   } else if (opcode == OP_SERVO) {
     uint8_t pin = programByte(vmProgramCounter++);
     Servo *servo = servoForPin(pin);
-    long angle = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long angle = (long)readStoredNumber();
     if (servo) {
       if (angle < 0) servo->detach();
       else servo->write(clampLong(angle, 0, 180));
     }
   } else if (opcode == OP_TONE) {
     uint8_t pin = programByte(vmProgramCounter++);
-    long frequencyValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long frequencyValue = (long)readStoredNumber();
     int frequency = clampLong(frequencyValue, 20, 20000);
-    float seconds = valueNumber(evaluateStoredExpression(vmProgramCounter));
+    float seconds = readStoredNumber();
     unsigned long duration = nonNegative(seconds) * 1000.0f;
     lastTonePin = pin;
     tone(pin, frequency, max(1UL, duration));
+  } else if (opcode == OP_TONE_HOLD) {
+    uint8_t pin = programByte(vmProgramCounter++);
+    long hz = clampLong((long)readStoredNumber(), 0, 20000);
+    lastTonePin = pin;
+    if (hz > 0) tone(pin, max(20L, hz)); else noTone(pin);
   } else if (opcode == OP_NO_TONE) {
     noTone(programByte(vmProgramCounter++));
   } else if (opcode == OP_LCD_BEGIN) {
@@ -832,11 +855,11 @@ void executeStoredProgramStep() {
     uint8_t rows = programByte(vmProgramCounter++);
     lcdBegin(address, columns, rows);
   } else if (opcode == OP_LCD_PRINT) {
-    long rowValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
-    long columnValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long rowValue = (long)readStoredNumber();
+    long columnValue = (long)readStoredNumber();
     uint8_t row = clampLong(rowValue, 0, 3);
     uint8_t column = clampLong(columnValue, 0, 19);
-    String value = valueText(evaluateStoredExpression(vmProgramCounter));
+    String value = readStoredText();
     if (lcdReady) { lcdSetCursor(column, row); lcdPrint(value); }
   } else if (opcode == OP_LCD_CLEAR) {
     lcdClear();
@@ -844,9 +867,9 @@ void executeStoredProgramStep() {
     uint8_t address = programByte(vmProgramCounter++);
     oledBegin(address, programByte(vmProgramCounter++));
   } else if (opcode == OP_OLED_PRINT) {
-    long row = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 7);
-    long column = clampLong((long)valueNumber(evaluateStoredExpression(vmProgramCounter)), 0, 15);
-    String value = valueText(evaluateStoredExpression(vmProgramCounter));
+    long row = clampLong((long)readStoredNumber(), 0, 7);
+    long column = clampLong((long)readStoredNumber(), 0, 15);
+    String value = readStoredText();
     oledPrint(value, column, row);
   } else if (opcode == OP_OLED_CLEAR) {
     oledClear();
@@ -854,7 +877,7 @@ void executeStoredProgramStep() {
     setHuskyAlgorithm(programByte(vmProgramCounter++));
   } else if (opcode == OP_NEO_BEGIN) {
     uint8_t pin = programByte(vmProgramCounter++);
-    long countValue = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long countValue = (long)readStoredNumber();
     uint8_t count = clampLong(countValue, 1, 60);
     if (pixels) delete pixels;
     pixels = new Adafruit_NeoPixel(count, pin, NEO_GRB + NEO_KHZ800);
@@ -862,10 +885,10 @@ void executeStoredProgramStep() {
     pixels->clear();
     pixels->show();
   } else if (opcode == OP_NEO_SET) {
-    int index = valueNumber(evaluateStoredExpression(vmProgramCounter));
-    int red = valueNumber(evaluateStoredExpression(vmProgramCounter));
-    int green = valueNumber(evaluateStoredExpression(vmProgramCounter));
-    int blue = valueNumber(evaluateStoredExpression(vmProgramCounter));
+    int index = readStoredNumber();
+    int red = readStoredNumber();
+    int green = readStoredNumber();
+    int blue = readStoredNumber();
     neoSet(index, red, green, blue);
   } else if (opcode == OP_NEO_CLEAR) {
     if (pixels) {
@@ -875,13 +898,13 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_MP3_BEGIN) {
     uint8_t rx = programByte(vmProgramCounter++);
     uint8_t tx = programByte(vmProgramCounter++);
-    long volume = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long volume = (long)readStoredNumber();
     if (initializeMp3(rx, tx)) sendMp3Command(0x06, clampLong(volume, 0, 30));
   } else if (opcode == OP_MP3_PLAY) {
-    long track = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long track = (long)readStoredNumber();
     sendMp3Command(0x03, track < 1 ? 1 : track);
   } else if (opcode == OP_MP3_VOLUME) {
-    long volume = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long volume = (long)readStoredNumber();
     sendMp3Command(0x06, clampLong(volume, 0, 30));
   } else if (opcode == OP_MP3_STOP) {
     sendMp3Command(0x16, 0);
@@ -893,23 +916,23 @@ void executeStoredProgramStep() {
   } else if (opcode == OP_BT_SEND) {
     if (bluetooth) {
       bluetooth->listen();
-      bluetooth->println(valueText(evaluateStoredExpression(vmProgramCounter)));
+      bluetooth->println(readStoredText());
     } else {
       evaluateStoredExpression(vmProgramCounter);
     }
   } else if (opcode == OP_BT_SEND_RAW) {
     if (bluetooth) {
       bluetooth->listen();
-      bluetooth->print(valueText(evaluateStoredExpression(vmProgramCounter)));
+      bluetooth->print(readStoredText());
     } else {
       evaluateStoredExpression(vmProgramCounter);
     }
   } else if (opcode == OP_BT_SET_NAME) {
     uint8_t mode = programByte(vmProgramCounter++);
-    setBluetoothName(valueText(evaluateStoredExpression(vmProgramCounter)), mode);
+    setBluetoothName(readStoredText(), mode);
   } else if (opcode == OP_SERIAL_PRINT) {
     controlOutput->print(F("LOG,"));
-    controlOutput->println(valueText(evaluateStoredExpression(vmProgramCounter)));
+    controlOutput->println(readStoredText());
   } else if (opcode == OP_JUMP) {
     vmProgramCounter = programWord(vmProgramCounter);
   } else if (opcode == OP_JUMP_IF_FALSE) {
@@ -917,7 +940,7 @@ void executeStoredProgramStep() {
     uint16_t target = programWord(vmProgramCounter);
     if (!condition) vmProgramCounter = target;
   } else if (opcode == OP_REPEAT_START) {
-    long count = (long)valueNumber(evaluateStoredExpression(vmProgramCounter));
+    long count = (long)readStoredNumber();
     if (count < 0) count = 0;
     uint16_t endAddress = programWord(vmProgramCounter);
     if (!count) {
@@ -1009,6 +1032,8 @@ void handleQuery(char *id, char *operation, char **args, uint8_t count) {
     uint8_t pin = tokenInt(args[0]);
     pinMode(pin, INPUT);
     sendNumber(id, digitalRead(pin) == HIGH ? 1 : 0);
+  } else if (!strcmp(operation, "TTP229") && count >= 2) {
+    sendNumber(id, readTtp229(tokenInt(args[0]), tokenInt(args[1])));
   } else if (!strcmp(operation, "SONAR") && count >= 2) {
     sendNumber(id, readUltrasonic(tokenInt(args[0]), tokenInt(args[1])));
   } else if (!strcmp(operation, "DUST") && count >= 2) {
@@ -1055,6 +1080,10 @@ void handleCommand(char *operation, char **args, uint8_t count) {
   } else if (!strcmp(operation, "TONE") && count >= 3) {
     lastTonePin = tokenInt(args[0]);
     tone(lastTonePin, constrain(tokenInt(args[1]), 20, 20000), max(1, tokenInt(args[2])));
+  } else if (!strcmp(operation, "TONEHOLD") && count >= 2) {
+    lastTonePin = tokenInt(args[0]);
+    long hz = constrain(tokenInt(args[1]), 0, 20000);
+    if (hz > 0) tone(lastTonePin, max(20L, hz)); else noTone(lastTonePin);
   } else if (!strcmp(operation, "NOTONE") && count >= 1) {
     noTone(tokenInt(args[0]));
   } else if (!strcmp(operation, "LCDBEGIN") && count >= 3) {
