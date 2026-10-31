@@ -513,6 +513,12 @@ void __attribute__((noinline)) setNumber(VmValue &value, float number) {
   value.text = "";
 }
 
+void __attribute__((noinline)) setText(VmValue &value, const String &text) {
+  value.number = 0;
+  value.text = text;
+  value.isText = true;
+}
+
 float parseNumber(const String &text) {
   uint8_t index = 0;
   bool negative = false;
@@ -532,13 +538,6 @@ float parseNumber(const String &text) {
   return negative ? -value : value;
 }
 
-VmValue textValue(const String &value) {
-  VmValue result;
-  result.number = 0;
-  result.text = value;
-  result.isText = true;
-  return result;
-}
 
 long __attribute__((noinline)) clampLong(long value, long minimum, long maximum) {
   if (value < minimum) return minimum;
@@ -639,7 +638,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       String value;
       value.reserve(length);
       while (length-- && address < expressionEnd) value += (char)programByte(address++);
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(value);
+      if (stackSize < VM_MAX_STACK) setText(stack[stackSize++], value);
     } else if (opcode == EX_VARIABLE) {
       uint8_t index = programByte(address++);
       numeric = index < VM_MAX_VARIABLES ? vmVariables[index] : 0;
@@ -678,7 +677,7 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       numeric = bluetooth && bluetooth->available() ? 1 : 0;
     } else if (opcode == EX_BT_READ) {
       numericResult = false;
-      if (stackSize < VM_MAX_STACK) stack[stackSize++] = textValue(readBluetoothText());
+      if (stackSize < VM_MAX_STACK) setText(stack[stackSize++], readBluetoothText());
     } else {
       numericResult = false;
       if (opcode >= EX_HUSKY_SEEN && opcode <= EX_HUSKY_HEIGHT && stackSize >= 1) {
@@ -705,13 +704,13 @@ VmValue evaluateStoredExpression(uint16_t &address) {
       float a = valueNumber(left);
       float b = valueNumber(right);
       if (opcode == EX_CONCAT) {
-        left = textValue(valueText(left) + valueText(right));
+        setText(left, valueText(left) + valueText(right));
       } else if (opcode == EX_BT_ITEM) {
         int count = constrain((int)a, 1, 64);
         int index = constrain((int)b, 1, count);
         String value = readBluetoothText();
         value = value.substring(0, min(count, (int)value.length()));
-        left = index <= value.length() ? textValue(value.substring(index - 1, index)) : textValue("");
+        setText(left, index <= value.length() ? value.substring(index - 1, index) : String(""));
       } else {
         float result = 0;
         switch (opcode) {
