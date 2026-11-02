@@ -15,7 +15,7 @@
   ];
   const STORAGE_KEY = "onemaker-arduino-studio-autosave-v1";
   const SIDE_PANEL_KEY = "onemaker-arduino-studio-side-collapsed";
-  const RUNTIME_VERSION = "1.1.13";
+  const RUNTIME_VERSION = "1.1.14";
   const EEPROM_PROGRAM_LIMIT = 1015;
   const LIVE_LOOP_DELAY_MS = 16;
   const EXECUTION_SLICE_MS = 12;
@@ -457,7 +457,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     },
     {
       type: "servo_write_for",
-      message0: "서보모터 %1 번 핀 %2 ~ %3 각도로 %4 초 동안 회전",
+      message0: "서보모터 %1 번 핀 %2 ~ %3 각도로 %4 초 동안 1도씩 회전",
       args0: [
         { type: "field_dropdown", name: "PIN", options: digitalOptions },
         { type: "input_value", name: "FROM", check: "Number" },
@@ -1225,7 +1225,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     MP3_PLAY: 17, MP3_VOLUME: 18, MP3_STOP: 19, BT_BEGIN: 20, BT_SEND: 21,
     SERIAL_PRINT: 22, JUMP: 23, JUMP_IF_FALSE: 24, REPEAT_START: 25, REPEAT_END: 26,
     BT_SEND_RAW: 27, BT_SET_NAME: 28, OLED_BEGIN: 29, OLED_PRINT: 30, OLED_CLEAR: 31,
-    HUSKY_ALGORITHM: 32, TONE_HOLD: 33
+    HUSKY_ALGORITHM: 32, TONE_HOLD: 33, SERVO_SWEEP: 34
   });
 
   const EX = Object.freeze({
@@ -1602,9 +1602,8 @@ uint16_t pianoFrequency(int key, uint8_t high) {
       case "servo_write":
         writer.u8(VM.SERVO); pin("PIN"); expression("ANGLE"); return;
       case "servo_write_for":
-        writer.u8(VM.SERVO); pin("PIN"); expression("FROM");
-        writer.u8(VM.SERVO); pin("PIN"); expression("TO");
-        writer.u8(VM.WAIT); expression("SECONDS"); return;
+        writer.u8(VM.SERVO_SWEEP); pin("PIN");
+        expression("FROM"); expression("TO"); expression("SECONDS"); return;
       case "servo_detach":
         writer.u8(VM.SERVO); pin("PIN"); numberExpression(-1); return;
       case "buzzer_hold":
@@ -2864,14 +2863,18 @@ uint16_t pianoFrequency(int key, uint8_t high) {
         return sendAction("SERVO", block.getFieldValue("PIN"), clamp(await evaluate(inputBlock(block, "ANGLE"), functionDepth), 0, 180));
       case "servo_write_for": {
         const pin = block.getFieldValue("PIN");
-        const from = clamp(await evaluate(inputBlock(block, "FROM"), functionDepth), 0, 180);
-        const to = clamp(await evaluate(inputBlock(block, "TO"), functionDepth), 0, 180);
+        const from = Math.round(clamp(await evaluate(inputBlock(block, "FROM"), functionDepth), 0, 180));
+        const to = Math.round(clamp(await evaluate(inputBlock(block, "TO"), functionDepth), 0, 180));
         const duration = Math.max(0, Number(await evaluate(inputBlock(block, "SECONDS"), functionDepth))) * 1000;
-        const steps = Math.max(1, Math.min(90, Math.ceil(Math.abs(to - from))));
-        await sendAction("SERVO", pin, Math.round(from));
+        const steps = Math.abs(to - from);
+        const direction = to >= from ? 1 : -1;
+        await sendAction("SERVO", pin, from);
+        const started = performance.now();
+        if (!steps) await executionSleep(duration);
         for (let step = 1; step <= steps && !runCancelled; step++) {
-          await executionSleep(duration / steps);
-          await sendAction("SERVO", pin, Math.round(from + (to - from) * step / steps));
+          await executionSleep(Math.max(0, duration * step / steps - (performance.now() - started)));
+          if (runCancelled) break;
+          await sendAction("SERVO", pin, from + direction * step);
         }
         return;
       }
@@ -3378,13 +3381,19 @@ uint16_t pianoFrequency(int key, uint8_t high) {
         const suffix = block.id.replace(/\W/g, "").slice(0, 6);
         const servo = cppIdentifier(block.getFieldValue("PIN"), "servo");
         return line("{")
-          + line(`  int servoFrom_${suffix} = constrain(${cppInput(block, "FROM")}, 0, 180);`)
-          + line(`  int servoTo_${suffix} = constrain(${cppInput(block, "TO")}, 0, 180);`)
-          + line(`  int servoSteps_${suffix} = max(1, abs(servoTo_${suffix} - servoFrom_${suffix}));`)
-          + line(`  unsigned long servoDelay_${suffix} = max(0.0, ${cppInput(block, "SECONDS")}) * 1000UL / servoSteps_${suffix};`)
-          + line(`  for (int servoStep_${suffix} = 0; servoStep_${suffix} <= servoSteps_${suffix}; servoStep_${suffix}++) {`)
-          + line(`    ${servo}.write(map(servoStep_${suffix}, 0, servoSteps_${suffix}, servoFrom_${suffix}, servoTo_${suffix}));`)
-          + line(`    if (servoStep_${suffix} < servoSteps_${suffix}) delay(servoDelay_${suffix});`)
+          + line(`  int servoFrom_${suffix} = constrain((int)round(${cppInput(block, "FROM")}), 0, 180);`)
+          + line(`  int servoTo_${suffix} = constrain((int)round(${cppInput(block, "TO")}), 0, 180);`)
+          + line(`  int servoSteps_${suffix} = abs(servoTo_${suffix} - servoFrom_${suffix});`)
+          + line(`  int servoDirection_${suffix} = servoTo_${suffix} >= servoFrom_${suffix} ? 1 : -1;`)
+          + line(`  unsigned long servoDuration_${suffix} = max(0.0, (double)(${cppInput(block, "SECONDS")})) * 1000.0;`)
+          + line(`  ${servo}.write(servoFrom_${suffix});`)
+          + line(`  unsigned long servoStarted_${suffix} = millis();`)
+          + line(`  if (!servoSteps_${suffix}) delay(servoDuration_${suffix});`)
+          + line(`  for (int servoStep_${suffix} = 1; servoStep_${suffix} <= servoSteps_${suffix}; servoStep_${suffix}++) {`)
+          + line(`    unsigned long servoDue_${suffix} = servoDuration_${suffix} / servoSteps_${suffix} * servoStep_${suffix} + (servoDuration_${suffix} % servoSteps_${suffix}) * servoStep_${suffix} / servoSteps_${suffix};`)
+          + line(`    unsigned long servoElapsed_${suffix} = millis() - servoStarted_${suffix};`)
+          + line(`    if (servoElapsed_${suffix} < servoDue_${suffix}) delay(servoDue_${suffix} - servoElapsed_${suffix});`)
+          + line(`    ${servo}.write(servoFrom_${suffix} + servoDirection_${suffix} * servoStep_${suffix});`)
           + line("  }") + line("}");
       }
       case "servo_detach":

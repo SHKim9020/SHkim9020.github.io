@@ -5,9 +5,10 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 #include "ttp229_reader.h"
+#include "servo_sweep.h"
 
-// OneMaker Arduino UNO/Nano Runtime 1.1.13
-static const char *RUNTIME_VERSION = "1.1.13";
+// OneMaker Arduino UNO/Nano Runtime 1.1.14
+static const char *RUNTIME_VERSION = "1.1.14";
 static const uint8_t MAX_LINE = 180;
 static const uint8_t ONEMAKER_MAX_SERVOS = 4;
 static const uint8_t MAX_TRACKED_MOTORS = 4;
@@ -53,7 +54,8 @@ enum StatementOpcode : uint8_t {
   OP_OLED_PRINT = 30,
   OP_OLED_CLEAR = 31,
   OP_HUSKY_ALGORITHM = 32,
-  OP_TONE_HOLD = 33
+  OP_TONE_HOLD = 33,
+  OP_SERVO_SWEEP = 34
 };
 
 enum ExpressionOpcode : uint8_t {
@@ -124,6 +126,7 @@ uint16_t storedProgramLength = 0;
 uint16_t storedSetupLength = 0;
 uint16_t vmProgramCounter = 0;
 unsigned long vmWaitUntil = 0;
+ServoSweep vmServoSweep;
 
 uint16_t incomingProgramLength = 0;
 uint16_t incomingSetupLength = 0;
@@ -759,6 +762,7 @@ void loadStoredProgram() {
   memset(vmVariables, 0, sizeof(vmVariables));
   repeatDepth = 0;
   vmWaitUntil = 0;
+  vmServoSweep.active = false;
   storedSetupComplete = storedSetupLength == 0;
   vmProgramCounter = storedSetupComplete ? storedSetupLength : 0;
   storedProgramValid = true;
@@ -776,12 +780,35 @@ float __attribute__((noinline)) readStoredNumber() {
   return valueNumber(evaluateStoredExpression(vmProgramCounter));
 }
 
+unsigned long __attribute__((noinline)) readStoredMilliseconds() {
+  return nonNegative(readStoredNumber()) * 1000.0f;
+}
+
+void __attribute__((noinline)) writeServo(uint8_t pin, long angle) {
+  Servo *servo = servoForPin(pin);
+  if (servo) {
+    if (angle < 0) servo->detach();
+    else servo->write(clampLong(angle, 0, 180));
+  }
+}
+
+uint8_t __attribute__((noinline)) readStoredServoAngle() {
+  long angle = readStoredNumber() + 0.5f;
+  return angle < 0 ? 0 : angle > 180 ? 180 : angle;
+}
+
 String __attribute__((noinline)) readStoredText() {
   return valueText(evaluateStoredExpression(vmProgramCounter));
 }
 
 void executeStoredProgramStep() {
   if (!storedProgramValid) return;
+  if (vmServoSweep.active) {
+    vmServoSweep.advance(millis(), [](uint8_t pin, uint8_t angle) {
+      writeServo(pin, angle);
+    });
+    if (vmServoSweep.active) return;
+  }
   if (vmWaitUntil && (long)(millis() - vmWaitUntil) < 0) return;
   vmWaitUntil = 0;
 
@@ -801,8 +828,7 @@ void executeStoredProgramStep() {
   if (opcode == OP_END) {
     vmProgramCounter = segmentEnd;
   } else if (opcode == OP_WAIT) {
-    float seconds = readStoredNumber();
-    unsigned long milliseconds = nonNegative(seconds) * 1000.0f;
+    unsigned long milliseconds = readStoredMilliseconds();
     vmWaitUntil = millis() + milliseconds;
   } else if (opcode == OP_SET_VAR || opcode == OP_CHANGE_VAR) {
     uint8_t index = programByte(vmProgramCounter++);
@@ -828,18 +854,19 @@ void executeStoredProgramStep() {
     setMotor(pin1, pin2, clampLong(speed, -255, 255));
   } else if (opcode == OP_SERVO) {
     uint8_t pin = programByte(vmProgramCounter++);
-    Servo *servo = servoForPin(pin);
-    long angle = (long)readStoredNumber();
-    if (servo) {
-      if (angle < 0) servo->detach();
-      else servo->write(clampLong(angle, 0, 180));
-    }
+    writeServo(pin, (long)readStoredNumber());
+  } else if (opcode == OP_SERVO_SWEEP) {
+    uint8_t pin = programByte(vmProgramCounter++);
+    uint8_t from = readStoredServoAngle();
+    uint8_t to = readStoredServoAngle();
+    unsigned long duration = readStoredMilliseconds();
+    writeServo(pin, from);
+    vmServoSweep.begin(millis(), pin, from, to, duration);
   } else if (opcode == OP_TONE) {
     uint8_t pin = programByte(vmProgramCounter++);
     long frequencyValue = (long)readStoredNumber();
     int frequency = clampLong(frequencyValue, 20, 20000);
-    float seconds = readStoredNumber();
-    unsigned long duration = nonNegative(seconds) * 1000.0f;
+    unsigned long duration = readStoredMilliseconds();
     lastTonePin = pin;
     tone(pin, frequency, max(1UL, duration));
   } else if (opcode == OP_TONE_HOLD) {
@@ -1071,12 +1098,7 @@ void handleCommand(char *operation, char **args, uint8_t count) {
     int value = tokenInt(args[2]);
     setMotor(pin1, pin2, value);
   } else if (!strcmp(operation, "SERVO") && count >= 2) {
-    Servo *servo = servoForPin(tokenInt(args[0]));
-    int angle = tokenInt(args[1]);
-    if (servo) {
-      if (angle < 0) servo->detach();
-      else servo->write(constrain(angle, 0, 180));
-    }
+    writeServo(tokenInt(args[0]), tokenInt(args[1]));
   } else if (!strcmp(operation, "TONE") && count >= 3) {
     lastTonePin = tokenInt(args[0]);
     tone(lastTonePin, constrain(tokenInt(args[1]), 20, 20000), max(1, tokenInt(args[2])));
