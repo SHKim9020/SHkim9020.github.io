@@ -10,18 +10,24 @@ Arduino UNO R3와 ATmega328P Nano를 위한 수업용 Blockly 웹앱입니다.
 4. 저장이 끝나면 프로그램이 즉시 실행되며, USB를 분리한 뒤에도 전원만 연결하면 자동 실행됩니다.
 5. I²C LCD, OLED, NeoPixel, MP3, Bluetooth를 포함한 지원 블록이 모두 같은 방식으로 웹에서 바로 저장됩니다.
 
-브라우저에서 55MB 규모의 AVR 컴파일러를 내려받지 않습니다. 런타임은 보드당 처음 한 번만 설치하고, 이후 블록 프로그램은 보통 수 초 안에 저장합니다. EEPROM 프로그램 공간은 최대 1,015바이트이므로 수업용 중소 규모 프로젝트에 적합합니다. 직접 작성한 Arduino C++는 **텍스트 업로드** 탭에서 컴파일하고 USB로 올릴 수 있습니다.
+블록코딩은 텍스트용 컴파일러를 내려받지 않고 실행합니다. 런타임은 보드당 처음 한 번만 설치하고, 이후 블록 프로그램은 보통 수 초 안에 저장합니다. EEPROM 프로그램 공간은 최대 1,015바이트이므로 수업용 중소 규모 프로젝트에 적합합니다. 직접 작성한 Arduino C++는 **텍스트 업로드** 탭에서 컴파일하고 USB로 올릴 수 있습니다.
 
 오른쪽의 보드·빠른 테스트·텍스트 코드·시리얼 모니터 패널은 `접기` 버튼으로 축소할 수 있으며 선택 상태는 브라우저에 저장됩니다.
 
 ## 텍스트 업로드와 일반 시리얼
 
-1. PC에 Python 3와 Arduino CLI를 설치하고 `arduino-cli core update-index`, `arduino-cli core install arduino:avr`를 실행합니다. 스케치가 사용하는 라이브러리도 설치합니다.
-2. 텍스트 업로드 탭에서 `compiler_bridge.py`를 내려받아 `python compiler_bridge.py`로 실행합니다. 컴파일러는 이 PC의 루프백 주소에서만 요청을 받습니다.
-3. Arduino Studio에서 스케치를 붙여넣고 UNO R3, Nano 또는 Nano 구형 부트로더를 선택한 뒤 **컴파일**을 누릅니다. Chrome이 로컬 네트워크 접근을 묻는 경우 이 PC의 컴파일러 연결을 허용합니다.
-4. 시리얼 연결을 끊고 **USB 업로드**를 눌러 보드의 USB 포트를 선택합니다.
-5. **시리얼 → 일반 시리얼**에서 스케치의 `Serial.begin()`과 같은 속도를 선택하고 상단 USB 버튼으로 다시 연결합니다.
-6. 블록코딩으로 돌아갈 때는 텍스트 스케치가 사용하던 포트 연결을 끊고 OneMaker 런타임을 다시 설치한 뒤 **OneMaker 블록 런타임** 모드로 연결합니다.
+1. Chrome에서 **텍스트 업로드** 탭을 열고 스케치를 붙여넣습니다. UNO R3, Nano 또는 Nano 구형 부트로더를 선택하고 **컴파일**을 누릅니다. 처음 컴파일할 때 브라우저가 컴파일러를 다운로드하며, 스케치 처리는 브라우저 안에서 이뤄집니다.
+2. 기존 시리얼 연결을 끊고 **USB 업로드**를 눌러 보드의 USB 포트를 선택합니다.
+3. **시리얼 → 일반 시리얼**에서 스케치의 `Serial.begin()`과 같은 속도를 선택하고 상단 USB 버튼으로 다시 연결합니다.
+4. 블록코딩으로 돌아갈 때는 USB 포트 연결을 끊고 OneMaker 런타임을 다시 설치한 뒤 **OneMaker 블록 런타임** 모드로 연결합니다.
+
+브라우저 컴파일은 단일 스케치와 Wire, SPI, EEPROM, SoftwareSerial, Adafruit DHT, Adafruit Unified Sensor, LiquidCrystal_I2C를 지원합니다. 지원 목록에 없는 라이브러리가 필요하면 **지원 라이브러리와 로컬 컴파일 옵션**에서 기존 Arduino CLI 방식을 선택할 수 있습니다.
+
+### 브라우저 컴파일러 구성
+
+- 컴파일러 도구는 [AVR GCC WASM 0.2.0](https://www.npmjs.com/package/@horang-corp/avr-gcc-wasm/v/0.2.0)에서 브라우저가 직접 불러옵니다. [소스와 도구별 라이선스](https://github.com/horang-corp/avr-gcc-wasm/blob/main/THIRD_PARTY_NOTICES.md)
+- 브라우저용 라이브러리 묶음은 [Arduino AVR Core 1.8.8](https://github.com/arduino/ArduinoCore-avr/tree/1.8.8), [Arduino AVR Toolchain](https://github.com/arduino/toolchain-avr), [avr-libc](https://github.com/avrdudes/avr-libc), [GCC](https://gcc.gnu.org/git.html), [Adafruit DHT 1.4.6](https://github.com/adafruit/DHT-sensor-library/tree/1.4.6), [Adafruit Unified Sensor 1.1.15](https://github.com/adafruit/Adafruit_Sensor/tree/1.1.15), [LiquidCrystal_I2C 2.0.0](https://github.com/markub3327/LiquidCrystal_I2C)을 사용합니다. 원본 라이선스는 각 소스에서 확인할 수 있습니다.
+- 개발용 재생성 명령은 `arduino-cli core install arduino:avr@1.8.8` 및 `python3 arduino-studio/build-browser-avr.py ~/.arduino15`입니다.
 
 ## 온습도 그래프와 CSV
 

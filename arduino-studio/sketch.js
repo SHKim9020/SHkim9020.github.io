@@ -1,9 +1,44 @@
 (() => {
   "use strict";
+  function compileInBrowser(source, target) {
+    const worker = new Worker(new URL("browser-avr-worker.mjs?v=1", document.baseURI), { type: "module" });
+    return new Promise((resolve, reject) => {
+      function finish(error, hex) {
+        clearTimeout(timer);
+        worker.terminate();
+        if (error) reject(new Error(error));
+        else resolve(hex);
+      }
+      const timer = setTimeout(() => finish("컴파일 시간이 초과되었습니다. 인터넷 연결을 확인하고 다시 시도해 주세요."), 90000);
+      worker.onmessage = ({ data }) => finish(data.error, data.hex);
+      worker.onerror = () => finish("브라우저 컴파일러를 시작하지 못했습니다. 페이지를 새로고침하고 다시 시도해 주세요.");
+      worker.postMessage({ source, target });
+    });
+  }
+
+  async function compileLocally(code, board) {
+    let response;
+    try {
+      response = await fetch("http://127.0.0.1:8765/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, board }),
+        signal: AbortSignal.timeout(105000),
+      });
+    } catch (error) {
+      if (error.name === "TimeoutError") throw new Error("로컬 컴파일 시간이 초과되었습니다.");
+      throw new Error("로컬 컴파일러에 연결하지 못했습니다. 컴파일러 실행과 Chrome의 로컬 네트워크 권한을 확인해 주세요.");
+    }
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "컴파일에 실패했습니다.");
+    return result.hex;
+  }
+
   window.OneMakerSketch = function ({ panel, portBusy, uploaded, download }) {
     const find = (id) => panel.querySelector("#" + id);
     const source = find("sketchSource");
     const board = find("sketchBoard");
+    const localCompiler = find("sketchLocalCompiler");
     const compile = find("sketchCompile");
     const upload = find("sketchUpload");
     const status = find("sketchStatus");
@@ -19,6 +54,7 @@
       upload.disabled = compiling || uploading || !hexUrl;
       source.readOnly = uploading;
       board.disabled = uploading;
+      localCompiler.disabled = uploading;
     }
     function invalidate() {
       if (hexUrl) URL.revokeObjectURL(hexUrl);
@@ -32,7 +68,16 @@
       invalidate();
       status.textContent = "코드가 변경되었습니다. 컴파일해 주세요.";
     });
-    board.addEventListener("change", invalidate);
+    board.addEventListener("change", () => {
+      invalidate();
+      status.textContent = "보드가 변경되었습니다. 컴파일해 주세요.";
+    });
+    localCompiler.addEventListener("change", () => {
+      invalidate();
+      status.textContent = localCompiler.checked
+        ? "PC에서 로컬 컴파일러를 실행하고 컴파일을 눌러 주세요."
+        : "코드를 붙여넣고 컴파일을 눌러 주세요. 처음에는 브라우저가 컴파일러를 내려받습니다.";
+    });
     find("sketchDownload").addEventListener("click", () => {
       if (source.value.trim()) download("Sketch.ino", source.value, "text/x-c++src");
     });
@@ -43,28 +88,24 @@
       updateButtons();
       const code = source.value;
       const target = board.value;
-      status.textContent = "이 PC에서 Arduino CLI로 컴파일하는 중…";
+      const local = localCompiler.checked;
+      status.textContent = local
+        ? "이 PC에서 Arduino CLI로 컴파일하는 중…"
+        : "브라우저에서 컴파일 중… 처음에는 컴파일러를 내려받아 잠시 걸릴 수 있습니다.";
       try {
-        const response = await fetch("http://127.0.0.1:8765/compile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, board: target }),
-          signal: AbortSignal.timeout(105000),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "컴파일에 실패했습니다.");
-        if (code !== source.value || target !== board.value) {
-          status.textContent = "코드나 보드가 바뀌었습니다. 다시 컴파일해 주세요.";
+        const hex = await (local ? compileLocally(code, target) : compileInBrowser(code, target));
+        if (code !== source.value || target !== board.value || local !== localCompiler.checked) {
+          status.textContent = "컴파일 설정이 바뀌었습니다. 다시 컴파일해 주세요.";
           return;
         }
-        if (!/^:[0-9a-f]+/i.test(result.hex || "")) throw new Error("유효한 HEX를 받지 못했습니다.");
-        hexUrl = URL.createObjectURL(new Blob([result.hex], { type: "text/plain" }));
+        if (!/^:[0-9a-f]+/i.test(hex || "")) throw new Error("유효한 HEX를 받지 못했습니다.");
+        hexUrl = URL.createObjectURL(new Blob([hex], { type: "text/plain" }));
         upload.setAttribute("hex-href", hexUrl);
         upload.setAttribute("board", target);
-        status.textContent = "컴파일 완료. 시리얼 연결을 끊은 뒤 USB 업로드를 눌러 주세요.";
+        status.textContent = "컴파일 완료. USB 업로드를 누르고 보드 포트를 선택해 주세요.";
       } catch (error) {
-        status.textContent = error instanceof TypeError
-          ? "로컬 컴파일러에 연결하지 못했습니다. 컴파일러 실행과 Chrome의 로컬 네트워크 권한을 확인해 주세요."
+        status.textContent = error.message.includes("No such file or directory")
+          ? error.message + "\n지원 목록에 없는 라이브러리는 로컬 컴파일러에서 사용할 수 있습니다."
           : error.message;
       } finally {
         compiling = false;

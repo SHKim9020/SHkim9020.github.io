@@ -1,11 +1,13 @@
-const CACHE_NAME = "onemaker-arduino-studio-1.5.22";
+const CACHE_NAME = "onemaker-arduino-studio-1.5.23";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css?v=1.2.12",
   "./app.js?v=1.5.22",
   "./measurements.js?v=1.0.0",
-  "./sketch.js?v=1.0.0",
+  "./sketch.js?v=1.1.0",
+  "./browser-avr-worker.mjs?v=1",
+  "./browser-avr-core.mjs?v=1",
   "./cloud-config.js?v=1.0.0",
   "./cloud.js?v=1.0.1",
   "./ch340-webserial.js?v=1.0.3",

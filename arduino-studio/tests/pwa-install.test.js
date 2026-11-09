@@ -45,7 +45,7 @@ test("app handles native installation and fallback instructions", () => {
 });
 
 test("service worker caches and refreshes the app shell", () => {
-  assert.match(sw, /onemaker-arduino-studio-1\.5\.22/);
+  assert.match(sw, /onemaker-arduino-studio-1\.5\.23/);
   assert.match(sw, /\.\/icons\/iot-webapp-qr\.svg/);
   assert.match(sw, /cache\.addAll\(APP_SHELL\)/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
