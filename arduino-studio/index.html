@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.11">
+  <link rel="stylesheet" href="style.css?v=1.2.12">
 </head>
 <body>
   <header class="topbar">
@@ -75,7 +75,9 @@
           <button data-tab="test">빠른 테스트</button>
           <button data-tab="chat">AI 채팅</button>
           <button data-tab="code">텍스트 코드</button>
+          <button data-tab="sketch">텍스트 업로드</button>
           <button data-tab="serial">시리얼</button>
+          <button data-tab="graph">그래프</button>
         </div>
         <button id="sideCollapseBtn" class="side-collapse-btn" type="button" aria-expanded="true" aria-label="오른쪽 패널 접기" title="오른쪽 패널 접기">
           <span class="collapse-arrow">›</span><span class="collapse-label">접기</span>
@@ -208,7 +210,34 @@
           <div><h3>Arduino C++</h3><p>사용한 블록에 필요한 라이브러리와 코드만 생성합니다.</p></div>
           <div><button id="copyCodeBtn">복사</button><button id="downloadInoBtn">INO 다운로드</button></div>
         </div>
-        <textarea id="codeView" spellcheck="false" aria-label="생성된 Arduino C++ 코드"></textarea>
+        <textarea id="codeView" readonly spellcheck="false" aria-label="생성된 Arduino C++ 코드"></textarea>
+      </section>
+
+      <section class="tab-panel sketch-panel" data-panel="sketch">
+        <div class="panel-head">
+          <div><h3>Arduino C++ 텍스트 업로드</h3><p>스케치를 붙여넣고 UNO·Nano에 올립니다.</p></div>
+        </div>
+        <div class="studio-tools">
+          <label>보드 <select id="sketchBoard">
+            <option value="uno">Arduino UNO R3</option>
+            <option value="nano">Nano (ATmega328P)</option>
+            <option value="nanoOldBootloader">Nano (구형 부트로더)</option>
+          </select></label>
+          <button type="button" id="sketchCompile" class="outline" disabled>컴파일</button>
+          <button type="button" id="sketchUpload" class="primary" arduino-uploader verify disabled>USB 업로드 <span class="upload-progress"></span></button>
+          <button type="button" id="sketchDownload" class="outline">INO 저장</button>
+        </div>
+        <textarea id="sketchSource" spellcheck="false" aria-label="업로드할 Arduino C++ 코드" placeholder="setup()과 loop()가 포함된 Arduino C++ 코드를 붙여넣으세요."></textarea>
+        <pre id="sketchStatus" role="status">PC에서 로컬 컴파일러를 먼저 실행해 주세요.</pre>
+        <details class="studio-guide">
+          <summary>PC에 컴파일러 준비하기</summary>
+          <p>Python 3와 Arduino CLI를 설치하고, 터미널에서 아래 명령을 실행하세요. 코드가 사용하는 라이브러리도 Arduino CLI에 설치해야 합니다.</p>
+          <p><a href="https://docs.arduino.cc/arduino-cli/installation/" target="_blank" rel="noopener noreferrer">Arduino CLI 설치 안내</a> · <a href="compiler_bridge.py" download>로컬 컴파일러 내려받기</a></p>
+          <pre>arduino-cli core update-index
+arduino-cli core install arduino:avr
+python compiler_bridge.py</pre>
+          <p>Windows에서는 Python 실행 명령으로 <code>py</code>를, macOS·Linux에서는 <code>python3</code>를 사용할 수 있습니다. 컴파일러를 실행한 상태에서 이 탭의 컴파일 버튼을 누르세요.</p>
+        </details>
       </section>
 
       <section class="tab-panel serial-panel" data-panel="serial">
@@ -216,8 +245,41 @@
           <div><h3>시리얼 모니터</h3><p>런타임 메시지와 센서값을 확인합니다.</p></div>
           <div><button id="clearSerialBtn">지우기</button></div>
         </div>
+        <div class="studio-tools">
+          <label>연결 모드 <select id="serialMode">
+            <option value="runtime">OneMaker 블록 런타임</option>
+            <option value="raw">일반 시리얼 (텍스트 스케치)</option>
+          </select></label>
+          <label>속도 <select id="serialBaud" disabled>
+            <option value="115200">115200</option>
+            <option value="9600">9600</option>
+            <option value="19200">19200</option>
+            <option value="38400">38400</option>
+            <option value="57600">57600</option>
+          </select></label>
+        </div>
         <pre id="serialOutput" aria-live="polite"></pre>
         <div class="serial-send"><input id="serialInput" placeholder="보드로 보낼 명령"><button id="serialSendBtn">전송</button></div>
+      </section>
+      <section class="tab-panel graph-panel" data-panel="graph">
+        <div class="panel-head">
+          <div><h3>온습도 실시간 그래프</h3><p>최근 60회 표시 · CSV에는 수집한 전체 기록 저장</p></div>
+        </div>
+        <div class="studio-tools">
+          <label>측정 장소 <input id="measurePlace" maxlength="60" placeholder="예: 교실 중앙"></label>
+          <button type="button" id="measureExport" class="primary" disabled>CSV 저장</button>
+          <button type="button" id="measureReset" class="outline">기록 지우기</button>
+        </div>
+        <p id="measureSummary" role="status">측정값을 기다리는 중입니다.</p>
+        <figure class="measurement-chart">
+          <figcaption>온도 (°C)</figcaption>
+          <svg data-metric="temperature" viewBox="0 0 360 120" role="img" aria-label="측정 순서별 온도 그래프"></svg>
+        </figure>
+        <figure class="measurement-chart">
+          <figcaption>상대습도 (%)</figcaption>
+          <svg data-metric="humidity" viewBox="0 0 360 120" role="img" aria-label="측정 순서별 상대습도 그래프"></svg>
+        </figure>
+        <p class="mode-limit">보드가 한 줄에 <code>DATA,25.3,36.0</code> 또는 <code>Temp:25.3,Humi:36.0</code>을 보내면 그래프에 추가됩니다.</p>
       </section>
     </aside>
   </main>
@@ -349,10 +411,12 @@
   <script src="https://unpkg.com/blockly@12.1.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@12.1.0/msg/ko.js"></script>
   <script src="ch340-webserial.js?v=1.0.3"></script>
-  <script src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
+  <script id="usbUploaderScript" onload="this.dataset.loaded='true'" src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="cloud-config.js?v=1.0.0"></script>
-  <script src="app.js?v=1.5.21"></script>
+  <script src="measurements.js?v=1.0.0"></script>
+  <script src="sketch.js?v=1.0.0"></script>
+  <script src="app.js?v=1.5.22"></script>
   <script src="cloud.js?v=1.0.1"></script>
 </body>
 </html>

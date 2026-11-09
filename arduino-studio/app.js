@@ -27,6 +27,10 @@
   const MAX_SPEECH_COMMAND_QUEUE = 2;
 
   let workspace;
+  let measurements;
+  let sketch;
+  let rawSerial = false;
+  let serialOpening = false;
   let serialPort;
   let serialReader;
   let serialWriter;
@@ -1024,6 +1028,17 @@ uint16_t pianoFrequency(int key, uint8_t high) {
       zoom: { controls: false, wheel: true, startScale: 0.88, maxScale: 1.5, minScale: 0.42, scaleSpeed: 1.1 },
       grid: { spacing: 22, length: 2, colour: "#dbe4e9", snap: false }
     });
+    measurements = window.OneMakerMeasurements.create({
+      panel: $('[data-panel="graph"]'), download: downloadBlob
+    });
+    sketch = window.OneMakerSketch({
+      panel: $('[data-panel="sketch"]'), download: downloadBlob,
+      portBusy: () => serialConnected || serialOpening || serialDisconnecting,
+      uploaded: () => {
+        $("#serialMode").value = "raw";
+        updateSerialControls();
+      }
+    });
     bindEvents();
     restoreSidePanel();
     restoreAutosave();
@@ -1066,6 +1081,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     $("#closePwaInstallDialogBtn").addEventListener("click", () => $("#pwaInstallDialog").close());
     $("#confirmPwaInstallDialogBtn").addEventListener("click", () => $("#pwaInstallDialog").close());
     $("#connectBtn").addEventListener("click", toggleSerialConnection);
+    $("#serialMode").addEventListener("change", updateSerialControls);
     $("#saveBoardBtn").addEventListener("click", saveProgramToBoard);
     $("#aiRunBtn").addEventListener("click", toggleSpeechRecognition);
     $("#closeSaveBoardDialogBtn").addEventListener("click", () => $("#saveBoardDialog").close());
@@ -1160,6 +1176,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     $$(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === name));
     if (name === "code" && codeDirty) refreshCode();
     if (name === "serial" && serialDirty) flushSerialOutput();
+    if (name === "graph") measurements.render();
   }
 
   function restoreSidePanel() {
@@ -1849,16 +1866,20 @@ uint16_t pianoFrequency(int key, uint8_t high) {
   }
 
   async function toggleSerialConnection() {
-    if (serialDisconnecting) return;
+    if (serialDisconnecting || serialOpening || sketch?.isUploading()) return;
     if (serialConnected) {
       await disconnectSerial();
       return;
     }
     const serialApi = preferredSerialApi();
     if (!serialApi) return toast("Android Chrome의 USB 권한을 확인해주세요.");
+    serialOpening = true;
+    rawSerial = $("#serialMode").value === "raw";
+    updateSerialControls();
     try {
-      serialPort = await requestProjectSerialPort(serialApi);
-      await serialPort.open({ baudRate: 115200, bufferSize: 1024 });
+      const baudRate = rawSerial ? Number($("#serialBaud").value) : 115200;
+      serialPort = rawSerial ? await serialApi.requestPort() : await requestProjectSerialPort(serialApi);
+      await serialPort.open({ baudRate, bufferSize: 1024 });
       serialWriter = serialPort.writable.getWriter();
       serialConnected = true;
       serialSession++;
@@ -1868,6 +1889,10 @@ uint16_t pianoFrequency(int key, uint8_t high) {
       serialTransport = detectSerialTransport(serialPort);
       setConnected(true);
       readSerialLoop();
+      if (rawSerial) {
+        toast(`일반 시리얼 연결 완료 · ${baudRate} bps`);
+        return;
+      }
       const deadline = Date.now() + 8000;
       while (!runtimeReady && Date.now() < deadline) {
         if (serialTransport === "usb") await sendLine("PING", true);
@@ -1892,7 +1917,16 @@ uint16_t pianoFrequency(int key, uint8_t high) {
         toast(formatUsbError(error));
       }
       await disconnectSerial().catch(() => {});
+    } finally {
+      serialOpening = false;
+      updateSerialControls();
     }
+  }
+
+  function updateSerialControls() {
+    const busy = serialConnected || serialOpening;
+    $("#serialMode").disabled = busy;
+    $("#serialBaud").disabled = busy || $("#serialMode").value !== "raw";
   }
 
   function preferredSerialApi() {
@@ -1985,15 +2019,18 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     runtimeReady = false;
     runtimeVersion = "";
     serialTransport = "unknown";
+    serialBuffer = "";
+    rawSerial = false;
     setConnected(false);
   }
 
   function setConnected(connected) {
     const transportLabel = serialTransport === "bluetooth" ? "Bluetooth COM" : "USB";
     $("#connectionStatus").textContent = connected
-      ? (runtimeReady ? `${transportLabel} · 런타임 ${runtimeVersion || ""}` : "연결 확인 중")
+      ? (rawSerial ? `${transportLabel} · 일반 시리얼` : runtimeReady ? `${transportLabel} · 런타임 ${runtimeVersion || ""}` : "연결 확인 중")
       : "연결 안 됨";
     $("#connectionStatus").className = `status ${connected ? "connected" : "disconnected"}`;
+    updateSerialControls();
     $("#connectBtn").classList.toggle("primary", connected);
     $("#connectBtn .dot").classList.toggle("on", connected);
     $("#connectBtn").lastChild.textContent = connected
@@ -2003,14 +2040,15 @@ uint16_t pianoFrequency(int key, uint8_t high) {
 
   async function readSerialLoop() {
     const decoder = new TextDecoder();
+    const session = serialSession;
     try {
-      while (serialPort?.readable && serialConnected) {
+      while (serialPort?.readable && serialConnected && serialSession === session) {
         const reader = serialPort.readable.getReader();
         serialReader = reader;
         try {
           while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
+            if (done || serialSession !== session) return;
             serialBuffer += decoder.decode(value, { stream: true });
             consumeSerialLines();
           }
@@ -2020,9 +2058,9 @@ uint16_t pianoFrequency(int key, uint8_t high) {
         }
       }
     } catch (error) {
-      if (serialConnected) appendSerial(`[USB 오류] ${error.message}`);
+      if (serialConnected && serialSession === session) appendSerial(`[USB 오류] ${error.message}`);
     } finally {
-      if (serialConnected) closeSerialState();
+      if (serialConnected && serialSession === session) await disconnectSerial();
     }
   }
 
@@ -2038,6 +2076,8 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     for (const line of lines) {
       if (!line) continue;
       appendSerial(line);
+      measurements?.accept(line);
+      if (rawSerial) continue;
       for (let index = lineWaiters.length - 1; index >= 0; index--) {
         const waiter = lineWaiters[index];
         if (!waiter.predicate(line)) continue;
@@ -2099,6 +2139,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
 
   async function ensureRuntime() {
     if (!serialConnected || !serialWriter) throw new Error("먼저 USB를 연결하세요.");
+    if (rawSerial) throw new Error("블록 기능을 사용하려면 OneMaker 블록 런타임 모드로 다시 연결하세요.");
     if (!runtimeReady) {
       const readyPromise = waitForRuntimeReady(1800);
       await sendLine("PING");
@@ -2613,7 +2654,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     const value = input.value.trim();
     if (!value) return;
     try {
-      await sendLine(value);
+      await sendLine(value, rawSerial);
       appendSerial(`[보냄] ${value}`);
       input.value = "";
     } catch (error) {

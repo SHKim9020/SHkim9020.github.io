@@ -1,9 +1,11 @@
-const CACHE_NAME = "onemaker-arduino-studio-1.5.21";
+const CACHE_NAME = "onemaker-arduino-studio-1.5.22";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=1.2.11",
-  "./app.js?v=1.5.21",
+  "./style.css?v=1.2.12",
+  "./app.js?v=1.5.22",
+  "./measurements.js?v=1.0.0",
+  "./sketch.js?v=1.0.0",
   "./cloud-config.js?v=1.0.0",
   "./cloud.js?v=1.0.1",
   "./ch340-webserial.js?v=1.0.3",
@@ -27,7 +29,7 @@ self.addEventListener("activate", event => {
 });
 
 self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
+  if (event.request.method !== "GET" || new URL(event.request.url).protocol === "blob:") return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(
