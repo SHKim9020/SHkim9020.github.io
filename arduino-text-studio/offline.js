@@ -2,7 +2,7 @@
   "use strict";
   const button = document.getElementById("offlineBtn");
   const label = document.getElementById("offlineStatus");
-  const { cacheName, ready, uploader, urls } = window.OneMakerOffline;
+  const { cacheName, cachePrefix, page, ready, uploader, urls } = window.OneMakerOffline;
   let cachedView = new URL(location.href).searchParams.get("offline") === "1";
   const workerUrl = new URL("./compiler-worker.mjs?v=1", document.baseURI);
 
@@ -42,7 +42,7 @@
   }
 
   // Register on page load so compilation workers are controlled before the user prepares.
-  const registration = navigator.serviceWorker.register("./sw.js?v=2").then(async () => {
+  const registration = navigator.serviceWorker.register("./sw.js?v=3").then(async () => {
     await navigator.serviceWorker.ready;
     const cache = await caches.open(cacheName);
     if (await isReady(cache)) showReady();
@@ -71,16 +71,32 @@
       if (!document.getElementById("usbUploaderScript").dataset.loaded) {
         throw new Error("USB 업로더를 불러오지 못했습니다.");
       }
-      await cache.addAll(urls.filter(url => url !== uploader).map(url => new Request(url, { cache: "reload" })));
-      // A classic cross-origin script may be opaque. Cache it using the same request mode.
-      const uploadScript = new Request(uploader, { mode: "no-cors", cache: "reload" });
-      const response = await fetch(uploadScript);
-      if (!response.ok && response.type !== "opaque") throw new Error("USB 업로더를 저장하지 못했습니다.");
-      await cache.put(uploadScript, response);
+      const previousNames = (await caches.keys()).filter(name => name.startsWith(cachePrefix) && name !== cacheName);
+      const missing = new Set(urls);
+      for (const name of previousNames.reverse()) {
+        const previous = await caches.open(name);
+        if (!(await previous.match(ready))) continue;
+        for (const url of missing) {
+          if (url === page) continue;
+          const saved = await previous.match(url);
+          if (!saved) continue;
+          await cache.put(url, saved);
+          missing.delete(url);
+        }
+      }
+      await cache.addAll([...missing].filter(url => url !== uploader).map(url => new Request(url, { cache: "reload" })));
+      if (missing.has(uploader)) {
+        // A classic cross-origin script may be opaque. Cache it using the same request mode.
+        const uploadScript = new Request(uploader, { mode: "no-cors", cache: "reload" });
+        const response = await fetch(uploadScript);
+        if (!response.ok && response.type !== "opaque") throw new Error("USB 업로더를 저장하지 못했습니다.");
+        await cache.put(uploadScript, response);
+      }
       label.textContent = "저장한 컴파일러 확인 중…";
       await checkCompiler();
       await cache.put(ready, new Response("ready"));
       showReady();
+      await Promise.allSettled(previousNames.map(name => caches.delete(name)));
     } catch {
       label.textContent = "오프라인 준비에 실패했습니다. 인터넷에 연결한 뒤 다시 눌러 주세요.";
     } finally {

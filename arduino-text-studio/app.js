@@ -28,6 +28,7 @@
   }
 
   const graph = window.OneMakerMeasurements.create({ panel: find("panel-graph"), download });
+  const plotter = window.OneMakerPlotter.create(find("panel-plotter"));
   find("sketchCompile").addEventListener("click", () => activate(tabs[0]));
   // Release the monitor's port before the uploader asks Chrome for a port.
   upload.addEventListener("click", async (event) => {
@@ -63,7 +64,8 @@
       panel.hidden = !active;
       panel.classList.toggle("active", active);
     }
-    if (selected === tabs[2]) graph.render();
+    if (selected.id === "tab-graph") graph.render();
+    if (selected.id === "tab-plotter") plotter.render();
     if (focus) selected.focus();
   }
 
@@ -164,7 +166,10 @@ void loop() {
         const lines = (buffer + decoder.decode(value, { stream: true })).split(/\r?\n/);
         buffer = lines.pop().slice(-8192);
         const received = lines.filter(Boolean).map(line => line.slice(0, 8192));
-        for (const line of received) graph.accept(line);
+        for (const line of received) {
+          graph.accept(line);
+          plotter.accept(line);
+        }
         append(received.slice(-300));
       }
     } finally {
