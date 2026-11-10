@@ -10,7 +10,6 @@ const driver = fs.readFileSync(path.join(root, "ch340-webserial.js"), "utf8");
 
 test("Android USB picker accepts WCH CH340-compatible product variants", () => {
   assert.match(driver, /USB_FILTERS = Object\.freeze\(\[\{ vendorId: CH340_VENDOR_ID \}\]\)/);
-  assert.match(driver, /filter\(device => device\.vendorId === CH340_VENDOR_ID\)/);
   assert.match(app, /USB 장치를 찾지 못했습니다\. OTG 젠더·데이터 케이블/);
 });
 

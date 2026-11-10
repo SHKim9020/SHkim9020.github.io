@@ -15,6 +15,11 @@
   const LCR_8N1 = 0x80 | 0x40 | 0x03;
   // CH340-compatible boards can report product IDs other than 0x7523.
   const USB_FILTERS = Object.freeze([{ vendorId: CH340_VENDOR_ID }]);
+  // Stock Arduino UNO R3 USB-to-serial firmware (ATmega16U2).
+  const UNO_R3_FILTERS = Object.freeze([
+    { vendorId: 0x2341, productId: 0x0043 },
+    { vendorId: 0x2a03, productId: 0x0043 }
+  ]);
   const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
   function isAndroid() {
@@ -58,18 +63,15 @@
     return ((0x100 - divisor) << 8) | (factor << 2) | prescaler;
   }
 
-  class CH340Port {
-    constructor(device, owner) {
+  class UsbSerialPort {
+    constructor(device) {
       this.device = device;
-      this.owner = owner;
       this.readable = null;
       this.writable = null;
-      this.interfaceNumber = null;
-      this.alternateSetting = 0;
       this.inEndpoint = null;
       this.outEndpoint = null;
       this.inPacketSize = 64;
-      this.chipVersion = 0x27;
+      this.claimedInterfaces = [];
       this.opened = false;
       this.closing = false;
       this.signals = { dataTerminalReady: false, requestToSend: false };
@@ -83,6 +85,121 @@
       if (typeof this.device.forget === "function") await this.device.forget();
     }
 
+    findBulkInterface(interfaces) {
+      for (const usbInterface of interfaces) {
+        for (const alternate of usbInterface.alternates || []) {
+          const input = alternate.endpoints?.find(endpoint => endpoint.type === "bulk" && endpoint.direction === "in");
+          const output = alternate.endpoints?.find(endpoint => endpoint.type === "bulk" && endpoint.direction === "out");
+          if (input && output) return { usbInterface, alternate, input, output };
+        }
+      }
+      throw new DOMException("USB 벌크 IN/OUT 엔드포인트를 찾지 못했습니다.", "NotSupportedError");
+    }
+
+    async claimInterface(interfaceNumber, alternateSetting = 0) {
+      await this.device.claimInterface(interfaceNumber);
+      this.claimedInterfaces.push(interfaceNumber);
+      if (alternateSetting) await this.device.selectAlternateInterface(interfaceNumber, alternateSetting);
+    }
+
+    async claimPortInterfaces() {
+      const descriptor = this.findBulkInterface(this.device.configuration?.interfaces || []);
+      await this.claimInterface(descriptor.usbInterface.interfaceNumber, descriptor.alternate.alternateSetting);
+      return descriptor;
+    }
+
+    async setSignals(signals = {}) {
+      if (Object.prototype.hasOwnProperty.call(signals, "dataTerminalReady")) {
+        this.signals.dataTerminalReady = Boolean(signals.dataTerminalReady);
+      }
+      if (Object.prototype.hasOwnProperty.call(signals, "requestToSend")) {
+        this.signals.requestToSend = Boolean(signals.requestToSend);
+      }
+      await this.applySignals();
+    }
+
+    async open(options = {}) {
+      if (this.opened) throw new DOMException("직렬 포트가 이미 열려 있습니다.", "InvalidStateError");
+      this.closing = false;
+      try {
+        if (!this.device.opened) await this.device.open();
+        if (!this.device.configuration) {
+          const configurationValue = this.device.configurations?.[0]?.configurationValue || 1;
+          await this.device.selectConfiguration(configurationValue);
+        }
+        const descriptor = await this.claimPortInterfaces();
+        this.inEndpoint = descriptor.input.endpointNumber;
+        this.outEndpoint = descriptor.output.endpointNumber;
+        this.inPacketSize = descriptor.input.packetSize || 64;
+
+        await this.initialize(options);
+        await this.setSignals({ dataTerminalReady: false, requestToSend: false });
+        await delay(60);
+        await this.setSignals({ dataTerminalReady: true, requestToSend: true });
+        await delay(220);
+
+        this.opened = true;
+        this.createStreams(options.bufferSize || 255);
+      } catch (error) {
+        await this.cleanupDevice();
+        throw error;
+      }
+    }
+
+    createStreams(bufferSize) {
+      const transferLength = Math.max(this.inPacketSize, Math.min(4096, bufferSize || 255));
+      this.readable = new ReadableStream({
+        pull: async controller => {
+          if (!this.opened || this.closing) return controller.close();
+          try {
+            const result = assertUsbResult(await this.device.transferIn(this.inEndpoint, transferLength), "USB 시리얼 읽기");
+            if (result.data?.byteLength) {
+              const bytes = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
+              controller.enqueue(new Uint8Array(bytes));
+            }
+          } catch (error) {
+            if (this.opened && !this.closing) controller.error(error);
+          }
+        },
+        // A pending WebUSB transferIn does not finish just because `closing` changes.
+        // Close the USB device so reader.cancel() always settles.
+        cancel: () => this.close()
+      });
+      this.writable = new WritableStream({
+        write: async chunk => {
+          const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+          assertUsbResult(await this.device.transferOut(this.outEndpoint, bytes), "USB 시리얼 쓰기");
+        }
+      });
+    }
+
+    async cleanupDevice() {
+      for (const interfaceNumber of this.claimedInterfaces.splice(0).reverse()) {
+        if (this.device.opened) await this.device.releaseInterface(interfaceNumber).catch(() => {});
+      }
+      if (this.device.opened) await this.device.close().catch(() => {});
+    }
+
+    async close() {
+      if (!this.device.opened && !this.opened) return;
+      this.closing = true;
+      this.opened = false;
+      await this.setSignals({ dataTerminalReady: false, requestToSend: false }).catch(() => {});
+      this.readable = null;
+      this.writable = null;
+      await this.cleanupDevice();
+      this.closing = false;
+    }
+
+    handleDisconnect() {
+      this.closing = true;
+      this.opened = false;
+      this.readable = null;
+      this.writable = null;
+    }
+  }
+
+  class CH340Port extends UsbSerialPort {
     async controlOut(request, value = 0, index = 0) {
       const result = await this.device.controlTransferOut({
         requestType: "vendor",
@@ -105,17 +222,6 @@
       return assertUsbResult(result, `CH340 상태 명령 0x${request.toString(16)}`);
     }
 
-    findBulkInterface() {
-      for (const usbInterface of this.device.configuration?.interfaces || []) {
-        for (const alternate of usbInterface.alternates || []) {
-          const input = alternate.endpoints?.find(endpoint => endpoint.type === "bulk" && endpoint.direction === "in");
-          const output = alternate.endpoints?.find(endpoint => endpoint.type === "bulk" && endpoint.direction === "out");
-          if (input && output) return { usbInterface, alternate, input, output };
-        }
-      }
-      throw new DOMException("CH340 벌크 IN/OUT 엔드포인트를 찾지 못했습니다.", "NotSupportedError");
-    }
-
     async configureLine(options) {
       const baudRate = options.baudRate || 9600;
       if ((options.dataBits || 8) !== 8 || (options.stopBits || 1) !== 1 || (options.parity || "none") !== "none") {
@@ -129,13 +235,7 @@
       }
     }
 
-    async setSignals(signals = {}) {
-      if (Object.prototype.hasOwnProperty.call(signals, "dataTerminalReady")) {
-        this.signals.dataTerminalReady = Boolean(signals.dataTerminalReady);
-      }
-      if (Object.prototype.hasOwnProperty.call(signals, "requestToSend")) {
-        this.signals.requestToSend = Boolean(signals.requestToSend);
-      }
+    async applySignals() {
       let control = 0;
       if (this.signals.dataTerminalReady) control |= MODEM.DTR;
       if (this.signals.requestToSend) control |= MODEM.RTS;
@@ -153,100 +253,64 @@
       };
     }
 
-    async open(options = {}) {
-      if (this.opened) throw new DOMException("직렬 포트가 이미 열려 있습니다.", "InvalidStateError");
-      this.closing = false;
-      try {
-        if (!this.device.opened) await this.device.open();
-        if (!this.device.configuration) {
-          const configurationValue = this.device.configurations?.[0]?.configurationValue || 1;
-          await this.device.selectConfiguration(configurationValue);
-        }
-        const descriptor = this.findBulkInterface();
-        this.interfaceNumber = descriptor.usbInterface.interfaceNumber;
-        this.alternateSetting = descriptor.alternate.alternateSetting || 0;
-        this.inEndpoint = descriptor.input.endpointNumber;
-        this.outEndpoint = descriptor.output.endpointNumber;
-        this.inPacketSize = descriptor.input.packetSize || 64;
+    async initialize(options) {
+      const versionResult = await this.controlIn(REQUEST.READ_VERSION, 0, 0, 2);
+      this.chipVersion = versionResult.data?.byteLength ? versionResult.data.getUint8(0) : 0x27;
+      await this.controlOut(REQUEST.SERIAL_INIT, 0, 0);
+      await this.configureLine(options);
+    }
+  }
 
-        await this.device.claimInterface(this.interfaceNumber);
-        if (this.alternateSetting) await this.device.selectAlternateInterface(this.interfaceNumber, this.alternateSetting);
+  class UnoCdcPort extends UsbSerialPort {
+    createStreams() {
+      // Read one USB packet at a time so short bootloader replies return promptly.
+      super.createStreams(this.inPacketSize);
+    }
 
-        const versionResult = await this.controlIn(REQUEST.READ_VERSION, 0, 0, 2);
-        this.chipVersion = versionResult.data?.byteLength ? versionResult.data.getUint8(0) : 0x27;
-        await this.controlOut(REQUEST.SERIAL_INIT, 0, 0);
-        await this.configureLine(options);
-        await this.setSignals({ dataTerminalReady: false, requestToSend: false });
-        await delay(60);
-        await this.setSignals({ dataTerminalReady: true, requestToSend: true });
-        await delay(220);
+    async claimPortInterfaces() {
+      const interfaces = this.device.configuration?.interfaces || [];
+      const control = interfaces.find(usbInterface => usbInterface.alternates.some(
+        alternate => alternate.interfaceClass === 0x02 && alternate.interfaceSubclass === 0x02
+      ));
+      const descriptor = this.findBulkInterface(interfaces.filter(usbInterface => usbInterface.alternates.some(
+        alternate => alternate.interfaceClass === 0x0a
+      )));
+      if (!control) throw new DOMException("UNO R3 USB 제어 인터페이스를 찾지 못했습니다.", "NotSupportedError");
 
-        this.opened = true;
-        this.createStreams(options.bufferSize || 255);
-      } catch (error) {
-        await this.cleanupDevice();
-        throw error;
+      this.controlInterface = control.interfaceNumber;
+      await this.claimInterface(this.controlInterface);
+      await this.claimInterface(descriptor.usbInterface.interfaceNumber, descriptor.alternate.alternateSetting);
+      return descriptor;
+    }
+
+    async controlOut(request, value = 0, data) {
+      const result = await this.device.controlTransferOut({
+        requestType: "class", recipient: "interface", request, value, index: this.controlInterface
+      }, data);
+      return assertUsbResult(result, "UNO R3 USB 제어 명령");
+    }
+
+    async initialize({ baudRate = 9600, dataBits = 8, stopBits = 1, parity = "none" }) {
+      if (dataBits !== 8 || stopBits !== 1 || parity !== "none") {
+        throw new DOMException("UNO R3 USB는 8-N-1 통신만 지원합니다.", "NotSupportedError");
       }
+      const lineCoding = new DataView(new ArrayBuffer(7));
+      lineCoding.setUint32(0, baudRate, true);
+      lineCoding.setUint8(6, dataBits);
+      await this.controlOut(0x20, 0, lineCoding);
     }
 
-    createStreams(bufferSize) {
-      const transferLength = Math.max(this.inPacketSize, Math.min(4096, bufferSize || 255));
-      this.readable = new ReadableStream({
-        pull: async controller => {
-          if (!this.opened || this.closing) return controller.close();
-          try {
-            const result = assertUsbResult(await this.device.transferIn(this.inEndpoint, transferLength), "CH340 읽기");
-            if (result.data?.byteLength) {
-              const bytes = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
-              controller.enqueue(new Uint8Array(bytes));
-            }
-          } catch (error) {
-            if (this.opened && !this.closing) controller.error(error);
-          }
-        },
-        // A pending WebUSB transferIn does not finish just because `closing` changes.
-        // Close the USB device so reader.cancel() always settles.
-        cancel: () => this.close()
-      });
-      this.writable = new WritableStream({
-        write: async chunk => {
-          const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-          assertUsbResult(await this.device.transferOut(this.outEndpoint, bytes), "CH340 쓰기");
-        }
-      });
-    }
-
-    async cleanupDevice() {
-      if (this.device.opened && this.interfaceNumber !== null) {
-        await this.device.releaseInterface(this.interfaceNumber).catch(() => {});
-      }
-      if (this.device.opened) await this.device.close().catch(() => {});
-      this.interfaceNumber = null;
-    }
-
-    async close() {
-      if (!this.device.opened && !this.opened) return;
-      this.closing = true;
-      this.opened = false;
-      await this.setSignals({ dataTerminalReady: false, requestToSend: false }).catch(() => {});
-      this.readable = null;
-      this.writable = null;
-      await this.cleanupDevice();
-      this.closing = false;
-    }
-
-    handleDisconnect() {
-      this.closing = true;
-      this.opened = false;
-      this.readable = null;
-      this.writable = null;
+    async applySignals() {
+      const { dataTerminalReady, requestToSend } = this.signals;
+      await this.controlOut(0x22, (dataTerminalReady ? 1 : 0) | (requestToSend ? 2 : 0));
     }
   }
 
   class CH340Serial extends EventTarget {
-    constructor(usb) {
+    constructor(usb, filters = USB_FILTERS) {
       super();
       this.usb = usb;
+      this.filters = filters;
       this.ports = new Map();
       this.usb.addEventListener("disconnect", event => {
         const port = this.ports.get(event.device);
@@ -255,26 +319,35 @@
         this.dispatchEvent(new Event("disconnect"));
       });
       this.usb.addEventListener("connect", event => {
-        if (event.device.vendorId === CH340_VENDOR_ID) {
+        if (this.supports(event.device)) {
           this.dispatchEvent(new Event("connect"));
         }
       });
     }
 
+    supports(device) {
+      return this.filters.some(({ vendorId, productId }) =>
+        device.vendorId === vendorId && (productId === undefined || device.productId === productId)
+      );
+    }
+
     portFor(device) {
-      if (!this.ports.has(device)) this.ports.set(device, new CH340Port(device, this));
+      if (!this.ports.has(device)) {
+        const Port = device.vendorId === CH340_VENDOR_ID ? CH340Port : UnoCdcPort;
+        this.ports.set(device, new Port(device));
+      }
       return this.ports.get(device);
     }
 
     async requestPort() {
-      const device = await this.usb.requestDevice({ filters: USB_FILTERS.map(filter => ({ ...filter })) });
+      const device = await this.usb.requestDevice({ filters: this.filters.map(filter => ({ ...filter })) });
       return this.portFor(device);
     }
 
     async getPorts() {
       const devices = await this.usb.getDevices();
       return devices
-        .filter(device => device.vendorId === CH340_VENDOR_ID)
+        .filter(device => this.supports(device))
         .map(device => this.portFor(device));
     }
   }
@@ -287,11 +360,14 @@
     filters: USB_FILTERS,
     calculateDivisor,
     CH340Port,
+    UsbSerialPort,
     CH340Serial
   };
 
   if (api.isAndroid && navigator.usb) {
-    const serial = new CH340Serial(navigator.usb);
+    const includeUnoR3 = typeof document !== "undefined" && document.currentScript?.hasAttribute("data-uno-r3");
+    const filters = includeUnoR3 ? [...USB_FILTERS, ...UNO_R3_FILTERS] : USB_FILTERS;
+    const serial = new CH340Serial(navigator.usb, filters);
     const nativeSerial = navigator.serial;
     try {
       Object.defineProperty(navigator, "serial", { configurable: true, enumerable: true, value: serial });

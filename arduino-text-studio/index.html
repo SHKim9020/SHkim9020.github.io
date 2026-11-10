@@ -82,7 +82,7 @@
           <p>브라우저가 첫 컴파일에 필요한 파일을 내려받습니다. ① 컴파일 후 ③ 보드에 저장·실행을 눌러 포트를 선택하세요. ② USB 연결은 시리얼과 그래프를 볼 때 사용합니다.</p>
           <p>인터넷이 연결된 상태에서 <strong>오프라인 준비</strong>를 한 번 실행하세요. 같은 브라우저에서 오프라인으로 편집·컴파일할 수 있습니다.</p>
           <p>라이브러리 버튼으로 추가한 헤더는 브라우저 컴파일러에 포함되어 있습니다. 센서 핀, LCD 주소, LED 개수 같은 설정은 스케치에서 지정하세요.</p>
-          <p>그래프 예제는 센서 없이 테스트용 온습도 값을 보냅니다. USB 포트가 보이지 않는 Windows CH340 보드는 <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener noreferrer">공식 드라이버</a>를 확인하세요.</p>
+          <p>Android에서는 데이터 USB 케이블과 OTG 어댑터로 UNO R3 또는 CH340 보드를 연결하세요. 그래프 예제는 센서 없이 테스트용 온습도 값을 보냅니다. USB 포트가 보이지 않는 Windows CH340 보드는 <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener noreferrer">공식 드라이버</a>를 확인하세요.</p>
         </details>
       </section>
       <section id="panel-serial" class="panel" role="tabpanel" aria-labelledby="tab-serial" hidden>
@@ -141,15 +141,15 @@
     </div>
   </main>
   <footer class="shell footer"><span>ONEMAKERLAB</span><span>텍스트 업로드 · 시리얼 · 플로터 · 그래프</span></footer>
-  <script src="../arduino-studio/ch340-webserial.js?v=1.0.3"></script>
+  <script src="../arduino-studio/ch340-webserial.js?v=1.0.4" data-uno-r3></script>
   <script id="usbUploaderScript" onload="this.dataset.loaded='true'" src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
   <script src="../arduino-studio/measurements.js?v=1.0.0"></script>
   <script src="../arduino-studio/sketch.js?v=1.3.0"></script>
   <script src="plotter.js?v=1"></script>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
   <script data-manual src="vendor/prism-cpp.js?v=1.30.0"></script>
   <script src="editor.js?v=1"></script>
-  <script src="offline-assets.js?v=3"></script>
-  <script src="offline.js?v=3"></script>
+  <script src="offline-assets.js?v=4"></script>
+  <script src="offline.js?v=4"></script>
 </body>
 </html>

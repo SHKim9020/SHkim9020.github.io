@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
 const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 
-function loadDriver({ lockedSerial = false } = {}) {
+function loadDriver({ lockedSerial = false, unoR3 = false } = {}) {
   const listeners = new Map();
   const usb = {
     addEventListener(type, listener) { listeners.set(type, listener); },
@@ -27,7 +27,8 @@ function loadDriver({ lockedSerial = false } = {}) {
   }
   const window = {};
   const context = {
-    navigator, window, console: { ...console, info() {} }, setTimeout, clearTimeout,
+    navigator, window, document: { currentScript: { hasAttribute: name => unoR3 && name === "data-uno-r3" } },
+    console: { ...console, info() {} }, setTimeout, clearTimeout,
     ReadableStream, WritableStream, EventTarget, Event, DOMException, Uint8Array, ArrayBuffer, DataView
   };
   vm.runInNewContext(driverSource, context, { filename: "ch340-webserial.js" });
@@ -45,6 +46,8 @@ test("Android adapter replaces Web Serial with the confirmed CH340 VID and PID",
   assert.equal(usb.requestOptions.filters.length, 1);
   assert.equal(usb.requestOptions.filters[0].vendorId, 0x1a86);
   assert.equal(usb.requestOptions.filters[0].productId, undefined);
+  usb.device = { vendorId: 0x2341, productId: 0x0043 };
+  assert.equal((await navigator.serial.getPorts()).length, 0);
 });
 
 test("CH340 divisor calculation covers UNO runtime and bootloader rates", () => {
@@ -123,4 +126,99 @@ test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.match(app, /return serialApi\.requestPort\(\{ filters: USB_SERIAL_FILTERS \}\)/);
   assert.match(app, /isCh340Port\(port\)/);
   assert.match(html, /UNO CH340\(1A86:7523\)/);
+});
+
+function unoR3Usb({ failDataClaim = false } = {}) {
+  const commands = [];
+  const device = {
+    vendorId: 0x2341,
+    productId: 0x0043,
+    opened: false,
+    configuration: {
+      interfaces: [
+        { interfaceNumber: 0, alternates: [{ interfaceClass: 0x02, interfaceSubclass: 0x02, endpoints: [] }] },
+        { interfaceNumber: 1, alternates: [{ interfaceClass: 0x0a, endpoints: [
+          { type: "bulk", direction: "in", endpointNumber: 3, packetSize: 64 },
+          { type: "bulk", direction: "out", endpointNumber: 4, packetSize: 64 }
+        ] }] }
+      ]
+    },
+    async open() { this.opened = true; },
+    async claimInterface(number) {
+      if (number === 1 && failDataClaim) throw new DOMException("Interface unavailable", "NetworkError");
+      commands.push(["claim", number]);
+    },
+    async controlTransferOut(setup, data) {
+      assert.equal(setup.requestType, "class");
+      assert.equal(setup.recipient, "interface");
+      assert.equal(setup.index, 0);
+      commands.push([setup.request, setup.value, data && [...new Uint8Array(data.buffer)]]);
+      return { status: "ok" };
+    },
+    async transferIn(endpoint, length) {
+      assert.equal(endpoint, 3);
+      assert.equal(length, 64);
+      return { status: "ok", data: new DataView(Uint8Array.from([0x14, 0x10]).buffer) };
+    },
+    async transferOut(endpoint, bytes) {
+      commands.push(["write", endpoint, [...bytes]]);
+      return { status: "ok" };
+    },
+    async releaseInterface(number) { commands.push(["release", number]); },
+    async close() { this.opened = false; }
+  };
+  return { device, commands };
+}
+
+test("Text Studio Android chooser supports UNO R3 and CH340 through navigator.serial", async () => {
+  const { usb, navigator } = loadDriver({ unoR3: true, lockedSerial: true });
+  const { device } = unoR3Usb();
+  usb.device = device;
+  const port = await navigator.serial.requestPort();
+  assert.equal(port.getInfo().usbVendorId, 0x2341);
+  assert.deepEqual(JSON.parse(JSON.stringify(usb.requestOptions.filters)), [
+    { vendorId: 0x1a86 },
+    { vendorId: 0x2341, productId: 0x0043 },
+    { vendorId: 0x2a03, productId: 0x0043 }
+  ]);
+  assert.equal((await navigator.serial.getPorts())[0], port);
+  usb.device = { vendorId: 0x2341, productId: 0x805a };
+  assert.equal((await navigator.serial.getPorts()).length, 0);
+});
+
+test("UNO R3 configures CDC and pulses DTR for upload, then reopens for monitoring", async () => {
+  const { usb, navigator } = loadDriver({ unoR3: true });
+  const { device, commands } = unoR3Usb();
+  usb.device = device;
+  const port = await navigator.serial.requestPort();
+
+  await port.open({ baudRate: 115200 });
+  assert.deepEqual(commands.slice(0, 5), [
+    ["claim", 0], ["claim", 1], [0x20, 0, [0x00, 0xc2, 0x01, 0x00, 0, 0, 8]],
+    [0x22, 0, undefined], [0x22, 3, undefined]
+  ]);
+  const writer = port.writable.getWriter();
+  await writer.write(Uint8Array.from([0x30, 0x20]));
+  writer.releaseLock();
+  assert.ok(commands.some(command => command[0] === "write" && command[1] === 4));
+  const reader = port.readable.getReader();
+  assert.deepEqual([...(await reader.read()).value], [0x14, 0x10]);
+  await reader.cancel();
+  reader.releaseLock();
+  assert.deepEqual(commands.slice(-2), [["release", 1], ["release", 0]]);
+  assert.equal(device.opened, false);
+
+  await port.open({ baudRate: 9600 });
+  assert.ok(commands.some(([request, , data]) => request === 0x20 && data[0] === 0x80 && data[1] === 0x25));
+  await port.close();
+});
+
+test("UNO R3 releases the control interface if claiming the data interface fails", async () => {
+  const { usb, navigator } = loadDriver({ unoR3: true });
+  const { device, commands } = unoR3Usb({ failDataClaim: true });
+  usb.device = device;
+  const port = await navigator.serial.requestPort();
+  await assert.rejects(port.open({ baudRate: 9600 }), { name: "NetworkError" });
+  assert.deepEqual(commands, [["claim", 0], ["release", 0]]);
+  assert.equal(device.opened, false);
 });

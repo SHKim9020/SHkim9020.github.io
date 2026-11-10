@@ -11,9 +11,9 @@
   const input = find("serialInput");
   const send = find("serialSend");
   const status = find("portStatus");
-  const ch340 = window.OneMakerCH340;
-  const serial = ch340?.serial || navigator.serial;
-  const connectLabel = ch340?.serial ? "② CH340 USB 연결" : "② USB 연결";
+  const usbAdapter = window.OneMakerCH340;
+  const serial = usbAdapter?.serial || navigator.serial;
+  const connectLabel = "② USB 연결";
   const log = [];
   let session;
   let state = "idle";
@@ -181,7 +181,7 @@ void loop() {
   async function disconnect(active, label = "연결 안 됨") {
     if (session !== active || state !== "open") return;
     setState("closing", "연결 해제 중");
-    if (ch340?.CH340Port && active.port instanceof ch340.CH340Port) {
+    if (usbAdapter?.UsbSerialPort && active.port instanceof usbAdapter.UsbSerialPort) {
       // Closing the USB device also cancels its in-flight transferIn.
       await active.port.close().catch(() => {});
     }

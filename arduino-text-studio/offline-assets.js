@@ -7,15 +7,15 @@
   const parserRoot = "https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/";
   self.OneMakerOffline = {
     cachePrefix: "onemaker-arduino-text-offline-",
-    cacheName: "onemaker-arduino-text-offline-v3",
+    cacheName: "onemaker-arduino-text-offline-v4",
     page: resolve("index.html"),
     ready: resolve(".offline-ready"),
     uploader,
     urls: [
-      "index.html", "style.css?v=4", "app.js?v=4", "plotter.js?v=1", "editor.js?v=1", "offline.js?v=3",
-      "offline-assets.js?v=3", "compiler-worker.mjs?v=1",
+      "index.html", "style.css?v=4", "app.js?v=5", "plotter.js?v=1", "editor.js?v=1", "offline.js?v=4",
+      "offline-assets.js?v=4", "compiler-worker.mjs?v=1",
       "vendor/prism-cpp.js?v=1.30.0", uploader,
-      "../arduino-studio/ch340-webserial.js?v=1.0.3", "../arduino-studio/measurements.js?v=1.0.0",
+      "../arduino-studio/ch340-webserial.js?v=1.0.4", "../arduino-studio/measurements.js?v=1.0.0",
       "../arduino-studio/sketch.js?v=1.3.0", "../arduino-studio/browser-avr-core.mjs?v=1",
       "../arduino-studio/browser-avr-2.json.gz",
       ...["cc1plus", "avr-as", "avr-ld", "avr-objcopy"].flatMap(tool =>
