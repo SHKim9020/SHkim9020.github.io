@@ -6,13 +6,13 @@
   const uploader = "https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js";
   const parserRoot = "https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/";
   self.OneMakerOffline = {
-    cacheName: "onemaker-arduino-text-offline-v1",
+    cacheName: "onemaker-arduino-text-offline-v2",
     page: resolve("index.html"),
     ready: resolve(".offline-ready"),
     uploader,
     urls: [
-      "index.html", "style.css?v=3", "app.js?v=3", "editor.js?v=1", "offline.js?v=1",
-      "offline-assets.js?v=1", "compiler-worker.mjs?v=1",
+      "index.html", "style.css?v=3", "app.js?v=3", "editor.js?v=1", "offline.js?v=2",
+      "offline-assets.js?v=2", "compiler-worker.mjs?v=1",
       "vendor/prism-cpp.js?v=1.30.0", uploader,
       "../arduino-studio/ch340-webserial.js?v=1.0.3", "../arduino-studio/measurements.js?v=1.0.0",
       "../arduino-studio/sketch.js?v=1.3.0", "../arduino-studio/browser-avr-core.mjs?v=1",

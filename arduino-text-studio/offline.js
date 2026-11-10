@@ -3,7 +3,7 @@
   const button = document.getElementById("offlineBtn");
   const label = document.getElementById("offlineStatus");
   const { cacheName, ready, uploader, urls } = window.OneMakerOffline;
-  const cachedView = new URL(location.href).searchParams.get("offline") === "1";
+  let cachedView = new URL(location.href).searchParams.get("offline") === "1";
   const workerUrl = new URL("./compiler-worker.mjs?v=1", document.baseURI);
 
   function checkCompiler() {
@@ -32,7 +32,7 @@
   }
 
   function showReady() {
-    button.textContent = cachedView ? "온라인으로 열기" : "오프라인 열기";
+    button.textContent = cachedView ? "온라인으로 전환" : "오프라인으로 전환";
     label.textContent = cachedView ? "오프라인 모드" : "오프라인 준비 완료";
   }
 
@@ -42,7 +42,7 @@
   }
 
   // Register on page load so compilation workers are controlled before the user prepares.
-  const registration = navigator.serviceWorker.register("./sw.js?v=1").then(async () => {
+  const registration = navigator.serviceWorker.register("./sw.js?v=2").then(async () => {
     await navigator.serviceWorker.ready;
     const cache = await caches.open(cacheName);
     if (await isReady(cache)) showReady();
@@ -60,8 +60,11 @@
     try {
       if (await isReady(cache)) {
         const page = new URL("./", location.href);
-        if (!cachedView) page.searchParams.set("offline", "1");
-        location.assign(page);
+        cachedView = !cachedView;
+        if (cachedView) page.searchParams.set("offline", "1");
+        // Keep the live serial connection and in-memory graph data when switching modes.
+        history.replaceState(history.state, "", page);
+        showReady();
         return;
       }
       label.textContent = "오프라인 파일 저장 중…";

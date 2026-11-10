@@ -1,4 +1,4 @@
-importScripts("./offline-assets.js?v=1");
+importScripts("./offline-assets.js?v=2");
 const { cacheName, page, urls } = self.OneMakerOffline;
 const offlineAssets = new Set(urls);
 const prefix = "onemaker-arduino-text-offline-";
