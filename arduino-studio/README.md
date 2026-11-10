@@ -27,6 +27,7 @@ Arduino UNO R3와 ATmega328P Nano를 위한 수업용 Blockly 웹앱입니다.
 
 - 컴파일러 도구는 [AVR GCC WASM 0.2.0](https://www.npmjs.com/package/@horang-corp/avr-gcc-wasm/v/0.2.0)에서 브라우저가 직접 불러옵니다. [소스와 도구별 라이선스](https://github.com/horang-corp/avr-gcc-wasm/blob/main/THIRD_PARTY_NOTICES.md)
 - 브라우저용 라이브러리 묶음은 [Arduino AVR Core 1.8.8](https://github.com/arduino/ArduinoCore-avr/tree/1.8.8), [Arduino AVR Toolchain](https://github.com/arduino/toolchain-avr), [avr-libc](https://github.com/avrdudes/avr-libc), [GCC](https://gcc.gnu.org/git.html), [Adafruit DHT 1.4.6](https://github.com/adafruit/DHT-sensor-library/tree/1.4.6), [Adafruit Unified Sensor 1.1.15](https://github.com/adafruit/Adafruit_Sensor/tree/1.1.15), [LiquidCrystal_I2C 2.0.0](https://github.com/markub3327/LiquidCrystal_I2C)을 사용합니다. 원본 라이선스는 각 소스에서 확인할 수 있습니다.
+- [Arduino 텍스트 스튜디오](../arduino-text-studio/)의 추가 묶음은 [Servo 1.3.0](https://github.com/arduino-libraries/Servo/tree/1.3.0), [Adafruit NeoPixel 1.15.5](https://github.com/adafruit/Adafruit_NeoPixel/tree/1.15.5), [Adafruit SSD1306 2.5.16](https://github.com/adafruit/Adafruit_SSD1306/tree/2.5.16), [Adafruit GFX 1.12.5](https://github.com/adafruit/Adafruit-GFX-Library/tree/1.12.5), [Adafruit BusIO 1.17.4](https://github.com/adafruit/Adafruit_BusIO/tree/1.17.4)를 포함합니다. 재생성할 때는 아래 Python 명령 끝에 `--extra-libraries`를 붙입니다.
 - 개발용 재생성 명령은 `arduino-cli core install arduino:avr@1.8.8` 및 `python3 arduino-studio/build-browser-avr.py ~/.arduino15`입니다.
 
 ## 온습도 그래프와 CSV

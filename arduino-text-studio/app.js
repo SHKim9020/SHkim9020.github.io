@@ -4,12 +4,16 @@
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   const source = find("sketchSource");
   const connect = find("serialConnect");
+  const upload = find("sketchUpload");
+  const sketchStatus = find("sketchStatus");
   const baud = find("serialBaud");
   const output = find("serialOutput");
   const input = find("serialInput");
   const send = find("serialSend");
   const status = find("portStatus");
-  const serial = navigator.serial;
+  const ch340 = window.OneMakerCH340;
+  const serial = ch340?.serial || navigator.serial;
+  const connectLabel = ch340?.serial ? "② CH340 USB 연결" : "② USB 연결";
   const log = [];
   let session;
   let state = "idle";
@@ -24,11 +28,29 @@
   }
 
   const graph = window.OneMakerMeasurements.create({ panel: find("panel-graph"), download });
+  find("sketchCompile").addEventListener("click", () => activate(tabs[0]));
+  // Release the monitor's port before the uploader asks Chrome for a port.
+  upload.addEventListener("click", async (event) => {
+    activate(tabs[0]);
+    if (state !== "open") return;
+    event.stopImmediatePropagation();
+    sketchStatus.textContent = "업로드를 위해 시리얼 연결을 해제하는 중입니다.";
+    await disconnect(session);
+    if (upload.disabled) return;
+    if (navigator.userActivation?.isActive === false) {
+      sketchStatus.textContent = "시리얼 연결을 해제했습니다. ③ 보드에 저장·실행을 다시 눌러 주세요.";
+      return;
+    }
+    upload.click();
+  }, true);
   const sketch = window.OneMakerSketch({
-    panel: find("panel-sketch"), download,
+    panel: find("panel-sketch"), controls: find("boardActions"), download,
     portBusy: () => state !== "idle",
-    uploaded: () => activate(tabs[1]),
-    workerUrl: new URL("../arduino-studio/browser-avr-worker.mjs?v=1", document.baseURI),
+    uploaded: () => {
+      activate(tabs[1]);
+      status.textContent = "업로드 완료 · USB 다시 연결";
+    },
+    workerUrl: new URL("../arduino-studio/browser-avr-worker.mjs?v=2", document.baseURI),
     storageKey: "onemaker-arduino-text-studio-sketch-v1",
   });
 
@@ -90,13 +112,34 @@ void loop() {
     source.focus();
   });
 
+  for (const button of document.querySelectorAll("[data-library]")) {
+    button.addEventListener("click", () => {
+      if (source.readOnly) return;
+      const included = new Set(
+        [...source.value.matchAll(/^[\t ]*#[\t ]*include[\t ]*[<"]([^>"]+)[>"]/gm)].map(match => match[1]),
+      );
+      const headers = button.dataset.library.split(",");
+      const missing = headers.filter(header => !included.has(header));
+      if (!missing.length) {
+        sketchStatus.textContent = headers.join(", ") + " 라이브러리가 이미 코드에 있습니다.";
+        return;
+      }
+      const includes = missing.map(header => "#include <" + header + ">").join("\n");
+      source.value = includes + "\n" + (source.value ? "\n" + source.value : "");
+      source.dispatchEvent(new Event("input"));
+      sketchStatus.textContent = missing.join(", ") + " 라이브러리를 추가했습니다.";
+      source.focus();
+      source.setSelectionRange(0, includes.length);
+    });
+  }
+
   function setState(next, label) {
     state = next;
     const connected = state === "open";
     status.textContent = label;
     status.classList.toggle("connected", connected);
     connect.disabled = !serial || state === "opening" || state === "closing";
-    connect.textContent = connected ? "연결 끊기" : "USB 연결";
+    connect.textContent = connected ? "② 연결 끊기" : connectLabel;
     baud.disabled = state !== "idle";
     input.disabled = !connected;
     send.disabled = !connected || Boolean(session?.writeTask);
@@ -133,6 +176,10 @@ void loop() {
   async function disconnect(active, label = "연결 안 됨") {
     if (session !== active || state !== "open") return;
     setState("closing", "연결 해제 중");
+    if (ch340?.CH340Port && active.port instanceof ch340.CH340Port) {
+      // Closing the USB device also cancels its in-flight transferIn.
+      await active.port.close().catch(() => {});
+    }
     await active.reader?.cancel().catch(() => {});
     await Promise.allSettled([active.readTask, active.writeTask]);
     try {
@@ -217,5 +264,5 @@ void loop() {
     }
   });
 
-  setState("idle", serial ? "연결 안 됨" : "USB 연결은 PC Chrome·Edge에서 지원");
+  setState("idle", serial ? "연결 안 됨" : "USB 연결을 지원하는 브라우저가 필요합니다");
 })();

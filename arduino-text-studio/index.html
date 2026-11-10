@@ -6,15 +6,19 @@
   <meta name="theme-color" content="#132e2d">
   <meta name="description" content="Arduino UNO·Nano 텍스트 코드 컴파일, USB 업로드, 시리얼 모니터와 실시간 온습도 그래프">
   <title>Arduino 텍스트 스튜디오 | 원메이커랩</title>
-  <link rel="stylesheet" href="style.css?v=1">
+  <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
   <header class="header">
     <div class="shell header-inner">
       <div class="brand"><span class="brand-mark" aria-hidden="true">⟨/⟩</span><div><p>ONEMAKERLAB</p><strong>Arduino 텍스트 스튜디오</strong></div></div>
       <div class="port-controls">
+        <div id="boardActions" class="board-actions" role="group" aria-label="아두이노 보드 작업">
+          <button type="button" id="sketchCompile" class="button board-button" disabled>① 컴파일</button>
+          <button id="serialConnect" type="button" class="button board-button" title="Arduino USB 또는 CH340 시리얼 포트 연결">② USB 연결</button>
+          <button type="button" id="sketchUpload" class="button board-button board-upload" arduino-uploader verify disabled>③ 보드에 저장·실행 <span class="upload-progress"></span></button>
+        </div>
         <span id="portStatus" class="port-status" role="status">연결 안 됨</span>
-        <button id="serialConnect" type="button" class="button button-light">USB 연결</button>
       </div>
     </div>
   </header>
@@ -38,27 +42,37 @@
             <button id="sketchDownload" type="button" class="button">INO 저장</button>
           </div>
         </div>
-        <div class="editor">
-          <div class="editor-header"><span aria-hidden="true" class="editor-dot"></span><label for="sketchSource">Sketch.ino</label><span class="editor-lang">Arduino C++</span></div>
-          <textarea id="sketchSource" aria-label="업로드할 Arduino C++ 코드" spellcheck="false" autocomplete="off" placeholder="void setup() { }&#10;&#10;void loop() { }"></textarea>
-        </div>
-        <div class="toolbar upload-toolbar">
+        <div class="toolbar board-select">
           <label for="sketchBoard">보드</label>
           <select id="sketchBoard">
             <option value="uno">Arduino UNO R3</option>
             <option value="nano">Nano (ATmega328P)</option>
             <option value="nanoOldBootloader">Nano (구형 부트로더)</option>
           </select>
-          <div class="actions">
-            <button type="button" id="sketchCompile" class="button" disabled>컴파일</button>
-            <button type="button" id="sketchUpload" class="button button-primary" arduino-uploader verify disabled>USB 업로드 <span class="upload-progress"></span></button>
+        </div>
+        <div class="library-shelf" role="group" aria-label="자주 쓰는 라이브러리">
+          <p><strong>자주 쓰는 라이브러리</strong> <span>버튼을 누르면 코드에 추가됩니다.</span></p>
+          <div class="library-buttons">
+            <button type="button" class="button" data-library="Servo.h">서보</button>
+            <button type="button" class="button" data-library="Adafruit_NeoPixel.h">네오픽셀</button>
+            <button type="button" class="button" data-library="Adafruit_GFX.h,Adafruit_SSD1306.h">OLED</button>
+            <button type="button" class="button" data-library="LiquidCrystal_I2C.h">I²C LCD</button>
+            <button type="button" class="button" data-library="DHT.h">온습도 (DHT)</button>
+            <button type="button" class="button" data-library="Wire.h">Wire (I²C)</button>
+            <button type="button" class="button" data-library="SPI.h">SPI</button>
+            <button type="button" class="button" data-library="EEPROM.h">EEPROM</button>
+            <button type="button" class="button" data-library="SoftwareSerial.h">SoftwareSerial</button>
           </div>
         </div>
         <pre id="sketchStatus" class="notice" role="status">코드를 붙여넣고 컴파일을 눌러 주세요. 처음에는 브라우저가 컴파일러를 내려받습니다.</pre>
+        <div class="editor">
+          <div class="editor-header"><span aria-hidden="true" class="editor-dot"></span><label for="sketchSource">Sketch.ino</label><span class="editor-lang">Arduino C++</span></div>
+          <textarea id="sketchSource" aria-label="업로드할 Arduino C++ 코드" spellcheck="false" autocomplete="off" placeholder="void setup() { }&#10;&#10;void loop() { }"></textarea>
+        </div>
         <details class="guide">
           <summary>컴파일과 USB 업로드 도움말</summary>
-          <p>Chrome 또는 Edge에서 사용하세요. 브라우저가 첫 컴파일에 필요한 파일을 내려받습니다. USB 업로드 중에는 시리얼 연결을 끊어 주세요.</p>
-          <p>기본 Arduino 함수와 Wire, SPI, EEPROM, SoftwareSerial, DHT, Adafruit_Sensor, LiquidCrystal_I2C를 지원합니다.</p>
+          <p>브라우저가 첫 컴파일에 필요한 파일을 내려받습니다. ① 컴파일 후 ③ 보드에 저장·실행을 눌러 포트를 선택하세요. ② USB 연결은 시리얼과 그래프를 볼 때 사용합니다.</p>
+          <p>라이브러리 버튼으로 추가한 헤더는 브라우저 컴파일러에 포함되어 있습니다. 센서 핀, LCD 주소, LED 개수 같은 설정은 스케치에서 지정하세요.</p>
           <p>그래프 예제는 센서 없이 테스트용 온습도 값을 보냅니다. USB 포트가 보이지 않는 Windows CH340 보드는 <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener noreferrer">공식 드라이버</a>를 확인하세요.</p>
         </details>
       </section>
@@ -75,7 +89,7 @@
           </select>
           <button id="clearSerial" type="button" class="button">화면 지우기</button>
         </div>
-        <p class="hint">스케치의 <code>Serial.begin()</code>에 지정한 속도를 선택하고 상단의 <strong>USB 연결</strong>을 누르세요.</p>
+        <p class="hint">스케치의 <code>Serial.begin()</code>에 지정한 속도를 선택하고 상단의 <strong>② USB 연결</strong>을 누르세요.</p>
         <pre id="serialOutput" class="terminal" role="log" aria-label="시리얼 수신 기록" aria-live="off" tabindex="0"></pre>
         <form id="serialForm" class="send">
           <input id="serialInput" aria-label="보드로 보낼 메시지" placeholder="보드로 보낼 메시지" autocomplete="off" maxlength="1024" disabled>
@@ -102,9 +116,10 @@
     </div>
   </main>
   <footer class="shell footer"><span>ONEMAKERLAB</span><span>텍스트 업로드 · 시리얼 · 그래프</span></footer>
+  <script src="../arduino-studio/ch340-webserial.js?v=1.0.3"></script>
   <script id="usbUploaderScript" onload="this.dataset.loaded='true'" src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
   <script src="../arduino-studio/measurements.js?v=1.0.0"></script>
-  <script src="../arduino-studio/sketch.js?v=1.2.0"></script>
-  <script src="app.js?v=1"></script>
+  <script src="../arduino-studio/sketch.js?v=1.3.0"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

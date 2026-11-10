@@ -45,7 +45,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 }
 .brand p { color: #a9d2c6; }
 .brand strong { font-size: 1rem; }
-.port-controls { gap: 10px; }
+.port-controls { flex-direction: column; align-items: flex-end; gap: 5px; }
 .port-status {
   color: #d5e8e3;
   display: flex;
@@ -117,7 +117,6 @@ h1 { margin: 7px 0; font-size: clamp(1.55rem, 4vw, 2.2rem); letter-spacing: -.05
 .button { font-weight: 700; white-space: nowrap; }
 .button:hover:not(:disabled) { border-color: var(--teal); }
 .button-primary { border-color: var(--teal); background: var(--teal); color: #fff; }
-.button-light { border-color: #c6e4db; background: #e2f6ef; color: #173e34; }
 .upload-progress:empty { display: none; }
 .upload-progress { margin-left: 4px; }
 
@@ -202,8 +201,6 @@ textarea:focus-visible { outline-offset: -3px; }
   .brand { gap: 7px; }
   .brand-mark { width: 32px; height: 32px; }
   .brand strong { font-size: .82rem; }
-  .port-controls { gap: 4px; flex-direction: column-reverse; align-items: flex-end; }
-  .port-controls button { min-height: 29px; padding: 3px 8px; }
   .port-status { font-size: .65rem; }
   .intro { padding: 22px 0 16px; }
   .panel { padding: 14px; }
@@ -211,4 +208,33 @@ textarea:focus-visible { outline-offset: -3px; }
   .toolbar > .actions { margin-left: 0; }
   .charts { grid-template-columns: 1fr; }
   .footer { letter-spacing: .02em; }
+}
+
+.board-actions, .library-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.board-actions { justify-content: flex-end; }
+.board-button {
+  background: transparent;
+  color: #f5fbfa;
+  border-color: #598079;
+}
+.board-button:hover:not(:disabled) { border-color: #ade1ce; }
+.board-upload { background: #a9ead2; color: #103c31; border-color: #a9ead2; }
+.board-upload:disabled { opacity: .68; }
+.board-select { margin-top: 0; }
+.library-shelf {
+  margin: 0 0 13px;
+  padding: 10px 12px;
+  background: #f3f8f5;
+  border: 1px solid #dfeae4;
+  border-radius: 9px;
+}
+.library-shelf p { margin: 0 0 7px; font-size: .82rem; }
+.library-shelf p span { margin-left: 4px; color: var(--muted); }
+.library-buttons .button { min-height: 34px; padding: 5px 9px; font-size: .8rem; color: var(--teal); }
+
+@media (max-width: 730px) {
+  .header-inner { align-items: stretch; flex-direction: column; gap: 8px; padding-block: 9px; }
+  .port-controls { align-items: flex-start; }
+  .board-actions { justify-content: flex-start; }
+  .board-actions .button { min-height: 35px; padding: 4px 8px; font-size: .79rem; }
 }

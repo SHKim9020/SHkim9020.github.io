@@ -35,7 +35,7 @@
   }
 
   window.OneMakerSketch = function ({
-    panel, portBusy, uploaded, download,
+    panel, portBusy, uploaded, download, controls = panel,
     workerUrl = new URL("browser-avr-worker.mjs?v=1", document.baseURI),
     storageKey = "onemaker-arduino-sketch-v1",
   }) {
@@ -43,8 +43,8 @@
     const source = find("sketchSource");
     const board = find("sketchBoard");
     const localCompiler = find("sketchLocalCompiler");
-    const compile = find("sketchCompile");
-    const upload = find("sketchUpload");
+    const compile = controls.querySelector("#sketchCompile");
+    const upload = controls.querySelector("#sketchUpload");
     const status = find("sketchStatus");
     const progress = upload.querySelector(".upload-progress");
     let hexUrl;
@@ -105,7 +105,9 @@
         hexUrl = URL.createObjectURL(new Blob([hex], { type: "text/plain" }));
         upload.setAttribute("hex-href", hexUrl);
         upload.setAttribute("board", target);
-        status.textContent = "컴파일 완료. USB 업로드를 누르고 보드 포트를 선택해 주세요.";
+        status.textContent = controls === panel
+          ? "컴파일 완료. USB 업로드를 누르고 보드 포트를 선택해 주세요."
+          : "컴파일 완료. ③ 보드에 저장·실행을 누르고 USB 포트를 선택해 주세요.";
       } catch (error) {
         status.textContent = error.message.includes("No such file or directory")
           ? error.message + (localCompiler
