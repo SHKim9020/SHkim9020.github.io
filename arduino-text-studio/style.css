@@ -238,3 +238,60 @@ textarea:focus-visible { outline-offset: -3px; }
   .board-actions { justify-content: flex-start; }
   .board-actions .button { min-height: 35px; padding: 4px 8px; font-size: .79rem; }
 }
+
+.board-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px 9px;
+  font-size: .76rem;
+  color: #c1e0d5;
+}
+.offline-button {
+  color: #d8f3e8;
+  background: transparent;
+  border: 1px solid #70958d;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-weight: 700;
+}
+.editor-stack { position: relative; }
+#sketchHighlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre;
+}
+#sketchHighlight, #sketchSource {
+  padding: 13px;
+  font: .88rem/1.65 var(--mono);
+  letter-spacing: normal;
+  tab-size: 2;
+}
+#sketchHighlight code { font: inherit; }
+#sketchSource { position: relative; white-space: pre; overflow: auto; }
+#sketchSource.highlighted { color: transparent; caret-color: #f4fdf9; }
+#sketchSource.highlighted::selection { color: transparent; background: #608fa06e; }
+#sketchHighlight .token.function { color: #8edcff; }
+#sketchHighlight .token.keyword { color: #deb5ff; }
+#sketchHighlight .token.comment { color: #a6bbad; }
+#sketchHighlight .token.string,
+#sketchHighlight .token.char { color: #b9e99f; }
+#sketchHighlight .token.number,
+#sketchHighlight .token.boolean,
+#sketchHighlight .token.constant { color: #ffc18c; }
+#sketchHighlight .token.directive,
+#sketchHighlight .token.macro-name { color: #ffcd84; }
+#sketchHighlight .token.operator { color: #b1dad4; }
+@media (max-width: 730px) {
+  .board-status { justify-content: flex-start; }
+}
+@media (forced-colors: active) {
+  #sketchHighlight { visibility: hidden; }
+  #sketchSource.highlighted { color: CanvasText; caret-color: auto; }
+  #sketchSource.highlighted::selection { color: HighlightText; background: Highlight; }
+}

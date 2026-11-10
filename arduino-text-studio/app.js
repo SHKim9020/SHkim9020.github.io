@@ -50,7 +50,7 @@
       activate(tabs[1]);
       status.textContent = "업로드 완료 · USB 다시 연결";
     },
-    workerUrl: new URL("../arduino-studio/browser-avr-worker.mjs?v=2", document.baseURI),
+    workerUrl: new URL("./compiler-worker.mjs?v=1", document.baseURI),
     storageKey: "onemaker-arduino-text-studio-sketch-v1",
   });
 
