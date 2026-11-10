@@ -1,4 +1,4 @@
-importScripts("./offline-assets.js?v=4");
+importScripts("./offline-assets.js?v=5");
 const { cacheName, cachePrefix, page, ready, urls } = self.OneMakerOffline;
 const offlineAssets = new Set(urls);
 const root = new URL("./", self.location.href).pathname;

@@ -42,7 +42,7 @@
   }
 
   // Register on page load so compilation workers are controlled before the user prepares.
-  const registration = navigator.serviceWorker.register("./sw.js?v=4").then(async () => {
+  const registration = navigator.serviceWorker.register("./sw.js?v=5").then(async () => {
     await navigator.serviceWorker.ready;
     const cache = await caches.open(cacheName);
     if (await isReady(cache)) showReady();

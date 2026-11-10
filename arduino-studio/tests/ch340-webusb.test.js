@@ -128,8 +128,11 @@ test("CH340 adapter loads before the uploader and is available offline", () => {
   assert.match(html, /UNO CH340\(1A86:7523\)/);
 });
 
-function unoR3Usb({ failDataClaim = false } = {}) {
+function unoR3Usb({ failDataClaim = false, respondOn = 1 } = {}) {
   const commands = [];
+  const packets = [];
+  let pendingRead;
+  let syncAttempts = 0;
   const device = {
     vendorId: 0x2341,
     productId: 0x0043,
@@ -158,14 +161,24 @@ function unoR3Usb({ failDataClaim = false } = {}) {
     async transferIn(endpoint, length) {
       assert.equal(endpoint, 3);
       assert.equal(length, 64);
-      return { status: "ok", data: new DataView(Uint8Array.from([0x14, 0x10]).buffer) };
+      const data = packets.shift() || await new Promise(resolve => { pendingRead = resolve; });
+      return { status: "ok", data: new DataView(Uint8Array.from(data).buffer) };
     },
     async transferOut(endpoint, bytes) {
       commands.push(["write", endpoint, [...bytes]]);
+      if (bytes[0] === 0x30 && bytes[1] === 0x20 && ++syncAttempts >= respondOn) {
+        packets.push([0x55, 0x14], [0x10]);
+        pendingRead?.(packets.shift());
+        pendingRead = null;
+      }
       return { status: "ok" };
     },
     async releaseInterface(number) { commands.push(["release", number]); },
-    async close() { this.opened = false; }
+    async close() {
+      this.opened = false;
+      pendingRead?.([]);
+      pendingRead = null;
+    }
   };
   return { device, commands };
 }
@@ -202,14 +215,17 @@ test("UNO R3 configures CDC and pulses DTR for upload, then reopens for monitori
   writer.releaseLock();
   assert.ok(commands.some(command => command[0] === "write" && command[1] === 4));
   const reader = port.readable.getReader();
-  assert.deepEqual([...(await reader.read()).value], [0x14, 0x10]);
+  assert.deepEqual([...(await reader.read()).value], [0x55, 0x14]);
+  assert.deepEqual([...(await reader.read()).value], [0x10]);
   await reader.cancel();
   reader.releaseLock();
   assert.deepEqual(commands.slice(-2), [["release", 1], ["release", 0]]);
   assert.equal(device.opened, false);
 
-  await port.open({ baudRate: 9600 });
+  const writes = commands.filter(([request]) => request === "write").length;
+  await (await navigator.serial.requestMonitorPort()).open({ baudRate: 9600 });
   assert.ok(commands.some(([request, , data]) => request === 0x20 && data[0] === 0x80 && data[1] === 0x25));
+  assert.equal(commands.filter(([request]) => request === "write").length, writes);
   await port.close();
 });
 
@@ -220,5 +236,30 @@ test("UNO R3 releases the control interface if claiming the data interface fails
   const port = await navigator.serial.requestPort();
   await assert.rejects(port.open({ baudRate: 9600 }), { name: "NetworkError" });
   assert.deepEqual(commands, [["claim", 0], ["release", 0]]);
+  assert.equal(device.opened, false);
+});
+
+test("UNO R3 retries the upload handshake after a timeout and keeps both streams usable", async () => {
+  const { usb, navigator } = loadDriver({ unoR3: true });
+  const { device, commands } = unoR3Usb({ respondOn: 2 });
+  usb.device = device;
+  const port = await navigator.serial.requestPort();
+  await port.open({ baudRate: 115200 });
+  assert.equal(commands.filter(([request, value]) => request === 0x22 && value === 3).length, 2);
+  assert.deepEqual(commands.filter(([request]) => request === "write"), [
+    ["write", 4, [0x30, 0x20]], ["write", 4, [0x30, 0x20]]
+  ]);
+  assert.equal(port.readable.locked, false);
+  assert.equal(port.writable.locked, false);
+  await port.close();
+});
+
+test("UNO R3 releases USB interfaces when the bootloader never answers", async () => {
+  const { usb, navigator } = loadDriver({ unoR3: true });
+  const { device, commands } = unoR3Usb({ respondOn: Infinity });
+  usb.device = device;
+  const port = await navigator.serial.requestPort();
+  await assert.rejects(port.open({ baudRate: 115200 }), { name: "TimeoutError" });
+  assert.deepEqual(commands.slice(-2), [["release", 1], ["release", 0]]);
   assert.equal(device.opened, false);
 });

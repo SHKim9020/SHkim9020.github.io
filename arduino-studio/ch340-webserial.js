@@ -118,7 +118,14 @@
       await this.applySignals();
     }
 
-    async open(options = {}) {
+    async pulseReset(releaseMs, settleMs) {
+      await this.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await delay(releaseMs);
+      await this.setSignals({ dataTerminalReady: true, requestToSend: true });
+      await delay(settleMs);
+    }
+
+    async open(options = {}, reset = true) {
       if (this.opened) throw new DOMException("직렬 포트가 이미 열려 있습니다.", "InvalidStateError");
       this.closing = false;
       try {
@@ -133,10 +140,7 @@
         this.inPacketSize = descriptor.input.packetSize || 64;
 
         await this.initialize(options);
-        await this.setSignals({ dataTerminalReady: false, requestToSend: false });
-        await delay(60);
-        await this.setSignals({ dataTerminalReady: true, requestToSend: true });
-        await delay(220);
+        if (reset) await this.pulseReset(60, 220);
 
         this.opened = true;
         this.createStreams(options.bufferSize || 255);
@@ -262,6 +266,56 @@
   }
 
   class UnoCdcPort extends UsbSerialPort {
+    async open(options) {
+      const upload = this.uploadRequested;
+      this.uploadRequested = false;
+      await super.open(options, !upload);
+      if (!upload) return;
+      try {
+        await this.syncBootloader();
+      } catch (error) {
+        await this.close();
+        throw error;
+      }
+    }
+
+    async syncBootloader() {
+      const reader = this.readable.getReader();
+      const writer = this.writable.getWriter();
+      let pendingRead;
+      try {
+        // Let the reset capacitor discharge, then give stock Optiboot time to flash its startup LED.
+        for (const settleMs of [425, 540]) {
+          await this.pulseReset(250, settleMs);
+          await writer.write(Uint8Array.of(0x30, 0x20));
+
+          const deadline = Date.now() + 300;
+          let inSync = false;
+          while (Date.now() < deadline) {
+            // Leave an in-flight USB read in place across a timeout and the next reset.
+            pendingRead ||= reader.read();
+            let timer;
+            const timeout = new Promise(resolve => { timer = setTimeout(resolve, deadline - Date.now()); });
+            const packet = await Promise.race([pendingRead, timeout]).finally(() => clearTimeout(timer));
+            if (!packet) break;
+            pendingRead = undefined;
+            if (packet.done) throw new DOMException("UNO R3 USB 연결이 종료되었습니다.", "NetworkError");
+            for (const byte of packet.value) {
+              if (inSync && byte === 0x10) return;
+              inSync = byte === 0x14;
+            }
+          }
+        }
+        throw new DOMException(
+          "UNO R3 부트로더 응답 없음. 보드의 RESET 버튼을 짧게 눌렀다가 업로드를 다시 시도해 주세요.",
+          "TimeoutError"
+        );
+      } finally {
+        reader.releaseLock();
+        writer.releaseLock();
+      }
+    }
+
     createStreams() {
       // Read one USB packet at a time so short bootloader replies return promptly.
       super.createStreams(this.inPacketSize);
@@ -340,8 +394,18 @@
     }
 
     async requestPort() {
+      return this.selectPort(true);
+    }
+
+    async requestMonitorPort() {
+      return this.selectPort(false);
+    }
+
+    async selectPort(upload) {
       const device = await this.usb.requestDevice({ filters: this.filters.map(filter => ({ ...filter })) });
-      return this.portFor(device);
+      const port = this.portFor(device);
+      if (port instanceof UnoCdcPort) port.uploadRequested = upload;
+      return port;
     }
 
     async getPorts() {

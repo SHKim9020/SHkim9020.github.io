@@ -212,7 +212,7 @@ void loop() {
     let port;
     let opened = false;
     try {
-      port = await serial.requestPort();
+      port = usbAdapter?.serial ? await serial.requestMonitorPort() : await serial.requestPort();
       await port.open({ baudRate: speed });
       opened = true;
       const active = { port, reader: port.readable.getReader() };
