@@ -1,7 +1,7 @@
 (() => {
   "use strict";
-  function compileInBrowser(source, target) {
-    const worker = new Worker(new URL("browser-avr-worker.mjs?v=1", document.baseURI), { type: "module" });
+  function compileInBrowser(source, target, workerUrl) {
+    const worker = new Worker(workerUrl, { type: "module" });
     return new Promise((resolve, reject) => {
       function finish(error, hex) {
         clearTimeout(timer);
@@ -34,7 +34,11 @@
     return result.hex;
   }
 
-  window.OneMakerSketch = function ({ panel, portBusy, uploaded, download }) {
+  window.OneMakerSketch = function ({
+    panel, portBusy, uploaded, download,
+    workerUrl = new URL("browser-avr-worker.mjs?v=1", document.baseURI),
+    storageKey = "onemaker-arduino-sketch-v1",
+  }) {
     const find = (id) => panel.querySelector("#" + id);
     const source = find("sketchSource");
     const board = find("sketchBoard");
@@ -46,7 +50,6 @@
     let hexUrl;
     let compiling = false;
     let uploading = false;
-    const storageKey = "onemaker-arduino-sketch-v1";
 
     try { source.value = localStorage.getItem(storageKey) || ""; } catch (_) {}
     function updateButtons() {
@@ -54,7 +57,7 @@
       upload.disabled = compiling || uploading || !hexUrl;
       source.readOnly = uploading;
       board.disabled = uploading;
-      localCompiler.disabled = uploading;
+      if (localCompiler) localCompiler.disabled = uploading;
     }
     function invalidate() {
       if (hexUrl) URL.revokeObjectURL(hexUrl);
@@ -72,7 +75,7 @@
       invalidate();
       status.textContent = "보드가 변경되었습니다. 컴파일해 주세요.";
     });
-    localCompiler.addEventListener("change", () => {
+    localCompiler?.addEventListener("change", () => {
       invalidate();
       status.textContent = localCompiler.checked
         ? "PC에서 로컬 컴파일러를 실행하고 컴파일을 눌러 주세요."
@@ -88,13 +91,13 @@
       updateButtons();
       const code = source.value;
       const target = board.value;
-      const local = localCompiler.checked;
+      const local = Boolean(localCompiler?.checked);
       status.textContent = local
         ? "이 PC에서 Arduino CLI로 컴파일하는 중…"
         : "브라우저에서 컴파일 중… 처음에는 컴파일러를 내려받아 잠시 걸릴 수 있습니다.";
       try {
-        const hex = await (local ? compileLocally(code, target) : compileInBrowser(code, target));
-        if (code !== source.value || target !== board.value || local !== localCompiler.checked) {
+        const hex = await (local ? compileLocally(code, target) : compileInBrowser(code, target, workerUrl));
+        if (code !== source.value || target !== board.value || local !== Boolean(localCompiler?.checked)) {
           status.textContent = "컴파일 설정이 바뀌었습니다. 다시 컴파일해 주세요.";
           return;
         }
@@ -105,7 +108,9 @@
         status.textContent = "컴파일 완료. USB 업로드를 누르고 보드 포트를 선택해 주세요.";
       } catch (error) {
         status.textContent = error.message.includes("No such file or directory")
-          ? error.message + "\n지원 목록에 없는 라이브러리는 로컬 컴파일러에서 사용할 수 있습니다."
+          ? error.message + (localCompiler
+            ? "\n지원 목록에 없는 라이브러리는 로컬 컴파일러에서 사용할 수 있습니다."
+            : "\n스케치의 #include와 브라우저에서 지원하는 라이브러리 목록을 확인해 주세요.")
           : error.message;
       } finally {
         compiling = false;
@@ -129,7 +134,9 @@
       }
       uploading = true;
       progress.textContent = "";
-      status.textContent = "USB 포트를 선택해 주세요. 텍스트 업로드 후 블록 모드를 다시 쓰려면 런타임을 설치하세요.";
+      status.textContent = localCompiler
+        ? "USB 포트를 선택해 주세요. 텍스트 업로드 후 블록 모드를 다시 쓰려면 런타임을 설치하세요."
+        : "USB 포트를 선택해 주세요.";
       updateButtons();
     }, true);
 

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#132e2d">
+  <meta name="description" content="Arduino UNO·Nano 텍스트 코드 컴파일, USB 업로드, 시리얼 모니터와 실시간 온습도 그래프">
+  <title>Arduino 텍스트 스튜디오 | 원메이커랩</title>
+  <link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+  <header class="header">
+    <div class="shell header-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">⟨/⟩</span><div><p>ONEMAKERLAB</p><strong>Arduino 텍스트 스튜디오</strong></div></div>
+      <div class="port-controls">
+        <span id="portStatus" class="port-status" role="status">연결 안 됨</span>
+        <button id="serialConnect" type="button" class="button button-light">USB 연결</button>
+      </div>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="intro" aria-labelledby="main-title">
+      <p class="eyebrow">ARDUINO UNO R3 / NANO</p>
+      <h1 id="main-title">코드에서 센서 데이터까지</h1>
+      <p>Arduino C++ 코드를 브라우저에서 컴파일하고, USB로 올린 뒤 측정값을 확인하세요.</p>
+    </section>
+    <div class="workspace">
+      <nav class="tabs" aria-label="도구 선택" role="tablist">
+        <button type="button" role="tab" id="tab-sketch" aria-controls="panel-sketch" aria-selected="true">텍스트 업로드</button>
+        <button type="button" role="tab" id="tab-serial" aria-controls="panel-serial" aria-selected="false" tabindex="-1">시리얼</button>
+        <button type="button" role="tab" id="tab-graph" aria-controls="panel-graph" aria-selected="false" tabindex="-1">그래프</button>
+      </nav>
+      <section id="panel-sketch" class="panel active" role="tabpanel" aria-labelledby="tab-sketch">
+        <div class="panel-head">
+          <div><h2>Arduino C++ 코드</h2><p>코드를 붙여넣고 보드를 선택한 뒤 컴파일하세요.</p></div>
+          <div class="actions">
+            <button id="loadExample" type="button" class="button">그래프 예제</button>
+            <button id="sketchDownload" type="button" class="button">INO 저장</button>
+          </div>
+        </div>
+        <div class="editor">
+          <div class="editor-header"><span aria-hidden="true" class="editor-dot"></span><label for="sketchSource">Sketch.ino</label><span class="editor-lang">Arduino C++</span></div>
+          <textarea id="sketchSource" aria-label="업로드할 Arduino C++ 코드" spellcheck="false" autocomplete="off" placeholder="void setup() { }&#10;&#10;void loop() { }"></textarea>
+        </div>
+        <div class="toolbar upload-toolbar">
+          <label for="sketchBoard">보드</label>
+          <select id="sketchBoard">
+            <option value="uno">Arduino UNO R3</option>
+            <option value="nano">Nano (ATmega328P)</option>
+            <option value="nanoOldBootloader">Nano (구형 부트로더)</option>
+          </select>
+          <div class="actions">
+            <button type="button" id="sketchCompile" class="button" disabled>컴파일</button>
+            <button type="button" id="sketchUpload" class="button button-primary" arduino-uploader verify disabled>USB 업로드 <span class="upload-progress"></span></button>
+          </div>
+        </div>
+        <pre id="sketchStatus" class="notice" role="status">코드를 붙여넣고 컴파일을 눌러 주세요. 처음에는 브라우저가 컴파일러를 내려받습니다.</pre>
+        <details class="guide">
+          <summary>컴파일과 USB 업로드 도움말</summary>
+          <p>Chrome 또는 Edge에서 사용하세요. 브라우저가 첫 컴파일에 필요한 파일을 내려받습니다. USB 업로드 중에는 시리얼 연결을 끊어 주세요.</p>
+          <p>기본 Arduino 함수와 Wire, SPI, EEPROM, SoftwareSerial, DHT, Adafruit_Sensor, LiquidCrystal_I2C를 지원합니다.</p>
+          <p>그래프 예제는 센서 없이 테스트용 온습도 값을 보냅니다. USB 포트가 보이지 않는 Windows CH340 보드는 <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener noreferrer">공식 드라이버</a>를 확인하세요.</p>
+        </details>
+      </section>
+      <section id="panel-serial" class="panel" role="tabpanel" aria-labelledby="tab-serial" hidden>
+        <div class="panel-head"><div><h2>시리얼 모니터</h2><p>보드에서 보내는 메시지를 읽고 명령을 전송합니다.</p></div></div>
+        <div class="toolbar">
+          <label for="serialBaud">전송 속도</label>
+          <select id="serialBaud">
+            <option value="9600">9600 baud</option>
+            <option value="19200">19200 baud</option>
+            <option value="38400">38400 baud</option>
+            <option value="57600">57600 baud</option>
+            <option value="115200">115200 baud</option>
+          </select>
+          <button id="clearSerial" type="button" class="button">화면 지우기</button>
+        </div>
+        <p class="hint">스케치의 <code>Serial.begin()</code>에 지정한 속도를 선택하고 상단의 <strong>USB 연결</strong>을 누르세요.</p>
+        <pre id="serialOutput" class="terminal" role="log" aria-label="시리얼 수신 기록" aria-live="off" tabindex="0"></pre>
+        <form id="serialForm" class="send">
+          <input id="serialInput" aria-label="보드로 보낼 메시지" placeholder="보드로 보낼 메시지" autocomplete="off" maxlength="1024" disabled>
+          <button id="serialSend" type="submit" class="button button-primary" disabled>전송</button>
+        </form>
+      </section>
+      <section id="panel-graph" class="panel" role="tabpanel" aria-labelledby="tab-graph" hidden>
+        <div class="panel-head"><div><h2>온습도 실시간 그래프</h2><p>보드에서 받은 측정값을 표시하고 CSV로 저장합니다.</p></div></div>
+        <div class="toolbar">
+          <label for="measurePlace">측정 장소</label>
+          <input id="measurePlace" maxlength="60" placeholder="예: 교실 중앙">
+          <div class="actions">
+            <button id="measureExport" type="button" class="button button-primary" disabled>CSV 저장</button>
+            <button id="measureReset" type="button" class="button">기록 지우기</button>
+          </div>
+        </div>
+        <p id="measureSummary" class="notice" role="status">측정값을 기다리는 중입니다.</p>
+        <div class="charts">
+          <figure class="chart"><figcaption>온도 <small>°C</small></figcaption><svg data-metric="temperature" viewBox="0 0 360 120" role="img" aria-label="측정 순서별 온도 그래프"></svg></figure>
+          <figure class="chart"><figcaption>상대습도 <small>%</small></figcaption><svg data-metric="humidity" viewBox="0 0 360 120" role="img" aria-label="측정 순서별 상대습도 그래프"></svg></figure>
+        </div>
+        <p class="hint">보드에서 <code>DATA,25.3,36.0</code> 형식으로 한 줄씩 보내세요. 그래프는 최근 60회, CSV는 이번 페이지에서 수집한 최대 10,000건을 담습니다.</p>
+      </section>
+    </div>
+  </main>
+  <footer class="shell footer"><span>ONEMAKERLAB</span><span>텍스트 업로드 · 시리얼 · 그래프</span></footer>
+  <script id="usbUploaderScript" onload="this.dataset.loaded='true'" src="https://github.com/dbuezas/arduino-web-uploader/releases/download/v1.0.0/main.js"></script>
+  <script src="../arduino-studio/measurements.js?v=1.0.0"></script>
+  <script src="../arduino-studio/sketch.js?v=1.2.0"></script>
+  <script src="app.js?v=1"></script>
+</body>
+</html>
