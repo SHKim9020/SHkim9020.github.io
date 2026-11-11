@@ -10,7 +10,7 @@ const app = fs.readFileSync(path.join(root,'app.js'),'utf8');
 function load() {
  const ctx = { Blockly: { defineBlocksWithJsonArray(){}, Blocks:{} }, window:{}, document:{querySelector:()=>({value:"uno"})}, TextEncoder, TextDecoder, Math:Object.create(Math) };
  vm.createContext(ctx);
- vm.runInContext(app.replace('  init();','  window.testApi = { evaluate, compileExpression, cppExpression, generateArduinoCode, blocks, setWorkspace: value => workspace = value };'),ctx);
+ vm.runInContext(app.replace('  init();','  window.testApi = { evaluate, compileExpression, cppExpression, generateArduinoCode, blocks, setRequestValue: value => requestValue = value, setWorkspace: value => workspace = value };'),ctx);
  return {api:ctx.window.testApi,math:ctx.Math};
 }
 function block(type,inputs={},fields={}) {return {type,getFieldValue:n=>fields[n],getInputTargetBlock:n=>inputs[n]||null,getInput:n=>inputs[n]?{}:null,getNextBlock:()=>null};}
@@ -82,4 +82,23 @@ test('nested range expressions reject board stack overflow',()=>{
  const inner=map(50,0,100,0,10);
  const outer=block('operator_map',{VALUE:n(1),IN_MIN:n(0),IN_MAX:n(100),OUT_MIN:n(0),OUT_MAX:inner});
  assert.throws(()=>api.compileExpression(outer,{}),/변수에 먼저 저장/);
+});
+
+test('온습도센서 preserves DHT11 defaults and uses DHT22 in live, stored and exported programs', async () => {
+ const {api} = load();
+ const dropdown = api.blocks.find(entry => entry.type === 'sensor_dht_simple').args0.find(field => field.name === 'TYPE');
+ assert.deepEqual(JSON.parse(JSON.stringify(dropdown.options)), [['DHT11', '11'], ['DHT22', '22']]);
+ const previous = block('sensor_dht_simple', {}, {PIN: '4', FIELD: 'temperature'});
+ const dht22 = block('sensor_dht_simple', {}, {TYPE: '22', PIN: '5', FIELD: 'humidity'});
+ assert.deepEqual(Array.from(api.compileExpression(previous, {})), [4, 8, 4, 11, 0]);
+ assert.deepEqual(Array.from(api.compileExpression(dht22, {})), [4, 8, 5, 22, 1]);
+ api.setRequestValue((...args) => args);
+ assert.deepEqual(Array.from(await api.evaluate(previous)), ['DHT', '4', '11', 0]);
+ assert.deepEqual(Array.from(await api.evaluate(dht22)), ['DHT', '5', '22', 1]);
+ assert.equal(api.cppExpression(dht22), 'dht_5_22.readHumidity()');
+ api.setWorkspace({getAllBlocks: () => [previous, dht22], getTopBlocks: () => [], getVariableMap: () => ({getAllVariables: () => []})});
+ const code = api.generateArduinoCode();
+ assert.match(code, /DHT dht_4_11\(4, DHT11\);/);
+ assert.match(code, /DHT dht_5_22\(5, DHT22\);/);
+ assert.match(code, /dht_5_22\.begin\(\);/);
 });

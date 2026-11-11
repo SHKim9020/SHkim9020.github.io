@@ -22,7 +22,7 @@ test("input toolbox exposes the seven requested sensor blocks and pins", () => {
     assert.match(app, new RegExp(`type: "${type}"`));
   }
   assert.match(app, /type: "sensor_ultrasonic", fields: \{ TRIG: "13", ECHO: "12" \}/);
-  assert.match(app, /type: "sensor_dht_simple", fields: \{ PIN: "4", FIELD: "temperature" \}/);
+  assert.match(app, /type: "sensor_dht_simple", fields: \{ TYPE: "11", PIN: "4", FIELD: "temperature" \}/);
   assert.match(app, /type: "sensor_soil", fields: \{ PIN: "1" \}/);
 });
 

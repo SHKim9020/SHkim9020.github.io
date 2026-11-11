@@ -115,6 +115,8 @@ uint16_t pianoFrequency(int key, uint8_t high) {
   return key >= 1 && key <= 16 ? notes[key - 1] * (high ? 4 : 1) : 0;
 }`;
 
+  const dhtTypeOptions = [["DHT11", "11"], ["DHT22", "22"]];
+
   const blocks = [
     {
       type: "operator_integer", message0: "%1 정수로 변환",
@@ -278,7 +280,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
       type: "sensor_dht",
       message0: "%1 핀 %2의 %3",
       args0: [
-        { type: "field_dropdown", name: "TYPE", options: [["DHT11", "11"], ["DHT22", "22"]] },
+        { type: "field_dropdown", name: "TYPE", options: dhtTypeOptions },
         { type: "field_dropdown", name: "PIN", options: digitalOptions },
         { type: "field_dropdown", name: "FIELD", options: [["온도(℃)", "temperature"], ["습도(%)", "humidity"]] }
       ],
@@ -287,14 +289,15 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     },
     {
       type: "sensor_dht_simple",
-      message0: "온습도센서 %1 핀 %2 값",
+      message0: "온습도센서 %1 핀 %2 %3 값",
       args0: [
+        { type: "field_dropdown", name: "TYPE", options: dhtTypeOptions },
         { type: "field_dropdown", name: "PIN", options: digitalOptions },
         { type: "field_dropdown", name: "FIELD", options: [["온도", "temperature"], ["습도", "humidity"]] }
       ],
       output: "Number",
       colour: 250,
-      tooltip: "DHT11 센서의 온도 또는 습도 값을 읽습니다."
+      tooltip: "선택한 DHT11 또는 DHT22 센서의 온도나 습도를 읽습니다."
     },
     {
       type: "sensor_dust",
@@ -912,7 +915,7 @@ uint16_t pianoFrequency(int key, uint8_t high) {
       { kind: "category", name: "입력", colour: "250", contents: [
         { kind: "block", type: "sensor_light", fields: { PIN: "0" } },
         { kind: "block", type: "sensor_ultrasonic", fields: { TRIG: "13", ECHO: "12" } },
-        { kind: "block", type: "sensor_dht_simple", fields: { PIN: "4", FIELD: "temperature" } },
+        { kind: "block", type: "sensor_dht_simple", fields: { TYPE: "11", PIN: "4", FIELD: "temperature" } },
         { kind: "block", type: "sensor_dust", fields: { LED_PIN: "2", ANALOG_PIN: "0" } },
         { kind: "block", type: "sensor_soil", fields: { PIN: "1" } },
         { kind: "block", type: "sensor_push_button", fields: { PIN: "2" } },
@@ -1415,15 +1418,10 @@ uint16_t pianoFrequency(int key, uint8_t high) {
         writer.u8(block.getFieldValue("ECHO"));
         return;
       case "sensor_dht":
-        writer.u8(EX.DHT);
-        writer.u8(block.getFieldValue("PIN"));
-        writer.u8(block.getFieldValue("TYPE"));
-        writer.u8(block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
-        return;
       case "sensor_dht_simple":
         writer.u8(EX.DHT);
         writer.u8(block.getFieldValue("PIN"));
-        writer.u8(11);
+        writer.u8(dhtSensorType(block));
         writer.u8(block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
         return;
       case "sensor_dust":
@@ -2762,8 +2760,8 @@ uint16_t pianoFrequency(int key, uint8_t high) {
         return key >= 1 && key <= 16 ? PIANO_NOTES[key - 1] * (block.getFieldValue("HIGH") === "1" ? 4 : 1) : 0;
       }
       case "sensor_ultrasonic": return requestValue("SONAR", block.getFieldValue("TRIG"), block.getFieldValue("ECHO"));
-      case "sensor_dht": return requestValue("DHT", block.getFieldValue("PIN"), block.getFieldValue("TYPE"), block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
-      case "sensor_dht_simple": return requestValue("DHT", block.getFieldValue("PIN"), 11, block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
+      case "sensor_dht":
+      case "sensor_dht_simple": return requestValue("DHT", block.getFieldValue("PIN"), dhtSensorType(block), block.getFieldValue("FIELD") === "humidity" ? 1 : 0);
       case "sensor_dust": return requestValue("DUST", block.getFieldValue("LED_PIN"), block.getFieldValue("ANALOG_PIN"));
       case "husky_seen":
         return Boolean(await requestValue("HUSKY", clamp(await evaluate(inputBlock(block, "ID"), functionDepth), 0, 32767), 0));
@@ -3285,6 +3283,10 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     return cppExpression(block?.getInputTargetBlock(name)) || fallback;
   }
 
+  function dhtSensorType(block) {
+    return block.getFieldValue("TYPE") === "22" ? "22" : "11";
+  }
+
   function dhtName(pin, type) {
     return `dht_${pin}_${type}`;
   }
@@ -3334,12 +3336,9 @@ uint16_t pianoFrequency(int key, uint8_t high) {
       case "ttp229_key": return `readTtp229(${block.getFieldValue("SCL")}, ${block.getFieldValue("SDO")})`;
       case "piano_frequency": return `pianoFrequency(${cppInput(block, "KEY")}, ${block.getFieldValue("HIGH")})`;
       case "sensor_ultrasonic": return `readUltrasonic(${block.getFieldValue("TRIG")}, ${block.getFieldValue("ECHO")})`;
-      case "sensor_dht": {
-        const object = dhtName(block.getFieldValue("PIN"), block.getFieldValue("TYPE"));
-        return `${object}.${block.getFieldValue("FIELD") === "humidity" ? "readHumidity" : "readTemperature"}()`;
-      }
+      case "sensor_dht":
       case "sensor_dht_simple": {
-        const object = dhtName(block.getFieldValue("PIN"), 11);
+        const object = dhtName(block.getFieldValue("PIN"), dhtSensorType(block));
         return `${object}.${block.getFieldValue("FIELD") === "humidity" ? "readHumidity" : "readTemperature"}()`;
       }
       case "sensor_dust": return `readDust(${block.getFieldValue("LED_PIN")}, A${block.getFieldValue("ANALOG_PIN")})`;
@@ -3513,14 +3512,10 @@ uint16_t pianoFrequency(int key, uint8_t high) {
     const types = new Set(all.map(block => block.type));
     const dht = new Map();
     const servoPins = new Set();
-    all.filter(block => block.type === "sensor_dht").forEach(block => {
+    all.filter(block => block.type === "sensor_dht" || block.type === "sensor_dht_simple").forEach(block => {
       const pin = block.getFieldValue("PIN");
-      const type = block.getFieldValue("TYPE");
+      const type = dhtSensorType(block);
       dht.set(`${pin}:${type}`, { pin, type });
-    });
-    all.filter(block => block.type === "sensor_dht_simple").forEach(block => {
-      const pin = block.getFieldValue("PIN");
-      dht.set(`${pin}:11`, { pin, type: "11" });
     });
     all.filter(block => ["servo_write", "servo_write_for", "servo_detach"].includes(block.type))
       .forEach(block => servoPins.add(block.getFieldValue("PIN")));
