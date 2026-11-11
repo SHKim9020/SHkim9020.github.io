@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#132e2d">
   <meta name="description" content="Arduino UNO·Nano 텍스트 코드 컴파일, USB 업로드, 시리얼 모니터, 시리얼 플로터와 실시간 온습도 그래프">
   <title>Arduino 텍스트 스튜디오 | 원메이커랩</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <header class="header">
@@ -17,6 +17,7 @@
           <button type="button" id="sketchCompile" class="button board-button" disabled>① 컴파일</button>
           <button id="serialConnect" type="button" class="button board-button" title="Arduino USB 또는 CH340 시리얼 포트 연결">② USB 연결</button>
           <button type="button" id="sketchUpload" class="button board-button board-upload" arduino-uploader verify disabled>③ 보드에 저장·실행 <span class="upload-progress"></span></button>
+          <a class="button board-button driver-download" href="./CH341SER.EXE" download="CH341SER.EXE" title="Windows용 CH340/CH341 USB 드라이버">CH340 드라이버 다운로드</a>
         </div>
         <div class="board-status">
           <span id="portStatus" class="port-status" role="status">연결 안 됨</span>
@@ -149,7 +150,7 @@
   <script src="app.js?v=6"></script>
   <script data-manual src="vendor/prism-cpp.js?v=1.30.0"></script>
   <script src="editor.js?v=1"></script>
-  <script src="offline-assets.js?v=5"></script>
-  <script src="offline.js?v=5"></script>
+  <script src="offline-assets.js?v=6"></script>
+  <script src="offline.js?v=6"></script>
 </body>
 </html>

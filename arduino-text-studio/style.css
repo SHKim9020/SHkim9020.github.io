@@ -218,6 +218,7 @@ textarea:focus-visible { outline-offset: -3px; }
   border-color: #598079;
 }
 .board-button:hover:not(:disabled) { border-color: #ade1ce; }
+.driver-download { display: inline-flex; align-items: center; text-decoration: none; }
 .board-upload { background: #a9ead2; color: #103c31; border-color: #a9ead2; }
 .board-upload:disabled { opacity: .68; }
 .board-select { margin-top: 0; }
