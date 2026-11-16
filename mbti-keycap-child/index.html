@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2f6ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>어린이 MBTI 성향 검사 | 키캡 체험</title>
+<meta name="description" content="어린이 MBTI 20문항 A/B 성향 검사와 키캡 체험. 태블릿에 설치해 오프라인으로 사용할 수 있어요.">
+<meta name="application-name" content="MBTI 키캡 체험">
+<meta name="apple-mobile-web-app-title" content="MBTI 키캡">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<style>
+:root{--ink:#233342;--muted:#647b8c;--purple:#6257df;--mint:#26c6aa;--surface:#fff;--shadow:0 20px 48px #3c578022}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:var(--ink)}
+body{background:radial-gradient(ellipse at 9% 9%,#dff2ff 0,transparent 36%),radial-gradient(ellipse at 91% 84%,#fff1cf 0,transparent 35%),#f7f9ff}
+button{font:inherit;cursor:pointer;border:0}button:focus-visible{outline:4px solid #83ccff;outline-offset:3px}
+.app{height:100vh;height:100dvh;min-height:0;padding:clamp(8px,1.5vh,18px);display:grid;place-items:center}
+.shell{width:min(1280px,100%);height:min(830px,100%);border-radius:clamp(18px,2vw,34px);background:#fffffff4;box-shadow:var(--shadow);padding:clamp(14px,2.4vw,34px);position:relative;overflow:hidden;display:flex;flex-direction:column}
+.shell::before,.shell::after{content:'';position:absolute;border-radius:50%;pointer-events:none;z-index:0}
+.shell::before{width:200px;height:200px;background:#e5e9ff;right:-80px;top:-98px}.shell::after{width:125px;height:125px;background:#dbf8eb;left:-55px;bottom:-48px}
+.shell>*{position:relative;z-index:1}
+.hidden{display:none!important}
+/* Constant header on both question and result screens */
+.site-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex:0 0 auto;padding-bottom:clamp(9px,1.5vh,18px);border-bottom:2px solid #edf1f8}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+.brand-icon{width:clamp(46px,6vw,68px);height:clamp(46px,6vw,68px);border-radius:20px;background:linear-gradient(130deg,#eee9ff,#e3fff6);border:3px solid #e4e7fb;display:grid;place-items:center;font-size:clamp(25px,3vw,38px);flex-shrink:0;box-shadow:inset 0 -5px #dde8ed}
+.brand h1{font-size:clamp(23px,2.75vw,38px);line-height:1.15;letter-spacing:-.055em;margin:0;font-weight:900}.brand p{margin:4px 0 0;font-size:clamp(12px,1.25vw,18px);font-weight:800;color:var(--muted)}
+.header-art{display:flex;gap:7px;align-items:center;flex-shrink:0}.mini-key{width:clamp(36px,4.3vw,54px);height:clamp(36px,4.3vw,54px);border-radius:13px;display:grid;place-items:center;border:2px solid #dfe9ff;font-size:clamp(18px,2vw,26px);font-weight:950;background:#f2f4ff;box-shadow:0 5px 0 #e3e9f0}.mini-key:nth-child(2){background:#eafff5}.mini-key:nth-child(3){background:#fff4d8}.mini-key:nth-child(4){background:#ffe8ef}
+.screen{flex:1;min-height:0;display:flex;flex-direction:column}
+/* Intro */
+.intro{display:grid;grid-template-columns:1.1fr .9fr;align-items:center;gap:20px;padding:clamp(10px,2vw,28px)}
+.kicker{font-size:clamp(16px,1.5vw,20px);font-weight:900;color:#5d4eb5;background:#f1edff;border-radius:100px;padding:10px 16px;display:inline-block}
+.intro h2{font-size:clamp(36px,5.5vw,70px);line-height:1.09;letter-spacing:-.06em;margin:20px 0 16px;font-weight:950}
+.intro p{font-size:clamp(19px,2vw,27px);font-weight:750;color:var(--muted);line-height:1.55;margin:0 0 24px;max-width:630px}
+.start-btn,.next,.done-btn{background:linear-gradient(115deg,#645ce6,#1cc9a6);color:white;font-weight:950;box-shadow:0 10px 22px #4d67ba33}
+.start-btn{font-size:clamp(19px,2vw,28px);padding:19px 34px;border-radius:99px}
+.intro-graphic{height:min(390px,48vh);position:relative;display:grid;place-items:center;isolation:isolate}
+.big-tile{width:min(310px,29vw);height:min(310px,29vw);border-radius:30%;background:white;border:10px solid #2b3846;display:grid;place-items:center;font-size:clamp(60px,8vw,112px);transform:rotate(-6deg);box-shadow:13px 20px 0 #bcc9e844;z-index:2}
+.decor{position:absolute;border-radius:50%;z-index:-1}.decor.one{width:180px;height:180px;background:#ffe384;left:5%;top:10%}.decor.two{width:165px;height:165px;background:#9be4c5;right:0;top:2%}.decor.three{width:170px;height:170px;background:#bbd7ff;right:14%;bottom:5%}.sticker{position:absolute;font-size:40px;z-index:3}.s1{left:12%;bottom:20%}.s2{right:10%;top:22%}.s3{right:26%;bottom:2%}
+/* Quiz */
+.quiz{padding-top:clamp(10px,2vh,18px)}
+.progress-top{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:clamp(16px,1.5vw,22px);font-weight:950;color:var(--muted)}
+.bar{margin-top:9px;height:12px;border-radius:30px;background:#edf2f8;overflow:hidden;flex:0 0 auto}.fill{height:100%;width:0;border-radius:30px;background:linear-gradient(90deg,#609ff7,#27ccb2);transition:width .2s}
+.question-zone{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:clamp(14px,2.1vh,24px)}
+.q-icon{text-align:center;font-size:clamp(26px,3.5vw,42px);line-height:1}.q-text{text-align:center;font-size:clamp(28px,3.4vw,46px);font-weight:950;letter-spacing:-.05em;line-height:1.23;margin:0}
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:clamp(10px,2vw,24px);width:min(1060px,100%);margin:0 auto}
+.answer{min-height:clamp(135px,23vh,197px);border-radius:27px;background:#f4f8ff;border:4px solid transparent;color:var(--ink);padding:clamp(12px,2vw,26px);display:flex;gap:clamp(12px,1.7vw,22px);align-items:center;text-align:left;transition:background .12s,border-color .12s,transform .12s}
+.answer:nth-child(2){background:#f0fcf8}.answer.selected{border-color:var(--purple);background:#eeedff;transform:translateY(-2px)}.answer:nth-child(2).selected{border-color:#14bfa4;background:#e0fff4}
+.ab{width:clamp(72px,7.1vw,106px);height:clamp(72px,7.1vw,106px);border-radius:50%;flex-shrink:0;background:#fff;display:grid;place-items:center;color:var(--purple);font-size:clamp(35px,3.8vw,58px);font-weight:1000;border:5px solid #e1e4fa;box-shadow:0 7px 0 #dbe2f1}.answer:nth-child(2) .ab{color:#139d86;border-color:#c9f6e9}
+.choice-copy{font-size:clamp(21px,2vw,30px);line-height:1.38;letter-spacing:-.035em;font-weight:850;word-break:keep-all}
+.nav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:clamp(12px,2vh,22px);flex:0 0 auto}.nav-side{display:flex;gap:10px;align-items:center}.nav button,.result-actions button{border-radius:99px;padding:clamp(12px,1.5vw,19px) clamp(16px,2.7vw,37px);font-weight:950;font-size:clamp(17px,1.65vw,23px)}
+.prev{background:#e8f1ff;color:#324b67}.reset{background:#fff2da;color:#866020}.next:disabled{background:#e3ebf2;color:#97aabb;box-shadow:none;cursor:default}
+/* Result */
+.result{padding-top:clamp(12px,2vh,22px);overflow:auto}.result-grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:clamp(12px,2vw,24px);min-height:100%;align-items:stretch}
+.result-pane{background:#f8faff;border:1px solid #eff3fc;border-radius:27px;padding:clamp(16px,2.2vw,30px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px}
+.result-pane:last-child{background:#fbfefa}.result-symbol{font-size:clamp(42px,5vw,64px)}.result-label{font-size:clamp(16px,1.7vw,24px);font-weight:850;color:var(--muted)}.type{font-size:clamp(74px,9vw,132px);color:#6057e5;font-weight:1000;letter-spacing:.03em;line-height:1}.type-name{font-size:clamp(23px,2.6vw,35px);font-weight:950}.type-desc{font-size:clamp(16px,1.5vw,21px);line-height:1.55;font-weight:720;color:var(--muted);max-width:490px}
+.key-letters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;gap:clamp(7px,1vw,14px);margin:12px 0}.key-letter{aspect-ratio:1/1;border:4px solid #e2eaff;border-radius:clamp(12px,1.4vw,24px);background:#eeedff;display:grid;place-items:center;font-size:clamp(35px,4.8vw,74px);font-weight:1000;box-shadow:0 7px 0 #dde5ec}.key-letter:nth-child(2){background:#dffbf3}.key-letter:nth-child(3){background:#fff2d1}.key-letter:nth-child(4){background:#ffe8f0}
+.result-note{font-size:clamp(15px,1.4vw,20px);font-weight:820;color:#516a7a;line-height:1.5}.result-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:9px}.again{background:#e7eefc;color:#384b69}.print{background:#fff0d9;color:#765112}
+.smallprint{font-size:13px;color:#8294a0;text-align:center;margin-top:10px}
+/* Portrait / small screens */
+@media(max-width:760px) and (orientation:portrait){.app{height:auto;min-height:100dvh;display:block}.shell{height:auto;min-height:calc(100dvh - 16px);overflow:visible}.intro{grid-template-columns:1fr}.intro-graphic{display:none}.answers{grid-template-columns:1fr}.answer{min-height:115px}.quiz{min-height:calc(100dvh - 160px)}.result-grid{grid-template-columns:1fr}.result{overflow:visible}}
+@media(max-height:650px) and (orientation:landscape){.shell{padding:12px 20px}.site-header{padding-bottom:7px}.brand h1{font-size:25px}.brand p{font-size:13px}.brand-icon{width:44px;height:44px;border-radius:12px}.mini-key{width:36px;height:36px;border-radius:9px}.quiz{padding-top:7px}.bar{height:8px;margin-top:5px}.question-zone{gap:9px}.q-icon{font-size:22px}.q-text{font-size:clamp(23px,2.7vw,33px)}.answer{min-height:105px;padding:12px 16px;border-radius:18px}.ab{width:65px;height:65px;font-size:34px}.choice-copy{font-size:clamp(17px,1.6vw,22px)}.nav{margin-top:6px}.nav button{padding:9px 23px;font-size:17px}.intro h2{font-size:42px;margin:12px 0}.intro p{font-size:18px}.intro-graphic{height:220px}.big-tile{width:200px;height:200px;font-size:55px}}
+@media(max-width:1024px) and (orientation:landscape){.choice-copy{font-size:clamp(17px,2.1vw,24px)}.q-text{font-size:clamp(25px,3vw,37px)}.answer{padding:12px 15px}.result-pane{padding:14px}.type{font-size:clamp(70px,8vw,105px)}}
+@media print{html,body{background:#fff!important}.app{height:auto;padding:0}.shell{height:auto;box-shadow:none}.site-header{display:flex}.intro,.quiz{display:none!important}.result{display:block!important;overflow:visible}.result-actions{display:none}.result-grid{min-height:400px}}
+
+/* PWA installation affordance — no external resources */
+.install-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}
+.install-btn{border-radius:99px;padding:12px 20px;background:#edf1ff;border:2px solid #dfe6ff;font-weight:900;color:#514ac0;font-size:clamp(16px,1.5vw,20px)}
+.install-btn:focus-visible,.install-help-close:focus-visible{outline:4px solid #83ccff;outline-offset:3px}
+.install-instructions{max-width:min(620px,calc(100vw - 35px));border:0;border-radius:24px;box-shadow:0 20px 70px #20375455;padding:28px 32px;color:var(--ink)}
+.install-instructions::backdrop{background:#152a3c99}
+.install-instructions h3{margin:0 0 12px;font-size:26px}
+.install-instructions p{line-height:1.7;font-size:18px;font-weight:720}
+.install-help-close{border-radius:99px;padding:13px 25px;background:#6257df;color:#fff;font-weight:900;font-size:18px}
+@media(max-height:650px) and (orientation:landscape){.install-actions{margin-top:5px}.install-btn{padding:7px 16px;font-size:15px}}
+</style>
+</head>
+<body>
+<div class="app"><main class="shell">
+  <header class="site-header">
+    <div class="brand"><div class="brand-icon">⌨️</div><div><h1>어린이 MBTI 성향 검사</h1><p>나만의 MBTI 키캡 만들기 · 20문항</p></div></div>
+    <div class="header-art" aria-hidden="true"><span class="mini-key">E</span><span class="mini-key">N</span><span class="mini-key">F</span><span class="mini-key">P</span></div>
+  </header>
+  <section class="screen intro" id="intro">
+    <div><span class="kicker">🌈 내 성향을 찾아보는 시간</span><h2>나는 어떤<br>MBTI 친구일까?</h2><p>20개의 질문을 읽고 나에게 더 가까운 <b>A 또는 B</b>를 골라요. 정답은 없어요!</p><div class="install-actions"><button class="start-btn" id="startBtn">🚀 전체화면으로 시작</button><button class="install-btn" id="installAppBtn" type="button">📲 태블릿에 앱 설치</button></div><div class="smallprint">설치 후 인터넷 없이 사용 가능 · 검사 결과는 저장하지 않아요.</div></div>
+    <div class="intro-graphic" aria-hidden="true"><span class="decor one"></span><span class="decor two"></span><span class="decor three"></span><div class="big-tile">😊</div><span class="sticker s1">⭐</span><span class="sticker s2">🚀</span><span class="sticker s3">🎨</span></div>
+  </section>
+  <section class="screen quiz hidden" id="quiz">
+    <div class="progress-top"><span id="counter">1 / 20</span><span id="axis">친구·관계 (E/I)</span></div><div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="question-zone"><div class="q-icon" id="qicon">🎈</div><h2 class="q-text" id="question">질문</h2><div class="answers" id="answers"></div></div>
+    <nav class="nav"><div class="nav-side"><button class="prev" id="prevBtn">← 이전</button><button class="reset" id="resetBtn">처음부터</button></div><button class="next" id="nextBtn" disabled>다음 →</button></nav>
+  </section>
+  <section class="screen result hidden" id="result">
+    <div class="result-grid"><article class="result-pane"><span class="result-symbol" id="symbol">🌟</span><div class="result-label">나의 MBTI 성향은</div><div class="type" id="type">ENFP</div><div class="type-name" id="typeName">반짝이는 아이디어 친구</div><div class="type-desc" id="typeDesc"></div><div class="result-actions"><button class="again" id="againBtn">↻ 처음부터</button><button class="print" id="printBtn">🖨️ 인쇄하기</button></div></article><article class="result-pane"><div class="result-label">내가 붙일 키캡 알파벳 4개</div><div class="key-letters" id="keyLetters"></div><div class="result-note">① 알파벳 키캡 4개를 찾아요.<br>② 순서대로 붙여 나만의 작품을 완성해요!<br>③ 친구와 다른 점도 멋진 개성이에요.</div><div class="smallprint">재미있는 성향 탐색용 결과이며, 개인의 성격이나 능력을 확정하는 검사가 아닙니다.</div></article></div>
+  </section>
+</main></div>
+<dialog id="installHelp" class="install-instructions" aria-label="앱 설치 방법">
+  <h3>📲 태블릿에 앱 설치하기</h3>
+  <p id="installHelpText">Android Chrome: 메뉴(⋮) → 앱 설치 또는 홈 화면에 추가를 선택하세요.</p>
+  <p>설치가 끝나면 홈 화면에서 <b>MBTI 키캡</b> 아이콘을 눌러 실행하세요. 한 번 접속해 캐시를 저장하면 오프라인에서도 사용할 수 있습니다.</p>
+  <button class="install-help-close" id="closeInstallHelp" type="button">확인</button>
+</dialog>
+
+<script>
+'use strict';
+const QUESTIONS = [["쉬는 시간에 더 하고 싶은 것은?","친구들과 어울려 이야기하고 놀기","혼자 조용하게 쉬거나 좋아하는 일 하기","E","I","🎈"],["새로운 모둠 친구가 생겼어요. 나는?","먼저 인사하고 말을 걸어보기","상대가 다가오면 편하게 이야기하기","E","I","👋"],["집에서 하루를 보낼 때 나는?","가족과 함께 이야기하고 활동하기","혼자만의 시간을 가지며 쉬기","E","I","🏠"],["처음 가는 수업에서는?","새 친구와 빨리 친해지고 싶다","분위기를 살핀 다음 천천히 친해진다","E","I","🎒"],["사람들 앞에서 발표한다면?","내 생각을 말하는 게 신나고 즐겁다","조용히 준비한 뒤 짧게 발표하는 게 편하다","E","I","🎤"],["처음 해보는 놀이를 배울 때는?","규칙과 방법을 자세히 듣고 시작한다","직접 해보며 새로운 방법을 알아낸다","S","N","🎮"],["그림을 그릴 때 더 좋아하는 것은?","보이는 모습을 자세히 관찰해 그리기","상상한 장면을 자유롭게 표현하기","S","N","🎨"],["만들기 활동을 할 때는?","설명서의 순서를 따라 완성하기","내 아이디어로 모양이나 방법을 바꾸기","S","N","🛠️"],["이야기책을 읽을 때 나는?","그림과 내용을 꼼꼼하게 살펴본다","다음에 벌어질 일을 상상하며 읽는다","S","N","📚"],["어려운 문제를 만났을 때는?","이전에 배운 방법부터 활용한다","색다른 해결 방법을 떠올려본다","S","N","💡"],["친구가 실수했을 때 먼저 드는 생각은?","무엇이 잘못됐는지 알아보고 싶다","친구가 속상하지 않을지 걱정된다","T","F","🤝"],["친구와 다툼이 생겼을 때는?","어떤 말과 행동이 맞았는지 살펴본다","서로 마음을 풀고 화해하는 게 중요하다","T","F","💬"],["팀으로 게임을 할 때 중요한 것은?","이길 수 있는 좋은 방법과 전략","친구들과 함께 즐겁게 참여하는 것","T","F","🏅"],["친구가 고민을 이야기하면?","도움이 될 해결 방법을 알려준다","먼저 이야기를 듣고 마음을 위로한다","T","F","💌"],["숙제에서 틀린 문제가 나왔어요. 나는?","왜 틀렸는지 이유부터 확인한다","실망한 마음을 다독이고 다시 해본다","T","F","✏️"],["주말을 보낼 때 더 편한 방법은?","하고 싶은 일과 순서를 미리 정한다","그날의 기분에 따라 자유롭게 정한다","J","P","🗓️"],["숙제와 놀이 중 무엇을 먼저 하나요?","숙제를 먼저 끝내고 마음 편히 논다","놀고 싶은 것을 먼저 하고 숙제한다","J","P","📝"],["물건을 사용한 다음에는?","바로 제자리에 정리해둔다","필요할 때 한꺼번에 정리한다","J","P","🧺"],["체험학습 준비물을 챙길 때는?","전날 목록을 확인하고 미리 챙긴다","출발하는 날 필요한 것을 챙긴다","J","P","🎒"],["게임이나 미션을 해결할 때는?","정해진 차례대로 진행하는 게 좋다","순서를 바꾸거나 새 방법을 시도한다","J","P","🧩"]];
+const TYPES = {"ISTJ":["꼼꼼한 약속 지킴이","차근차근 준비하고 맡은 일을 성실하게 해내는 스타일이에요.","🛡️"],"ISFJ":["따뜻한 배려 친구","주변을 세심하게 챙기며 조용히 도움을 주는 스타일이에요.","🌷"],"INFJ":["생각 깊은 이야기꾼","사람의 마음과 의미를 깊이 생각하는 스타일이에요.","🌙"],"INTJ":["계획하는 전략가","목표를 세우고 혼자서 방법을 찾아가는 스타일이에요.","♟️"],"ISTP":["손재주 좋은 해결사","직접 해보며 문제를 해결하는 것을 좋아하는 스타일이에요.","🛠️"],"ISFP":["감각적인 예술가","자신만의 느낌을 소중히 여기고 표현하는 스타일이에요.","🎨"],"INFP":["상상력이 풍부한 친구","따뜻한 마음으로 새로운 이야기를 상상하는 스타일이에요.","🌈"],"INTP":["호기심 많은 탐구가","왜 그런지 궁금해하며 원리를 알아가는 스타일이에요.","🔬"],"ESTP":["활동적인 도전자","직접 움직이며 새로운 일을 시도하는 스타일이에요.","🏄"],"ESFP":["즐거운 분위기 메이커","사람들과 함께 웃고 즐거움을 나누는 스타일이에요.","🎉"],"ENFP":["반짝이는 아이디어 친구","새로운 생각과 가능성을 즐기는 스타일이에요.","🚀"],"ENTP":["기발한 발명가","색다른 방법을 떠올리고 토론하기를 즐기는 스타일이에요.","⚡"],"ESTJ":["든든한 진행 리더","계획을 세우고 일을 차례대로 추진하는 스타일이에요.","📋"],"ESFJ":["다정한 모임 친구","함께하는 사람들을 잘 챙기고 어울리는 스타일이에요.","🤗"],"ENFJ":["모두를 응원하는 리더","친구들의 장점을 발견하고 함께 성장하는 스타일이에요.","🌟"],"ENTJ":["목표를 향한 리더","큰 목표를 세우고 자신 있게 나아가는 스타일이에요.","🏆"]};
+const AXES = ['친구·관계 (E/I)','상상·관찰 (S/N)','생각·마음 (T/F)','계획·자유 (J/P)'];
+const labels=['A','B'];
+let index=0;
+let answers=Array(QUESTIONS.length).fill(null);
+let autoTimer=null;
+const el=id=>document.getElementById(id);
+function cancelPending(){if(autoTimer!==null){clearTimeout(autoTimer);autoTimer=null;}}
+function view(name){['intro','quiz','result'].forEach(s=>el(s).classList.toggle('hidden',s!==name));}
+function render(){
+ const q=QUESTIONS[index];
+ el('counter').textContent=`${index+1} / ${QUESTIONS.length}`;
+ el('axis').textContent=AXES[Math.floor(index/5)];
+ el('fill').style.width=`${(index+1)/QUESTIONS.length*100}%`;
+ el('qicon').textContent=q[5];
+ el('question').textContent=q[0];
+ const wrap=el('answers');wrap.replaceChildren();
+ labels.forEach((label,i)=>{
+   const b=document.createElement('button');b.type='button';b.className='answer'+(answers[index]===i?' selected':'');
+   b.setAttribute('aria-label',`${label}: ${q[i+1]}`);
+   b.setAttribute('aria-pressed',String(answers[index]===i));
+   const circle=document.createElement('span');circle.className='ab';circle.textContent=label;
+   const copy=document.createElement('span');copy.className='choice-copy';copy.textContent=q[i+1];
+   b.append(circle,copy);
+   b.addEventListener('click',()=>choose(i));wrap.appendChild(b);
+ });
+ el('prevBtn').disabled=index===0;
+ el('prevBtn').style.opacity=index===0?'.42':'1';
+ el('nextBtn').disabled=answers[index]===null;
+ el('nextBtn').textContent=index===QUESTIONS.length-1?'결과 보기 ✨':'다음 →';
+}
+function choose(v){
+ cancelPending(); const current=index;answers[current]=v;render();
+ if(navigator.vibrate)navigator.vibrate(18);
+ autoTimer=setTimeout(()=>{autoTimer=null;if(index!==current||el('quiz').classList.contains('hidden'))return;advance();},420);
+}
+function advance(){cancelPending();if(answers[index]===null)return;if(index<QUESTIONS.length-1){index++;render();}else showResult();}
+function back(){cancelPending();if(index>0){index--;render();}}
+function restart(withConfirm=true){
+ if(withConfirm&&!confirm('답변을 지우고 처음부터 다시 시작할까요?'))return;
+ cancelPending();index=0;answers=Array(QUESTIONS.length).fill(null);render();view('intro');
+}
+function calculate(){
+ const scores={E:0,I:0,S:0,N:0,T:0,F:0,J:0,P:0};
+ QUESTIONS.forEach((q,i)=>{if(answers[i]!==null)scores[q[3+answers[i]]]++;});
+ return (scores.E>scores.I?'E':'I')+(scores.S>scores.N?'S':'N')+(scores.T>scores.F?'T':'F')+(scores.J>scores.P?'J':'P');
+}
+function showResult(){
+ cancelPending();if(answers.some(a=>a===null))return;
+ const t=calculate(),d=TYPES[t];
+ el('type').textContent=t;el('typeName').textContent=d[0];el('typeDesc').textContent=d[1];el('symbol').textContent=d[2];
+ const letters=el('keyLetters');letters.replaceChildren();
+ [...t].forEach(letter=>{let tile=document.createElement('div');tile.className='key-letter';tile.textContent=letter;letters.appendChild(tile);});
+ view('result');
+}
+el('startBtn').addEventListener('click',()=>{let root=document.documentElement;if(root.requestFullscreen)root.requestFullscreen().catch(()=>{});view('quiz');render();});
+el('prevBtn').addEventListener('click',back);
+el('nextBtn').addEventListener('click',advance);
+el('resetBtn').addEventListener('click',()=>restart(true));
+el('againBtn').addEventListener('click',()=>restart(false));
+el('printBtn').addEventListener('click',()=>window.print());
+render();
+
+// Install prompt requires HTTPS (or localhost). The local HTML remains fully usable as a web page.
+let installEvent = null;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function refreshInstallButton(){
+  const btn = document.getElementById('installAppBtn');
+  if (!btn) return;
+  btn.textContent = isInstalled() ? '✅ 앱 설치됨' : '📲 태블릿에 앱 설치';
+  btn.disabled = isInstalled();
+}
+window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installEvent = event; refreshInstallButton(); });
+window.addEventListener('appinstalled', () => { installEvent = null; refreshInstallButton(); });
+document.getElementById('installAppBtn').addEventListener('click', async () => {
+  if (isInstalled()) return;
+  if (installEvent) {
+    const ev=installEvent; installEvent=null;
+    try { await ev.prompt(); await ev.userChoice; } catch(_error) {}
+    return;
+  }
+  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const text = iOS
+    ? 'iPad Safari에서 이 페이지를 열고 공유(□↑) → 홈 화면에 추가 → 웹 앱으로 열기(표시되면 켜기) → 추가를 선택하세요.'
+    : 'Android Chrome에서 이 페이지를 열고 우측 상단 메뉴(⋮) → 앱 설치(또는 홈 화면에 추가)를 선택하세요. 설치 항목이 보이지 않으면 페이지를 새로고침한 뒤 다시 확인하세요.';
+  document.getElementById('installHelpText').textContent = location.protocol === 'file:'
+    ? '현재 HTML 파일을 직접 열었습니다. 앱 설치에는 HTTPS 웹 주소에서 실행해야 합니다. 사이트에 업로드한 후 해당 주소를 태블릿에서 여세요. ' + text
+    : text;
+  document.getElementById('installHelp').showModal();
+});
+document.getElementById('closeInstallHelp').addEventListener('click',()=>document.getElementById('installHelp').close());
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load',() => navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(error => console.warn('Offline setup unavailable',error)));
+}
+refreshInstallButton();
+</script>
+</body>
+</html>
