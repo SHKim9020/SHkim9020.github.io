@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>구글 로그인 안내</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#6b7280;--line:#dfe5ef;--blue:#2563eb;--purple:#6d4aff;--green:#0f9f6e}
+*{box-sizing:border-box} body{margin:0;font-family:"Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;color:var(--text);background:var(--bg)}
+.wrap{width:min(1080px,calc(100% - 28px));margin:auto;padding:28px 0 55px}
+.hero{padding:32px 30px;border-radius:24px;color:#fff;background:linear-gradient(135deg,#2563eb,#6d4aff 62%,#8b5cf6);box-shadow:0 18px 42px rgba(37,99,235,.2)}
+.hero small{display:inline-block;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.15);font-weight:800}
+.hero h1{margin:10px 0 8px;font-size:clamp(32px,5vw,50px);letter-spacing:-.04em}.hero p{margin:0;font-size:17px;opacity:.94}
+.pw{margin:20px 0 16px;padding:20px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 24px rgba(23,32,51,.06)}
+.label{display:block;color:var(--muted);font-size:13px;font-weight:800}.pwval{font-size:27px;font-weight:900;letter-spacing:.08em}
+.pw button,.card button{border:0;border-radius:12px;color:#fff;font-weight:900;cursor:pointer}.pw button{min-width:190px;padding:13px 18px;background:var(--purple);font-size:16px}
+.guide{padding:14px 16px;margin-bottom:18px;border:1px solid #cfe0ff;border-radius:15px;background:#edf4ff;color:#27466f;font-size:14px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:7px;background:#e9eef6;border-radius:16px;margin-bottom:16px}
+.tab{border:0;padding:14px;border-radius:12px;background:transparent;color:#536274;font-size:17px;font-weight:900;cursor:pointer}.tab.active{color:#fff;background:linear-gradient(135deg,var(--blue),var(--purple))}
+.content{display:none}.content.active{display:block}.head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:2px 2px 12px}.head h2{margin:0;font-size:24px}.head span{color:var(--muted);font-size:13px;font-weight:700;text-align:right}
+.list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;padding:15px;background:#fff;border:1px solid var(--line);border-radius:17px;box-shadow:0 7px 18px rgba(23,32,51,.05)}
+.num{width:44px;height:44px;display:grid;place-items:center;border-radius:13px;color:#fff;background:linear-gradient(135deg,var(--blue),#7c3aed);font-weight:900}
+.info span{display:block;color:var(--muted);font-size:11px;font-weight:800}.info strong{display:block;font-size:17px;word-break:break-all}.card button{padding:11px 15px;background:var(--green);font-size:14px;white-space:nowrap}
+.copied{background:#15803d!important}.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,18px);opacity:0;pointer-events:none;padding:12px 18px;border-radius:999px;color:#fff;background:#111827;font-weight:900;transition:.2s;z-index:999}.toast.show{opacity:1;transform:translate(-50%,0)}
+footer{margin-top:25px;text-align:center;color:var(--muted);font-size:12px}
+@media(max-width:760px){.wrap{width:min(100% - 18px,1080px);padding-top:14px}.hero{padding:26px 20px}.pw{grid-template-columns:1fr}.pw button{width:100%}.list{grid-template-columns:1fr}}
+@media(max-width:430px){.card{grid-template-columns:43px minmax(0,1fr)}.card button{grid-column:1/-1;width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero"><small>🔐 Google 계정 로그인</small><h1>구글 로그인 안내</h1><p>자신의 그룹과 번호를 확인한 뒤 아이디와 비밀번호를 복사하여 로그인하세요.</p></header>
+<section class="pw"><div><span class="label" id="pwLabel">1그룹 비밀번호</span><div class="pwval" id="pwDisplay">••••••••</div></div><button id="pwButton" onclick="copyPassword(this)">비밀번호 복사</button></section>
+<div class="guide"><b>사용 방법:</b> ① 그룹 탭 선택 → ② 번호 확인 → ③ 아이디 복사 → ④ 로그인 화면에 붙여넣기 → ⑤ 해당 그룹 비밀번호 복사 후 붙여넣기<br><b>※ 비밀번호는 복사 버튼을 누르면 화면에 표시됩니다.</b></div>
+<div class="tabs"><button class="tab active" onclick="showTab(1,this)">1-01 ~ 1-20</button><button class="tab" onclick="showTab(2,this)">2-01 ~ 2-20</button></div>
+<section id="tab1" class="content active"><div class="head"><h2>1그룹 로그인 아이디</h2><span>m.nc.maker1-01 ~ m.nc.maker1-20<br>※ 1-04, 1-11 제외</span></div><div class="list">
+    <article class="card">
+      <div class="num">01</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-01</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-01@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">02</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-02</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-02@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">03</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-03</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-03@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">05</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-05</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-05@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">06</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-06</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-06@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">07</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-07</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-07@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">08</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-08</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-08@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">09</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-09</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-09@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">10</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-10</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-10@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">12</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-12</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-12@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">13</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-13</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-13@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">14</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-14</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-14@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">15</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-15</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-15@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">16</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-16</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-16@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">17</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-17</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-17@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">18</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-18</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-18@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">19</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-19</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-19@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">20</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker1-20</strong></div>
+      <button onclick="copyId(this,'m.nc.maker1-20@on.use.go.kr')">아이디 복사</button>
+    </article></div></section>
+<section id="tab2" class="content"><div class="head"><h2>2그룹 로그인 아이디</h2><span>m.nc.maker2-01 ~ m.nc.maker2-20<br>※ 2-09 제외</span></div><div class="list">
+    <article class="card">
+      <div class="num">01</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-01</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-01@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">02</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-02</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-02@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">03</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-03</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-03@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">04</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-04</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-04@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">05</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-05</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-05@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">06</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-06</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-06@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">07</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-07</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-07@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">08</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-08</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-08@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">10</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-10</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-10@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">11</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-11</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-11@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">12</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-12</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-12@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">13</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-13</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-13@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">14</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-14</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-14@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">15</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-15</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-15@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">16</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-16</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-16@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">17</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-17</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-17@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">18</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-18</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-18@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">19</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-19</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-19@on.use.go.kr')">아이디 복사</button>
+    </article>
+    <article class="card">
+      <div class="num">20</div>
+      <div class="info"><span>사용자 아이디</span><strong>m.nc.maker2-20</strong></div>
+      <button onclick="copyId(this,'m.nc.maker2-20@on.use.go.kr')">아이디 복사</button>
+    </article></div></section>
+<footer>계정 정보가 포함된 페이지이므로 수업 참여자에게만 공유해 주세요.</footer>
+</div>
+<div id="toast" class="toast">복사되었습니다.</div>
+<script>
+const PASSWORDS={1:"ncmaker11",2:"ncmaker22"};let currentGroup=1;
+function fallbackCopy(t){const a=document.createElement("textarea");a.value=t;a.style.position="fixed";a.style.left="-9999px";document.body.appendChild(a);a.select();document.execCommand("copy");a.remove()}
+async function copyText(t){try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(t);else fallbackCopy(t)}catch(e){fallbackCopy(t)}}
+function toast(m){const e=document.getElementById("toast");e.textContent=m;e.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>e.classList.remove("show"),1500)}
+function flash(b,o){b.classList.add("copied");b.textContent="복사 완료";setTimeout(()=>{b.classList.remove("copied");b.textContent=o},1200)}
+async function copyPassword(b){const p=PASSWORDS[currentGroup],o=b.textContent;await copyText(p);document.getElementById("pwDisplay").textContent=p;flash(b,o);toast(currentGroup+"그룹 비밀번호가 복사되었습니다.")}
+async function copyId(b,id){const o=b.textContent;await copyText(id);flash(b,o);toast("아이디가 복사되었습니다.")}
+function showTab(n,b){currentGroup=n;document.querySelectorAll(".content").forEach(e=>e.classList.remove("active"));document.querySelectorAll(".tab").forEach(e=>e.classList.remove("active"));document.getElementById("tab"+n).classList.add("active");b.classList.add("active");document.getElementById("pwLabel").textContent=n+"그룹 비밀번호";document.getElementById("pwDisplay").textContent="••••••••";document.getElementById("pwButton").textContent="비밀번호 복사"}
+</script>
+</body></html>
