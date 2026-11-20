@@ -25,9 +25,7 @@
       line-height: 1.65;
     }
     .wrap {
-      width: 100%;
-      margin: 0;
-      padding: 24px 28px 60px;
+      padding: 24px 26px 42px;
     }
     header {
       background: linear-gradient(135deg, #2563eb, #7c3aed);
@@ -196,8 +194,14 @@
     }
     @media (max-width: 640px) {
       .wrap {
+        padding: 14px 12px 30px;
+      }
+
+      .slide {
+        min-height: 100vh;
+        margin: 0;
         width: 100%;
-        padding: 14px 12px 40px;
+        border-radius: 0;
       }
       header {
         border-radius: 16px;
@@ -224,12 +228,13 @@
       .prompt { font-size: 15px; }
     }
     .slide{
-      width:100vw;
-      min-height:100vh;
-      margin:0;
-      overflow:visible;
+      width:min(1280px,calc(100% - 20px));
+      min-height:720px;
+      margin:12px auto;
       background:var(--bg);
-      border-radius:0;
+      border-radius:24px;
+      overflow:auto;
+      box-shadow:0 16px 40px rgba(24,48,66,.08);
     }
   </style>
 </head>
